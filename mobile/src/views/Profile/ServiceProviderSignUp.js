@@ -8,6 +8,7 @@ import {
   Platform,
 } from "react-native";
 import React, { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import styles from "./styles/serviceProviderStyles";
 import { FontAwesome, Feather } from "@expo/vector-icons";
 import { API } from "../../api/api";
@@ -53,8 +54,14 @@ export default function ServiceProviderSignUp({ navigation }) {
         accountType: "serviceProvider",
         });
 
-        if (response.data.success === true) {
+        if (response.data.success) {
         setSuccessMsg(response.data.message);
+        
+        const token = response.data.token;
+
+        if (token) {
+          await AsyncStorage.setItem("token", token);
+        }
 
         // Navigate to login or profile later
         setTimeout(() => {

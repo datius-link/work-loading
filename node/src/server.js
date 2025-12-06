@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import db from "../models/index.js";
 import authRoutes from "./routes/authRoutes.js";
+import serviceProviderRoutes from "./routes/serviceProvideProfile/serviceProviderRoutes.js";
 const { sequelize } = db;
 
 dotenv.config();
@@ -19,6 +20,7 @@ const PORT = process.env.PORT || 5000;
 
 
 app.use("/api/auth", authRoutes);
+app.use("/api/service-provider", serviceProviderRoutes);
 
 
 app.listen(PORT, async () => {

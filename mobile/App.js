@@ -13,6 +13,11 @@ import Profile from "./src/views/Profile";
 // Auth / Provider Screens
 import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
 
+//Profile for the Service Provider
+import ServiceProviderProfile from "./src/views/Profile/ServiceProviderProfile";
+
+import EditProvider from "./src/views/Profile/components/EditProvider";
+
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -78,6 +83,17 @@ export default function App() {
             name="ServiceProviderSignUp" 
             component={ServiceProviderSignUp} 
           />
+
+          <Stack.Screen
+            name="ServiceProviderProfile"
+            component={ServiceProviderProfile}
+          />
+
+          <Stack.Screen 
+            name="EditProvider" 
+            component={EditProvider} 
+          />
+
 
         </Stack.Navigator>
       </NavigationContainer>
