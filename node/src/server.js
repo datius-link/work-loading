@@ -24,6 +24,7 @@ app.use("/api/auth", authRoutes);
 app.listen(PORT, async () => {
   try {
     await sequelize.authenticate();
+    await sequelize.sync();
     console.log(" PostgreSQL Connected");
   } catch (e) {
     console.log("❌ Failed to connect:", e.message);

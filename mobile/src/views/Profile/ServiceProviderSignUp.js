@@ -50,6 +50,7 @@ export default function ServiceProviderSignUp({ navigation }) {
         email,
         phone: "+255" + phone,
         password,
+        accountType: "serviceProvider",
         });
 
         if (response.data.success === true) {

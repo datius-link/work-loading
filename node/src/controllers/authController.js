@@ -37,16 +37,20 @@ export const registerUser = async (req, res) => {
 
     // create user
     await User.create({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      isVerified: false,
+    name,
+    email,
+    phone,
+    password: hashedPassword,
+    isVerified: false,
+    accountType: req.body.accountType || "SERVICE_PROVIDER",
     });
 
     return res.json({
-      success: true,
-      message: "Account created successfully.",
+    success: true,
+    message: "Account created successfully.",
+    data: {
+        accountType: req.body.accountType || "SERVICE_PROVIDER",
+    }
     });
   } catch (err) {
     console.log("Register Error:", err);
