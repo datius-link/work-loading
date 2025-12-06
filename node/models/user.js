@@ -1,13 +1,30 @@
+import { Model } from "sequelize";
+
 export default (sequelize, DataTypes) => {
-  const User = sequelize.define("User", {
-    name: DataTypes.STRING,
-    email: DataTypes.STRING,
-    phone: DataTypes.STRING,
-    password: DataTypes.STRING,
-    isVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
-    otp: DataTypes.STRING,
-    otpExpires: DataTypes.DATE
-  });
+  class User extends Model {}
+
+  User.init(
+    {
+      name: DataTypes.STRING,
+      email: {
+        type: DataTypes.STRING,
+        unique: true,
+      },
+      phone: {
+        type: DataTypes.STRING,
+        unique: true,
+      },
+      password: DataTypes.STRING,
+      isVerified: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+    },
+    {
+      sequelize,
+      modelName: "User",
+    }
+  );
 
   return User;
 };

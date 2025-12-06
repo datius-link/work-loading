@@ -10,6 +10,8 @@ import {
 import React, { useState } from "react";
 import styles from "./styles/serviceProviderStyles";
 import { FontAwesome, Feather } from "@expo/vector-icons";
+import { API } from "../../api/api";
+
 
 export default function ServiceProviderSignUp({ navigation }) {
   const [name, setName] = useState("");
@@ -17,31 +19,84 @@ export default function ServiceProviderSignUp({ navigation }) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-
+  const [phoneError, setPhoneError] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  const handleSignUp = () => {
+    const handleSignUp = async () => {
     setErrorMsg("");
     setSuccessMsg("");
 
     if (!name || !email || !phone || !password || !confirmPassword) {
-      setErrorMsg("Please fill all fields.");
-      return;
+        setErrorMsg("Please fill all fields.");
+        return;
     }
 
     if (password !== confirmPassword) {
-      setErrorMsg("Passwords do not match.");
-      return;
+        setErrorMsg("Passwords do not match.");
+        return;
     }
 
     if (password.length < 6) {
-      setErrorMsg("Password must be at least 6 characters.");
-      return;
+        setErrorMsg("Password must be at least 6 characters.");
+        return;
     }
 
-    setSuccessMsg("Looks good! Processing...");
-  };
+    try {
+        setSuccessMsg("Creating your account...");
+
+        const response = await API.post("/auth/register", {
+        name,
+        email,
+        phone: "+255" + phone,
+        password,
+        });
+
+        if (response.data.success === true) {
+        setSuccessMsg(response.data.message);
+
+        // Navigate to login or profile later
+        setTimeout(() => {
+            navigation.navigate("ServiceProviderProfile");
+        }, 1200);
+        } else {
+        setErrorMsg(response.data.message);
+        setSuccessMsg("");
+        }
+    } catch (err) {
+        setErrorMsg("Server error. Please try again.");
+        setSuccessMsg("");
+    }
+    };
+
+    const handlePhoneInput = (value) => {
+    // Reset error first
+    setPhoneError("");
+
+    // Remove spaces automatically
+    const cleaned = value.replace(/\s+/g, "");
+
+    // Prevent letters
+    if (!/^\d*$/.test(cleaned)) {
+        setPhoneError("Phone number must contain digits only.");
+        return;
+    }
+
+    // Prevent 0 at the start
+    if (cleaned.startsWith("0")) {
+        setPhoneError("Do not start with 0. Example: 712345678");
+    }
+
+    // Limit to 9 digits
+    if (cleaned.length > 9) {
+        setPhoneError("Phone number must be exactly 9 digits.");
+    }
+
+    // Update value
+    setPhone(cleaned);
+    };
+
+
 
   return (
     <KeyboardAvoidingView
@@ -105,11 +160,18 @@ export default function ServiceProviderSignUp({ navigation }) {
                 placeholder="Phone Number"
                 style={styles.phoneInput}
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={handlePhoneInput}
                 keyboardType="numeric"
                 maxLength={9}
               />
             </View>
+
+            {phoneError !== "" && (
+            <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{phoneError}</Text>
+            </View>
+            )}
+
           </View>
 
           {/* Password */}

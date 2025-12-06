@@ -1,7 +1,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { sequelize } from "../models/index.js";
+import db from "../models/index.js";
+import authRoutes from "./routes/authRoutes.js";
+const { sequelize } = db;
 
 dotenv.config();
 
@@ -14,6 +16,10 @@ app.get("/", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
+
+
+app.use("/api/auth", authRoutes);
+
 
 app.listen(PORT, async () => {
   try {
