@@ -5,9 +5,9 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
+  Linking,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
 
 export default function ServiceProviderHeader({
   provider,
@@ -23,48 +23,81 @@ export default function ServiceProviderHeader({
     services = [],
     contacts = [],
     socials = [],
-    teammates = [],
     bio,
   } = provider;
+
+  // ----------------------------
+  // PARSE CONTACTS FORMAT
+  // Format inside DB is:
+  // phone:value:call,sms
+  // ----------------------------
+  const formatContact = (item) => {
+    const [type, number, options] = item.split(":");
+    const allowCall = options?.includes("call");
+    const allowSMS = options?.includes("sms");
+
+    return {
+      type,
+      number,
+      allowCall,
+      allowSMS,
+    };
+  };
+
+  // ----------------------------
+  // SOCIAL PLATFORM ICONS
+  // ----------------------------
+  const socialIcons = {
+    instagram: <FontAwesome name="instagram" size={24} color="#E1306C" />,
+    facebook: <FontAwesome name="facebook" size={24} color="#1877F2" />,
+    youtube: <FontAwesome name="youtube-play" size={24} color="red" />,
+    twitter: <FontAwesome name="twitter" size={24} color="#1DA1F2" />,
+    threads: <MaterialCommunityIcons name="at" size={24} color="black" />,
+  };
+
+  const openSocial = (platform, handle) => {
+    if (!handle) return;
+
+    let url = handle;
+
+    // Auto add https:// if missing
+    if (!url.startsWith("http")) url = "https://" + url;
+
+    Linking.openURL(url);
+  };
 
   return (
     <View style={styles.container}>
 
-      {/* TITLE + SETTINGS */}
+      {/* Title + Settings */}
       <View style={styles.titleRow}>
         <Text style={styles.title}>Service Provider</Text>
 
         <TouchableOpacity style={styles.settingsBtn} onPress={onSettings}>
-          <Feather name="settings" size={20} color="#2C6BED" />
+          <Feather name="settings" size={22} color="#2C6BED" />
         </TouchableOpacity>
       </View>
 
-      {/* MAIN PROFILE SECTION */}
       <View style={styles.mainRow}>
 
         {/* LEFT SIDE */}
         <View style={styles.leftColumn}>
-          {/* Username */}
-          {username && (
-            <Text style={styles.username}>@{username}</Text>
-          )}
+          {username ? <Text style={styles.username}>@{username}</Text> : null}
+          {fullName ? <Text style={styles.fullName}>{fullName}</Text> : null}
 
-          {/* Full Name */}
-          {fullName && (
-            <Text style={styles.fullName}>{fullName}</Text>
-          )}
-
-          {/* Services Provided */}
+          {/* Services */}
           {services.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Services Provided</Text>
-
-              <View style={styles.tagsRow}>
-                {services.map((item, index) => (
-                  <View key={index} style={styles.tag}>
-                    <Text style={styles.tagText}>{item}</Text>
-                  </View>
-                ))}
+              <View style={styles.serviceList}>
+                {services.map((item, i) => {
+                  const [icon, name] = item.split(":");
+                  return (
+                    <View key={i} style={styles.serviceTag}>
+                      <Text style={styles.serviceTagText}>{icon} {name}</Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -73,9 +106,38 @@ export default function ServiceProviderHeader({
           {contacts.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Contacts</Text>
-              {contacts.map((item, index) => (
-                <Text key={index} style={styles.sectionItem}>• {item}</Text>
-              ))}
+
+              {contacts.map((raw, i) => {
+                const c = formatContact(raw);
+
+                return (
+                  <View key={i} style={styles.contactRow}>
+                    {/* Icon */}
+                    <FontAwesome name="phone" size={18} color="#2C6BED" />
+
+                    <Text style={styles.contactText}>+255 {c.number}</Text>
+
+                    {/* Call button */}
+                    {c.allowCall && (
+                      <TouchableOpacity
+                        onPress={() => Linking.openURL(`tel:+255${c.number}`)}
+                      >
+                        <Feather name="phone-call" size={20} color="#2C6BED" />
+                      </TouchableOpacity>
+                    )}
+
+                    {/* SMS button */}
+                    {c.allowSMS && (
+                      <TouchableOpacity
+                        onPress={() => Linking.openURL(`sms:+255${c.number}`)}
+                        style={{ marginLeft: 10 }}
+                      >
+                        <Feather name="message-square" size={20} color="#2C6BED" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
             </View>
           )}
 
@@ -83,55 +145,37 @@ export default function ServiceProviderHeader({
           {socials.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Social Media</Text>
-              {socials.map((item, index) => (
-                <Text key={index} style={styles.sectionItem}>• {item}</Text>
-              ))}
-            </View>
-          )}
-        </View>
 
-        {/* RIGHT SIDE */}
-        <View style={styles.rightColumn}>
+              <View style={styles.socialGrid}>
+                {socials.map((item, i) => {
+                  const [platform, handle] = item.split(":");
 
-          {/* Profile Picture */}
-          <Image
-            source={{ uri: profilePic }}
-            style={styles.profilePic}
-          />
-
-          <TouchableOpacity style={styles.uploadBtn}>
-            <Text style={styles.uploadText}>Change Photo</Text>
-          </TouchableOpacity>
-
-          {/* Team Members */}
-          {teammates.length > 0 && (
-            <View style={styles.teamSection}>
-              <Text style={styles.sectionTitleSmall}>Team Members</Text>
-
-              <View style={styles.teamRow}>
-                {teammates.map((member, index) => (
-                  <Image
-                    key={index}
-                    source={{ uri: member }}
-                    style={styles.teamPic}
-                  />
-                ))}
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      onPress={() => openSocial(platform, handle)}
+                      style={styles.socialIconBtn}
+                    >
+                      {socialIcons[platform] || (
+                        <Feather name="link" size={22} color="#555" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           )}
+        </View>
 
-          {/* BIO */}
-          {bio && (
-            <Text style={styles.bioText}>{bio}</Text>
-          )}
+        {/* RIGHT SIDE - Profile Pic only */}
+        <View style={styles.rightColumn}>
+          <Image source={{ uri: profilePic }} style={styles.profilePic} />
 
-          {/* EDIT PROFILE */}
+          {/* Edit Profile */}
           <TouchableOpacity style={styles.editBtn} onPress={onEdit}>
             <Text style={styles.editText}>Edit Profile</Text>
           </TouchableOpacity>
-
         </View>
-
       </View>
     </View>
   );
@@ -141,27 +185,23 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: "#fff",
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 16,
     elevation: 3,
-    marginBottom: 20,
+    marginBottom: 25,
   },
 
   titleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     marginBottom: 14,
   },
 
-  title: {
-    fontSize: 20,
-    fontWeight: "700",
-  },
+  title: { fontSize: 20, fontWeight: "700" },
 
   settingsBtn: {
     backgroundColor: "#E8EEFF",
     padding: 8,
-    borderRadius: 8,
+    borderRadius: 10,
   },
 
   mainRow: {
@@ -169,58 +209,75 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  leftColumn: {
-    flex: 1,
-    paddingRight: 20,
-  },
+  leftColumn: { flex: 1, paddingRight: 15 },
 
-  username: {
-    fontSize: 15,
-    color: "#6a6a6a",
-  },
+  username: { color: "#888" },
 
   fullName: {
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
-  section: {
-    marginBottom: 16,
-  },
+  section: { marginTop: 12 },
 
   sectionTitle: {
     fontWeight: "700",
-    marginBottom: 6,
+    marginBottom: 4,
   },
 
-  sectionItem: {
-    fontSize: 14,
-    color: "#555",
-  },
-
-  tagsRow: {
+  /* Services */
+  serviceList: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
 
-  tag: {
+  serviceTag: {
     backgroundColor: "#E8EEFF",
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 8,
   },
 
-  tagText: {
-    color: "#2C6BED",
+  serviceTagText: {
     fontWeight: "600",
+    color: "#2C6BED",
   },
 
-  rightColumn: {
-    width: 150,
+  /* Contacts */
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginVertical: 5,
+  },
+
+  contactText: {
+    fontSize: 14,
+    color: "#444",
+    flex: 1,
+  },
+
+  /* Socials */
+  socialGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    marginTop: 6,
+  },
+
+  socialIconBtn: {
+    backgroundColor: "#F2F4F7",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
     alignItems: "center",
   },
+
+  /* Right Column */
+  rightColumn: { width: 150, alignItems: "center" },
 
   profilePic: {
     width: 110,
@@ -229,53 +286,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  uploadBtn: {
-    backgroundColor: "#2C6BED",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    marginBottom: 15,
-  },
-
-  uploadText: {
-    color: "white",
-    fontSize: 13,
-  },
-
-  teamSection: {
-    marginBottom: 15,
-  },
-
-  sectionTitleSmall: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-
-  teamRow: {
-    flexDirection: "row",
-    gap: 6,
-  },
-
-  teamPic: {
-    width: 35,
-    height: 35,
-    borderRadius: 20,
-    backgroundColor: "#ddd",
-  },
-
-  bioText: {
-    fontSize: 14,
-    color: "#555",
-    textAlign: "center",
-    marginBottom: 15,
-  },
-
   editBtn: {
     backgroundColor: "#2C6BED",
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: 12,
   },
 
   editText: {
