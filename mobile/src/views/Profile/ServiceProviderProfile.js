@@ -17,16 +17,24 @@ const placeholder = "https://via.placeholder.com/150";
 export default function ServiceProviderProfile({ navigation }) {
   const [provider, setProvider] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await API.get("/service-provider/me");
-        setProvider(res.data.provider);
-      } catch (err) {
-        console.log("Error fetching profile:", err);
-      }
-    })();
-  }, []);
+useEffect(() => {
+  const fetchProfile = async () => {
+    try {
+      const res = await API.get("/service-provider/me");
+      setProvider(res.data.provider);
+    } catch (err) {
+      console.log("Error fetching profile:", err);
+    }
+  };
+
+  fetchProfile();
+
+  // Refresh when screen gains focus
+  const unsubscribe = navigation.addListener("focus", fetchProfile);
+
+  return unsubscribe;
+}, [navigation]);
+
 
   // 🛡️ Safe fallback provider to avoid crashes
   const safeProvider = {
@@ -148,6 +156,22 @@ export default function ServiceProviderProfile({ navigation }) {
       );
     }
 
+
+    const { provider } = route.params;
+
+    useEffect(() => {
+      if (provider) {
+        setFullName(provider.fullName);
+        setUsername(provider.username);
+        setBio(provider.bio);
+        setContacts(provider.contacts.join(", "));
+        setSocials(provider.socials.join(", "));
+        setServices(provider.services.join(", "));
+        setProfilePic(provider.profilePic);
+      }
+    }, []);
+
+
     return (
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Recent Posts</Text>
@@ -177,9 +201,11 @@ export default function ServiceProviderProfile({ navigation }) {
     <ScrollView contentContainerStyle={styles.container}>
       <ServiceProviderHeader
         provider={safeProvider}
+
         onEdit={() =>
-          provider && navigation.navigate("EditProvider", { id: provider.id })
+          navigation.navigate("EditProvider", { provider: safeProvider })
         }
+
         onSettings={() => navigation.navigate("ProviderSettings")}
         onCall={(phone) => Linking.openURL(`tel:${phone}`)}
         onEmail={(email) => Linking.openURL(`mailto:${email}`)}

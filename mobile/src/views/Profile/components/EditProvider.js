@@ -56,7 +56,8 @@ export default function EditProvider({ route, navigation }) {
 
       setLoading(false);
 
-      navigation.goBack(); // return to profile
+      navigation.navigate("ServiceProviderProfile", { updated: true });
+      
     } catch (err) {
       setLoading(false);
       console.log("Update error:", err);
