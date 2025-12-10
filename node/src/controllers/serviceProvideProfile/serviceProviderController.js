@@ -52,7 +52,9 @@ export const updateProfile = async (req, res) => {
       profilePic,
     } = req.body;
 
-    // Validate username is not taken by someone else
+    // -----------------------------------------
+    // 1. Username validation (unique except owner)
+    // -----------------------------------------
     if (username) {
       const existing = await db.ServiceProvider.findOne({
         where: { username },
@@ -66,15 +68,72 @@ export const updateProfile = async (req, res) => {
       }
     }
 
-    // Update service provider profile
-    const updated = await db.ServiceProvider.update(
+    // -----------------------------------------
+    // 2. Extract phone numbers from contacts array
+    // -----------------------------------------
+    const parsedPhones = contacts
+      .map((c) => c.split(":")[1])
+      .filter(Boolean);
+
+    // -----------------------------------------
+    // 3. Check for duplicates inside user's contacts
+    // -----------------------------------------
+    const uniquePhones = new Set(parsedPhones);
+    if (uniquePhones.size !== parsedPhones.length) {
+      return res.json({
+        success: false,
+        message: "Duplicate phone numbers are not allowed.",
+      });
+    }
+
+    // -----------------------------------------
+    // 4. Check if these phones are used by ANY OTHER USER
+    // -----------------------------------------
+    for (const phone of parsedPhones) {
+      const userWithPhone = await db.User.findOne({
+        where: { phone },
+      });
+
+      if (userWithPhone && userWithPhone.id !== userId) {
+        return res.json({
+          success: false,
+          message: `Phone number ${phone} is already used by another user.`,
+        });
+      }
+    }
+
+    // -----------------------------------------
+    // 5. Check if these phones are used by ANY OTHER PROVIDER
+    // -----------------------------------------
+    for (const phone of parsedPhones) {
+      const providerWithPhone = await db.ServiceProvider.findOne({
+        where: db.Sequelize.literal(`'${phone}' = ANY("contacts")`),
+      });
+
+      if (providerWithPhone && providerWithPhone.user_id !== userId) {
+        return res.json({
+          success: false,
+          message: `Phone number ${phone} is already used by another provider.`,
+        });
+      }
+    }
+
+    // -----------------------------------------
+    // 6. DO NOT UPDATE USER.PHONE ANYMORE ❌
+    //    We removed primary phone logic completely.
+    // -----------------------------------------
+
+    // -----------------------------------------
+    // 7. Update SERVICE PROVIDER PROFILE ONLY
+    // -----------------------------------------
+    await db.ServiceProvider.update(
       {
         full_name: fullName,
-        username: username,
-        bio: bio,
-        contacts: contacts,
-        socials: socials,
-        services: services,
+        username,
+        bio,
+        contacts,
+        socials,
+        services,
         profile_pic: profilePic,
       },
       { where: { user_id: userId } }
@@ -84,6 +143,7 @@ export const updateProfile = async (req, res) => {
       success: true,
       message: "Profile updated successfully.",
     });
+
   } catch (error) {
     console.error("Update profile error:", error);
     return res.status(500).json({
@@ -92,4 +152,3 @@ export const updateProfile = async (req, res) => {
     });
   }
 };
-

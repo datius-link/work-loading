@@ -17,6 +17,7 @@ import {
 import Icon from "react-native-vector-icons/FontAwesome";
 import { API } from "../../../api/api";
 
+/* ---------------------- IMAGE PICKER ---------------------- */
 let ImagePicker;
 try {
   ImagePicker = require("expo-image-picker");
@@ -24,113 +25,24 @@ try {
   ImagePicker = null;
 }
 
-/**
- * EditProvider.js
- * - Full upgraded Save Bar (slide + fade + rounded bottom)
- * - Contacts (compact rows)
- * - Socials (grid + rows)
- * - Services (add minimal rows; emoji picker via hidden TextInput)
- *
- * This file is built from and restores parts of your previous EditProvider.js. :contentReference[oaicite:1]{index=1}
- */
-
 export default function EditProvider({ navigation, route }) {
-  // Profile fields
+  /* ---------------------- STATE ---------------------- */
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [contacts, setContacts] = useState([]);
   const [socials, setSocials] = useState([]);
   const [services, setServices] = useState([]);
   const [profilePic, setProfilePic] = useState("");
+  const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(false);
-  const [bio, setBio] =useState("");
+  const [status, setStatus] = useState("idle");
 
-  // Save bar status
-  const [status, setStatus] = useState("idle"); // idle | saving | success | error
-
-  // Animations
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
   const incoming = route.params?.provider;
 
-  useEffect(() => {
-    setTimeout(() => {
-      triggerSlide();   // slide down on load
-      setStatus("idle");
-    }, 100);
-  }, []);
+  /* ---------------------- ANIMATIONS ---------------------- */
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
-
-  // Refs for emoji inputs of services
-  const emojiRefs = useRef([]); // array of refs for hidden emoji TextInputs
-
-  const placeholder = "https://via.placeholder.com/150";
-
-  // ----------------- life cycle: load profile -----------------
-  useEffect(() => {
-    if (incoming) {
-      // preload current profile details
-      setFullName(incoming.fullName || "");
-      setUsername(incoming.username || "");
-      setProfilePic(incoming.profilePic || "");
-      setBio(incoming.bio || "");
-
-      // parse contacts
-      setContacts(
-        (incoming.contacts || []).map((c) => {
-          const parts = c.split(":");
-          return {
-            type: parts[0] || "phone",
-            value: parts[1] || "",
-            allowCall: parts[2]?.includes("call") ?? true,
-            allowSMS: parts[2]?.includes("sms") ?? true,
-          };
-        })
-      );
-
-      // parse socials
-      setSocials(
-        (incoming.socials || []).map((s) => {
-          const parts = s.split(":");
-          return {
-            platform: parts[0],
-            icon: parts[0],
-            handle: parts[1] || "",
-          };
-        })
-      );
-
-      // parse services
-      setServices(
-        (incoming.services || []).map((srv) => {
-          const parts = srv.split(":");
-          return { icon: parts[0] || "🔧", name: parts[1] || "" };
-        })
-      );
-
-      return; // we don’t fetch again
-    }
-
-    // fallback: if nothing was passed, fetch manually
-    loadFromBackend();
-  }, []);
-
-
-  // ----------------- image picker -----------------
-  const pickImage = async () => {
-    if (!ImagePicker) return Alert.alert("expo-image-picker not installed.");
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== "granted") return Alert.alert("Allow gallery access.");
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    });
-    if (!result.canceled) setProfilePic(result.assets[0].uri);
-  };
-
-  // ----------------- animations helpers -----------------
   const triggerSlide = () => {
     Animated.parallel([
       Animated.timing(slideAnim, {
@@ -141,12 +53,12 @@ export default function EditProvider({ navigation, route }) {
       Animated.sequence([
         Animated.timing(fadeAnim, {
           toValue: 0.45,
-          duration: 220,
+          duration: 200,
           useNativeDriver: false,
         }),
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 220,
+          duration: 200,
           useNativeDriver: false,
         }),
       ]),
@@ -161,11 +73,102 @@ export default function EditProvider({ navigation, route }) {
     }).start();
   };
 
-  // ----------------- save handler -----------------
+  /* ---------------------- SOCIAL URL BUILDER ---------------------- */
+  const SOCIAL_MAP = {
+    instagram: (v) => `https://instagram.com/${v}`,
+    twitter: (v) => `https://twitter.com/${v}`,
+    tiktok: (v) => `https://www.tiktok.com/@${v}`,
+    youtube: (v) => `https://youtube.com/@${v}`,
+    threads: (v) => `https://www.threads.net/@${v}`,
+    facebook: (v) => `https://facebook.com/${v}`,
+    snapchat: (v) => `https://www.snapchat.com/add/${v}`,
+  };
+
+  const socialPlatforms = [
+    { id: "instagram", icon: "instagram" },
+    { id: "twitter", icon: "twitter" },
+    { id: "tiktok", icon: "music" },
+    { id: "youtube", icon: "youtube-play" },
+    { id: "threads", icon: "at" },
+    { id: "facebook", icon: "facebook" },
+    { id: "snapchat", icon: "snapchat-ghost" },
+  ];
+
+  const placeholder = "https://via.placeholder.com/150";
+
+  /* ---------------------- LOAD EXISTING DATA ---------------------- */
+  useEffect(() => {
+    setTimeout(() => {
+      triggerSlide();
+      setStatus("idle");
+    }, 100);
+  }, []);
+
+  useEffect(() => {
+    if (!incoming) return;
+
+    setFullName(incoming.fullName || "");
+    setUsername(incoming.username || "");
+    setProfilePic(incoming.profilePic || "");
+    setBio(incoming.bio || "");
+
+    setContacts(
+      (incoming.contacts || []).map((c) => {
+        const [type, number, access] = c.split(":");
+        return {
+          type: type || "phone",
+          value: number || "",
+          allowCall: access?.includes("call") ?? true,
+          allowSMS: access?.includes("sms") ?? true,
+        };
+      })
+    );
+
+    setSocials(
+      (incoming.socials || []).map((s) => {
+        const [platform, handle] = s.split(":");
+        return { platform, icon: platform, handle };
+      })
+    );
+
+    // SERVICES — NO EMOJIS
+    setServices((incoming.services || []).map((name) => ({ name })));
+  }, []);
+
+  /* ---------------------- IMAGE PICKER ---------------------- */
+  const pickImage = async () => {
+    if (!ImagePicker) return Alert.alert("expo-image-picker not installed.");
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) setProfilePic(result.assets[0].uri);
+  };
+
+  /* ---------------------- VALIDATION ---------------------- */
+  const validateContacts = () => {
+    const nums = contacts.map((c) => c.value.trim()).filter((n) => n !== "");
+    const unique = new Set(nums);
+    if (unique.size !== nums.length) {
+      Alert.alert("Duplicate phone numbers are not allowed.");
+      return false;
+    }
+    return true;
+  };
+
+  /* ---------------------- SAVE ---------------------- */
   const handleSave = async () => {
+    if (!validateContacts()) return;
+
     setStatus("saving");
-    triggerSlide();
     setLoading(true);
+    triggerSlide();
 
     try {
       const formattedContacts = contacts.map((c) => {
@@ -175,123 +178,89 @@ export default function EditProvider({ navigation, route }) {
         return `${c.type}:${c.value}:${access.join(",")}`;
       });
 
-await API.put("/service-provider/update", {
-  fullName,
-  username,
-  contacts: formattedContacts,
+      const formattedSocials = socials.map((s) => {
+        let handle = s.handle.trim();
 
-  socials: socials.map((s) => {
-    let final = (s.handle || "").trim();
+        if (handle.startsWith("@")) handle = handle.substring(1);
+        if (handle.startsWith("http")) return `${s.platform}:${handle}`;
 
-    // force https:// if missing
-    if (final !== "" && !final.startsWith("http")) {
-      final = "https://" + final;
-    }
+        const makeUrl = SOCIAL_MAP[s.platform];
+        return `${s.platform}:${makeUrl ? makeUrl(handle) : handle}`;
+      });
 
-    return `${s.platform}:${final}`;
-  }),
-
-  services: services.map((s) => `${s.icon || "🔧"}:${s.name || ""}`),
-  profilePic,
-});
-
+      await API.put("/service-provider/update", {
+        fullName,
+        username,
+        contacts: formattedContacts,
+        socials: formattedSocials,
+        services: services.map((s) => s.name), // CLEAN — NO ICONS
+        profilePic,
+      });
 
       setStatus("success");
       triggerSlide();
 
-      // stay success for 2s then collapse
       setTimeout(() => {
         setStatus("idle");
         hideSlide();
       }, 2000);
 
       setLoading(false);
-      // optional: navigate back after success
       navigation.navigate("ServiceProviderProfile", { updated: true });
-    } catch (e) {
-      console.log("Update error:", e);
+    } catch (err) {
+      console.log(err);
       setStatus("error");
       triggerSlide();
 
       setTimeout(() => {
         setStatus("idle");
         hideSlide();
-      }, 2800);
+      }, 2000);
 
       setLoading(false);
     }
   };
 
-  // ----------------- contacts helpers -----------------
-  const updateContact = (index, field, value) => {
+  /* ---------------------- CONTACT HELPERS ---------------------- */
+  const updateContact = (i, key, value) => {
     const arr = [...contacts];
-    if (field === "value") {
-      let cleaned = value.replace(/\s+/g, "");
+    if (key === "value") {
+      const cleaned = value.replace(/\s+/g, "");
       if (!/^\d*$/.test(cleaned)) return;
       if (cleaned.startsWith("0")) return;
       if (cleaned.length > 9) return;
-      value = cleaned;
+      arr[i].value = cleaned;
+    } else {
+      arr[i][key] = value;
     }
-    arr[index][field] = value;
     setContacts(arr);
   };
 
-  const toggleContactAccess = (i, type) => {
-    const arr = [...contacts];
-    arr[i][type] = !arr[i][type];
-    setContacts(arr);
+  const removeContact = (i) => {
+    setContacts((prev) => prev.filter((_, idx) => idx !== i));
   };
 
-  // ----------------- socials helpers -----------------
-  const socialPlatforms = [
-    { id: "instagram", icon: "instagram" },
-    { id: "facebook", icon: "facebook" },
-    { id: "threads", icon: "at" },
-    { id: "meta", icon: "circle-o" },
-    { id: "youtube", icon: "youtube-play" },
-    { id: "twitter", icon: "twitter" },
-  ];
+  /* ---------------------- SERVICE HELPERS ---------------------- */
+  const updateService = (i, key, value) => {
+    const arr = [...services];
+    arr[i][key] = value;
+    setServices(arr);
+  };
 
+  const removeService = (i) => {
+    setServices((prev) => prev.filter((_, idx) => idx !== i));
+  };
+
+  /* ---------------------- SOCIAL HELPERS ---------------------- */
   const handleSelectSocial = (platform, icon) => {
     if (socials.some((s) => s.platform === platform)) return;
     setSocials([...socials, { platform, icon, handle: "" }]);
   };
 
-  const removeSocial = (index) => setSocials((p) => p.filter((_, i) => i !== index));
-
-  // ----------------- services helpers (emoji button via hidden TextInput) -----------------
-  const addService = () => {
-    setServices((p) => [...p, { icon: "🔧", name: "" }]);
-    // create a new ref slot
-    emojiRefs.current = [...emojiRefs.current, React.createRef()];
-  };
-
-  const updateService = (i, field, value) => {
-    const arr = [...services];
-    arr[i][field] = value;
-    setServices(arr);
-  };
-
-  const removeService = (i) => {
-    setServices((p) => p.filter((_, idx) => idx !== i));
-    emojiRefs.current.splice(i, 1);
-  };
-
-  // Focus hidden emoji TextInput for service i (Option B)
-  const focusEmojiInput = (i) => {
-    if (!emojiRefs.current[i]) {
-      emojiRefs.current[i] = React.createRef();
-    }
-    const ref = emojiRefs.current[i];
-    if (ref && ref.current && ref.current.focus) {
-      ref.current.focus();
-    }
-  };
-
-  // ----------------- render -----------------
+  /* ---------------------- UI ---------------------- */
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* TOP SAVE BAR (animated) */}
+      {/* SAVE BAR */}
       <Animated.View
         style={[
           styles.saveBar,
@@ -302,29 +271,23 @@ await API.put("/service-provider/update", {
                 ? "#2ECC71"
                 : status === "error"
                 ? "#E74C3C"
-                : status === "saving"
-                ? "#F2F2F2"
                 : "#FFFFFF",
             opacity: fadeAnim,
           },
         ]}
       >
-        <TouchableOpacity
-          activeOpacity={0.9}
-          style={styles.saveBarBtn}
-          onPress={handleSave}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <TouchableOpacity style={styles.saveBarBtn} onPress={handleSave}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             {status === "saving" && (
-              <ActivityIndicator size="small" color="#666" style={{ marginRight: 6 }} />
+              <ActivityIndicator size="small" color="#333" />
             )}
-            <Text style={[styles.saveBarText, { color: status === "idle" ? "#333" : "#fff" }]}>
+            <Text style={styles.saveBarText}>
               {status === "saving"
-                ? "Saving…"
+                ? "Saving..."
                 : status === "success"
-                ? "✓ Saved Successfully"
+                ? "✓ Saved"
                 : status === "error"
-                ? "✕ Failed to Save"
+                ? "✕ Error"
                 : "Save Changes"}
             </Text>
           </View>
@@ -333,64 +296,91 @@ await API.put("/service-provider/update", {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView contentContainerStyle={styles.container}>
-          <Text style={styles.title}>User Profile</Text>
+          <Text style={styles.title}>Edit Profile</Text>
 
           {/* PROFILE PIC */}
           <View style={styles.profilePicSection}>
             <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
-              <Image source={{ uri: profilePic || placeholder }} style={styles.profileImage} />
-              <Text style={styles.editPicText}>Edit profile</Text>
+              <Image
+                source={{ uri: profilePic || placeholder }}
+                style={styles.profileImage}
+              />
+              <Text style={styles.editPicText}>Change Photo</Text>
             </TouchableOpacity>
           </View>
 
-          {/* NAME FIELDS */}
-          <View style={styles.namesSection}>
-            <View style={styles.fieldWrapper}>
-              <Text style={styles.label}>Full Name</Text>
-              <TextInput style={styles.input} value={fullName} onChangeText={setFullName} />
-            </View>
+          {/* BASIC INFO */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Basic Info</Text>
 
-            <View style={styles.fieldWrapper}>
-              <Text style={styles.label}>Username</Text>
-              <TextInput style={styles.input} value={username} onChangeText={setUsername} />
-            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Full Name"
+              value={fullName}
+              onChangeText={setFullName}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Username"
+              value={username}
+              onChangeText={setUsername}
+            />
+
+            <TextInput
+              style={[styles.input, { height: 90 }]}
+              placeholder="Bio"
+              multiline
+              value={bio}
+              onChangeText={setBio}
+            />
           </View>
 
           {/* CONTACTS */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Contacts</Text>
 
-            {contacts.map((c, index) => (
-              <View style={styles.contactRow} key={index}>
+            {contacts.map((c, i) => (
+              <View style={styles.contactRow} key={i}>
                 <TouchableOpacity
-                  onPress={() => toggleContactAccess(index, "allowCall")}
-                  style={[styles.smallCircleIcon, { borderColor: c.allowCall ? "#007BFF" : "#bbb" }]}
+                  style={[
+                    styles.smallCircleIcon,
+                    { borderColor: c.allowCall ? "#007BFF" : "#ccc" },
+                  ]}
+                  onPress={() =>
+                    updateContact(i, "allowCall", !c.allowCall)
+                  }
                 >
-                  <Icon name="phone" size={16} color="#007BFF" />
+                  <Icon name="phone" size={15} color="#007BFF" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => toggleContactAccess(index, "allowSMS")}
-                  style={[styles.smallCircleIcon, { borderColor: c.allowSMS ? "#007BFF" : "#bbb" }]}
+                  style={[
+                    styles.smallCircleIcon,
+                    { borderColor: c.allowSMS ? "#007BFF" : "#ccc" },
+                  ]}
+                  onPress={() =>
+                    updateContact(i, "allowSMS", !c.allowSMS)
+                  }
                 >
-                  <Icon name="comment" size={16} color="#007BFF" />
+                  <Icon name="comment" size={15} color="#007BFF" />
                 </TouchableOpacity>
 
-                <Text style={styles.prefixMini}>+255</Text>
+                <Text>+255</Text>
 
                 <TextInput
                   style={styles.contactInput}
                   placeholder="712345678"
+                  value={c.value}
                   keyboardType="numeric"
                   maxLength={9}
-                  value={c.value.replace("+255", "")}
-                  onChangeText={(t) => updateContact(index, "value", t)}
+                  onChangeText={(t) => updateContact(i, "value", t)}
                 />
 
-                <TouchableOpacity onPress={() => setContacts((prev) => prev.filter((_, i) => i !== index))}>
+                <TouchableOpacity onPress={() => removeContact(i)}>
                   <Text style={styles.removeXSmall}>✕</Text>
                 </TouchableOpacity>
               </View>
@@ -399,69 +389,44 @@ await API.put("/service-provider/update", {
             <TouchableOpacity
               style={styles.addBtn}
               onPress={() =>
-                setContacts((p) => [...p, { type: "phone", value: "", allowCall: true, allowSMS: true }])
+                setContacts([
+                  ...contacts,
+                  { type: "phone", value: "", allowCall: true, allowSMS: true },
+                ])
               }
             >
               <Text style={styles.addText}>+ Add Contact</Text>
             </TouchableOpacity>
           </View>
 
-          {/* SERVICES - minimal rows with emoji picker */}
+          {/* SERVICES — CLEAN, NO EMOJI */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Services Provided</Text>
+            <Text style={styles.sectionTitle}>Services</Text>
 
-            {/* Add Service button when there are no services or always visible */}
-            <TouchableOpacity style={styles.addServiceBtn} onPress={addService}>
+            <TouchableOpacity
+              style={styles.addServiceBtn}
+              onPress={() => setServices([...services, { name: "" }])}
+            >
               <Text style={styles.addServiceText}>+ Add Service</Text>
             </TouchableOpacity>
 
-            <View style={{ marginTop: 12 }}>
-              {services.map((s, idx) => (
-                <View style={styles.serviceRow} key={idx}>
-                  {/* visible emoji button */}
-                  <TouchableOpacity
-                    style={styles.emojiBtn}
-                    onPress={() => focusEmojiInput(idx)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.emojiText}>{s.icon || "🔧"}</Text>
-                  </TouchableOpacity>
+            {services.map((s, i) => (
+              <View style={styles.serviceRow} key={i}>
+                <TextInput
+                  style={styles.serviceNameInput}
+                  placeholder="Service name"
+                  value={s.name}
+                  onChangeText={(t) => updateService(i, "name", t)}
+                />
 
-                  {/* hidden emoji TextInput (focus opens emoji keyboard) */}
-                  <TextInput
-                    ref={(el) => {
-                      if (!emojiRefs.current[idx]) emojiRefs.current[idx] = { current: el };
-                      else emojiRefs.current[idx].current = el;
-                    }}
-                    style={styles.hiddenEmojiInput}
-                    value={s.icon}
-                    onChangeText={(t) => {
-                      // allow only short input (emoji). We'll accept the first char(s)
-                      updateService(idx, "icon", t);
-                    }}
-                    maxLength={2}
-                    caretHidden={false}
-                    // keep keyboard default so emoji keyboard shows
-                  />
-
-                  {/* service name */}
-                  <TextInput
-                    style={styles.serviceNameInput}
-                    placeholder="Service name (e.g. Plumbing)"
-                    value={s.name}
-                    onChangeText={(t) => updateService(idx, "name", t)}
-                  />
-
-                  {/* remove */}
-                  <TouchableOpacity onPress={() => removeService(idx)}>
-                    <Text style={styles.removeXSmall}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
+                <TouchableOpacity onPress={() => removeService(i)}>
+                  <Text style={styles.removeXSmall}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
 
-          {/* SOCIAL MEDIA */}
+          {/* SOCIALS */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Social Media</Text>
 
@@ -477,29 +442,34 @@ await API.put("/service-provider/update", {
               ))}
             </View>
 
-            <View style={{ marginTop: 16 }}>
-              {socials.map((item, index) => (
-                <View style={styles.socialRow} key={index}>
-                  <Icon name={item.icon} size={20} color="#007BFF" style={{ marginRight: 8 }} />
+            {socials.map((s, i) => (
+              <View style={styles.socialRow} key={i}>
+                <Icon
+                  name={s.icon}
+                  size={20}
+                  style={{ color: "#007BFF", marginRight: 8 }}
+                />
 
-                  <TextInput
-                    style={styles.socialInputRow}
-                    placeholder={`Enter ${item.platform} link`}
-                    value={item.handle}
-                  onChangeText={(t) =>
-                    setSocials((prev) => prev.map((p, i) =>
-                      i === index ? { ...p, handle: t.trim() } : p
-                    ))
+                <TextInput
+                  style={styles.socialInputRow}
+                  placeholder={`Enter ${s.platform} username or link`}
+                  value={s.handle}
+                  onChangeText={(text) => {
+                    const arr = [...socials];
+                    arr[i].handle = text;
+                    setSocials(arr);
+                  }}
+                />
+
+                <TouchableOpacity
+                  onPress={() =>
+                    setSocials((prev) => prev.filter((_, idx) => idx !== i))
                   }
-
-                  />
-
-                  <TouchableOpacity onPress={() => removeSocial(index)}>
-                    <Text style={styles.removeXSmall}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
+                >
+                  <Text style={styles.removeXSmall}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -507,210 +477,124 @@ await API.put("/service-provider/update", {
   );
 }
 
-// ----------------- STYLES -----------------
+/* ------------------- STYLES ------------------- */
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#f4f4f4" },
 
-  /** SAVE BAR */
   saveBar: {
     position: "absolute",
     left: 0,
     right: 0,
     height: 60,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 999,
-    elevation: 20,
+    elevation: 10,
     shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
   },
 
-  saveBarBtn: {
-    width: "100%",
-    alignItems: "center",
-  },
+  saveBarBtn: { width: "100%", alignItems: "center" },
+  saveBarText: { fontSize: 17, fontWeight: "700" },
 
-  saveBarText: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
+  container: { padding: 22, paddingTop: 80, paddingBottom: 150 },
 
-  // Container pushes content below the save bar (space = bar height + padding)
-  container: {
-    padding: 20,
-    paddingTop: 80,
-    paddingBottom: 160,
-  },
+  title: { fontSize: 22, fontWeight: "700", textAlign: "center" },
 
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 20,
-    textAlign: "center",
-  },
-
-  profilePicSection: { alignItems: "center", marginBottom: 24 },
+  /* PROFILE */
+  profilePicSection: { alignItems: "center", marginBottom: 15 },
   imageWrapper: { alignItems: "center" },
-
   profileImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: "#ddd",
   },
+  editPicText: { marginTop: 8, color: "#007BFF", fontWeight: "600" },
 
-  editPicText: { color: "#007BFF", marginTop: 8, fontWeight: "600" },
-
-  namesSection: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 10,
-    marginBottom: 18,
-  },
-
-  fieldWrapper: { marginBottom: 12 },
-
-  label: { fontSize: 14, fontWeight: "600", marginBottom: 6 },
-
-  input: {
-    backgroundColor: "#f8f9fa",
-    padding: 10,
-    fontSize: 14,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-
+  /* SECTIONS */
   section: {
     backgroundColor: "#fff",
     padding: 16,
     borderRadius: 10,
-    marginBottom: 18,
+    marginTop: 20,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
+
+  input: {
+    backgroundColor: "#f8f9fa",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10,
   },
 
-  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 10 },
-
-  /** CONTACT ROW */
+  /* CONTACTS */
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
     backgroundColor: "#f8f9fa",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    padding: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ddd",
     marginBottom: 10,
-    gap: 10,
   },
-
   smallCircleIcon: {
     width: 28,
     height: 28,
     borderRadius: 14,
+    borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    backgroundColor: "#fff",
   },
-
-  prefixMini: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginRight: -5,
-  },
-
   contactInput: {
     flex: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: "#fff",
-    borderRadius: 6,
     borderWidth: 1,
     borderColor: "#ddd",
-    fontSize: 14,
+    backgroundColor: "#fff",
+    padding: 8,
+    borderRadius: 8,
   },
+  removeXSmall: { fontWeight: "700", fontSize: 16, color: "red" },
+  addBtn: { alignSelf: "center", marginTop: 6 },
+  addText: { color: "#007BFF", fontWeight: "700" },
 
-  removeXSmall: {
-    fontSize: 16,
-    color: "red",
-    fontWeight: "700",
-    paddingHorizontal: 6,
+  /* SERVICES */
+  serviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
   },
-
-  addBtn: { alignItems: "center", marginTop: 8 },
-
-  addText: { color: "#007BFF", fontWeight: "600" },
-
-  /** SERVICES */
+  serviceNameInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    backgroundColor: "#fff",
+    padding: 10,
+    borderRadius: 8,
+  },
   addServiceBtn: {
     borderWidth: 1,
     borderColor: "#ddd",
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: "center",
-    marginTop: 6,
-    backgroundColor: "#fafafa",
+    marginBottom: 12,
   },
+  addServiceText: { fontWeight: "700", color: "#007BFF" },
 
-  addServiceText: {
-    color: "#007BFF",
-    fontWeight: "700",
-  },
-
-  serviceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
-    gap: 10,
-  },
-
-  emojiBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
-
-  emojiText: {
-    fontSize: 20,
-  },
-
-  // hidden input receives emoji (focus opens system emoji keyboard)
-  hiddenEmojiInput: {
-    position: "absolute",
-    width: 1,
-    height: 1,
-    opacity: 0,
-    left: -1000,
-  },
-
-  serviceNameInput: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    fontSize: 14,
-  },
-
-  /** SOCIAL GRID */
+  /* SOCIALS */
   socialGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
+    marginBottom: 10,
   },
-
   socialGridBtn: {
     width: 44,
     height: 44,
@@ -718,32 +602,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#1E1E1E",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 8,
-    marginBottom: 8,
   },
-
-  /** SOCIAL ROW */
   socialRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
     backgroundColor: "#f8f9fa",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    padding: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ddd",
     marginBottom: 10,
-    gap: 10,
   },
-
   socialInputRow: {
     flex: 1,
     backgroundColor: "#fff",
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ddd",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 14,
+    padding: 8,
   },
 });
