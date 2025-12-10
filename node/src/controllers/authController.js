@@ -40,7 +40,7 @@ export const registerUser = async (req, res) => {
     await ServiceProvider.create({
       user_id: user.id,
       full_name: name,
-      contacts: [phone],
+      contacts: [`phone:${phone}:call,sms`],
       services: [],
       socials: [],
       teammates: [],
@@ -73,3 +73,47 @@ export const registerUser = async (req, res) => {
     return res.json({ success: false, message: "Server Error" });
   }
 };
+
+export const loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.json({ success: false, message: "Email and password required." });
+    }
+
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.json({ success: false, message: "Invalid credentials." });
+    }
+
+    const validPass = await bcrypt.compare(password, user.password);
+    if (!validPass) {
+      return res.json({ success: false, message: "Incorrect password." });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.json({
+      success: true,
+      message: "Login successful.",
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        accountType: user.accountType,
+      },
+    });
+
+  } catch (err) {
+    console.log("Login Error:", err);
+    return res.json({ success: false, message: "Server error." });
+  }
+};
+

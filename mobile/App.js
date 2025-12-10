@@ -10,13 +10,14 @@ import Feed from "./src/views/Feed";
 import Alerts from "./src/views/Alerts";
 import Profile from "./src/views/Profile";
 
-// Auth / Provider Screens
+// Provider
 import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
-
-//Profile for the Service Provider
 import ServiceProviderProfile from "./src/views/Profile/ServiceProviderProfile";
-
 import EditProvider from "./src/views/Profile/components/EditProvider";
+import ServiceProviderLogin from "./src/views/Profile/ServiceProviderLogin";
+
+// NEW loading screen
+import AuthLoading from "./src/views/AuthLoading";
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -31,33 +32,12 @@ function MainTabs() {
         tabBarIcon: ({ color, size }) => {
           let iconName;
 
-          if (route.name === "Home") {
-            iconName = "home";
-          } else if (route.name === "Feed") {
-            iconName = "stream";
-          } else if (route.name === "Alerts") {
-            iconName = "bell";
-          } else if (route.name === "Profile") {
-            iconName = "user";
-          }
+          if (route.name === "Home") iconName = "home";
+          else if (route.name === "Feed") iconName = "stream";
+          else if (route.name === "Alerts") iconName = "bell";
+          else if (route.name === "Profile") iconName = "user";
 
           return <FontAwesome5 name={iconName} size={size} color={color} />;
-        },
-
-        tabBarActiveTintColor: "#4ECDC4",
-        tabBarInactiveTintColor: "#aaa",
-
-        tabBarStyle: {
-          backgroundColor: "#fff",
-          borderTopColor: "#eee",
-          height: 60,
-          paddingBottom: 6,
-          paddingTop: 6,
-        },
-
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "600",
         },
       })}
     >
@@ -74,26 +54,18 @@ export default function App() {
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-          
-          {/* Bottom Tabs always available */}
+
+          {/* LOAD FIRST */}
+          <Stack.Screen name="AuthLoading" component={AuthLoading} />
+
+          {/* User tabs */}
           <Stack.Screen name="Main" component={MainTabs} />
 
-          {/* Service Provider Sign Up */}
-          <Stack.Screen 
-            name="ServiceProviderSignUp" 
-            component={ServiceProviderSignUp} 
-          />
-
-          <Stack.Screen
-            name="ServiceProviderProfile"
-            component={ServiceProviderProfile}
-          />
-
-          <Stack.Screen 
-            name="EditProvider" 
-            component={EditProvider} 
-          />
-
+          {/* Provider Routes */}
+          <Stack.Screen name="ServiceProviderSignUp" component={ServiceProviderSignUp} />
+          <Stack.Screen name="ServiceProviderProfile" component={ServiceProviderProfile} />
+          <Stack.Screen name="EditProvider" component={EditProvider} />
+          <Stack.Screen name="ServiceProviderLogin" component={ServiceProviderLogin} />
 
         </Stack.Navigator>
       </NavigationContainer>

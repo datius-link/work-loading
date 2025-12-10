@@ -34,7 +34,7 @@ try {
  * This file is built from and restores parts of your previous EditProvider.js. :contentReference[oaicite:1]{index=1}
  */
 
-export default function EditProvider({ navigation }) {
+export default function EditProvider({ navigation, route }) {
   // Profile fields
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
@@ -50,6 +50,7 @@ export default function EditProvider({ navigation }) {
   // Animations
   const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const incoming = route.params?.provider;
 
   useEffect(() => {
     setTimeout(() => {
@@ -66,51 +67,53 @@ export default function EditProvider({ navigation }) {
 
   // ----------------- life cycle: load profile -----------------
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await API.get("/service-provider/me");
-        const p = res.data.provider;
+    if (incoming) {
+      // preload current profile details
+      setFullName(incoming.fullName || "");
+      setUsername(incoming.username || "");
+      setProfilePic(incoming.profilePic || "");
+      setBio(incoming.bio || "");
 
-        setFullName(p.fullName || "");
-        setUsername(p.username || "");
+      // parse contacts
+      setContacts(
+        (incoming.contacts || []).map((c) => {
+          const parts = c.split(":");
+          return {
+            type: parts[0] || "phone",
+            value: parts[1] || "",
+            allowCall: parts[2]?.includes("call") ?? true,
+            allowSMS: parts[2]?.includes("sms") ?? true,
+          };
+        })
+      );
 
-        setContacts(
-          (p.contacts || []).map((c) => {
-            const parts = c.split(":");
-            return {
-              type: parts[0] || "phone",
-              value: parts[1] || "",
-              allowCall: true,
-              allowSMS: true,
-            };
-          })
-        );
+      // parse socials
+      setSocials(
+        (incoming.socials || []).map((s) => {
+          const parts = s.split(":");
+          return {
+            platform: parts[0],
+            icon: parts[0],
+            handle: parts[1] || "",
+          };
+        })
+      );
 
-        setSocials(
-          (p.socials || []).map((s) => {
-            const parts = s.split(":");
-            return {
-              platform: parts[0],
-              icon: parts[0],
-              handle: parts[1] || "",
-            };
-          })
-        );
+      // parse services
+      setServices(
+        (incoming.services || []).map((srv) => {
+          const parts = srv.split(":");
+          return { icon: parts[0] || "🔧", name: parts[1] || "" };
+        })
+      );
 
-        setServices(
-          (p.services || []).map((srv) => {
-            const parts = srv.split(":");
-            // if icon is emoji it will render as emoji; fallback to "🔧"
-            return { icon: parts[0] || "🔧", name: parts[1] || "" };
-          })
-        );
+      return; // we don’t fetch again
+    }
 
-        setProfilePic(p.profilePic || "");
-      } catch (e) {
-        console.log("Load profile error:", e);
-      }
-    })();
+    // fallback: if nothing was passed, fetch manually
+    loadFromBackend();
   }, []);
+
 
   // ----------------- image picker -----------------
   const pickImage = async () => {
@@ -171,14 +174,26 @@ export default function EditProvider({ navigation }) {
         return `${c.type}:${c.value}:${access.join(",")}`;
       });
 
-      await API.put("/service-provider/update", {
-        fullName,
-        username,
-        contacts: formattedContacts,
-        socials: socials.map((s) => `${s.platform}:${s.handle || ""}`),
-        services: services.map((s) => `${s.icon || "🔧"}:${s.name || ""}`),
-        profilePic,
-      });
+await API.put("/service-provider/update", {
+  fullName,
+  username,
+  contacts: formattedContacts,
+
+  socials: socials.map((s) => {
+    let final = (s.handle || "").trim();
+
+    // force https:// if missing
+    if (final !== "" && !final.startsWith("http")) {
+      final = "https://" + final;
+    }
+
+    return `${s.platform}:${final}`;
+  }),
+
+  services: services.map((s) => `${s.icon || "🔧"}:${s.name || ""}`),
+  profilePic,
+});
+
 
       setStatus("success");
       triggerSlide();
@@ -470,9 +485,12 @@ export default function EditProvider({ navigation }) {
                     style={styles.socialInputRow}
                     placeholder={`Enter ${item.platform} link`}
                     value={item.handle}
-                    onChangeText={(t) =>
-                      setSocials((prev) => prev.map((p, i) => (i === index ? { ...p, handle: t } : p)))
-                    }
+                  onChangeText={(t) =>
+                    setSocials((prev) => prev.map((p, i) =>
+                      i === index ? { ...p, handle: t.trim() } : p
+                    ))
+                  }
+
                   />
 
                   <TouchableOpacity onPress={() => removeSocial(index)}>

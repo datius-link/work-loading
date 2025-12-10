@@ -31,8 +31,10 @@ export default function ServiceProviderHeader({
   // Format inside DB is:
   // phone:value:call,sms
   // ----------------------------
-  const formatContact = (item) => {
+
+    const formatContact = (item) => {
     const [type, number, options] = item.split(":");
+
     const allowCall = options?.includes("call");
     const allowSMS = options?.includes("sms");
 
@@ -43,6 +45,15 @@ export default function ServiceProviderHeader({
       allowSMS,
     };
   };
+
+
+  const formattedContacts = contacts.map((c) => {
+    const access = [];
+    if (c.allowCall) access.push("call");
+    if (c.allowSMS) access.push("sms");
+    return `${c.type}:${c.value}:${access.join(",")}`;
+  });
+
 
   // ----------------------------
   // SOCIAL PLATFORM ICONS
