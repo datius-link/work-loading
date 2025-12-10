@@ -40,9 +40,10 @@ export default function EditProvider({ navigation, route }) {
   const [username, setUsername] = useState("");
   const [contacts, setContacts] = useState([]);
   const [socials, setSocials] = useState([]);
-  const [services, setServices] = useState([]); // { icon: "🛠", name: "Plumbing" }
+  const [services, setServices] = useState([]);
   const [profilePic, setProfilePic] = useState("");
   const [loading, setLoading] = useState(false);
+  const [bio, setBio] =useState("");
 
   // Save bar status
   const [status, setStatus] = useState("idle"); // idle | saving | success | error

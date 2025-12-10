@@ -40,23 +40,23 @@ export default function ServiceProviderLogin({ navigation }) {
         return;
       }
 
-      const token = res.data.token;
+      const { token, user } = res.data;
 
-      if (token) {
-        await AsyncStorage.setItem("token", token);
-        await AsyncStorage.setItem("role", user.accountType);
-      }
+      await AsyncStorage.setItem("token", token);
+      await AsyncStorage.setItem("role", user.accountType);
 
       setSuccessMsg("Login successful!");
 
       setTimeout(() => {
         navigation.replace("ServiceProviderProfile");
-      }, 1000);
+      }, 500);
 
     } catch (e) {
+      console.log("LOGIN ERROR:", e);
       setErrorMsg("Server error, try again later");
     }
   };
+
 
   return (
     <KeyboardAvoidingView
