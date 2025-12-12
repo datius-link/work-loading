@@ -65,7 +65,7 @@ export default function ServiceProviderSignUp({ navigation }) {
 
         // Navigate to login or profile later
         setTimeout(() => {
-            navigation.navigate("ProviderTabs");
+            navigation.navigate("ProviderTabs", {screen: "MyProfile"});
         }, 1200);
         } else {
         setErrorMsg(response.data.message);

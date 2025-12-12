@@ -214,7 +214,7 @@ export default function EditProvider({ navigation, route }) {
       }, 2000);
 
       setLoading(false);
-      navigation.navigate("ServiceProviderProfile", { updated: true });
+      navigation.navigate("ProviderTabs", {screen: "MyProfile" });
     } catch (err) {
       console.log("Save error:", err);
       setStatus("error");

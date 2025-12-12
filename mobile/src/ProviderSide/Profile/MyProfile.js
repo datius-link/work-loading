@@ -16,7 +16,7 @@ import { SOCIAL_ICONS } from "../../icons/socialIcons";
 
 const SOCKET_URL = "http://10.125.36.51:5000";
 
-export default function ServiceProviderProfile({ navigation }) {
+export default function MyProfile({ navigation }) {
   const [provider, setProvider] = useState(null);
   const [loading, setLoading] = useState(true);
 

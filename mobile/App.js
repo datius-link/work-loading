@@ -20,8 +20,7 @@ import AuthLoading from "./src/AuthLoading";
 //Provider Side
 import ProviderTabs from "./src/ProviderSide/ProviderTabs";
 import EditProvider from "./src/ProviderSide/Profile/EditProvider";
-import ServiceProviderProfile from "./src/ProviderSide/Profile/ServiceProviderProfile";
-
+import MyProfile from "./src/ProviderSide/Profile/MyProfile";
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -62,7 +61,6 @@ export default function App() {
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       <NavigationContainer>
         <Stack.Navigator>
-
           {/* ----------------------
               AUTH LOADING SCREEN
               - NO BACK
@@ -116,8 +114,8 @@ export default function App() {
               - NO BACK BUTTON
           ----------------------- */}
           <Stack.Screen
-            name="ServiceProviderProfile"
-            component={ServiceProviderProfile}
+            name="MyProfile"
+            component={MyProfile}
             options={{
               headerShown: false,
             }}
@@ -142,8 +140,6 @@ export default function App() {
             component={ProviderTabs}
             options={{ headerShown: false }}
           />
-
-
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaView>

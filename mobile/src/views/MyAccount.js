@@ -75,7 +75,7 @@ export default function MyAccount() {
         {/* QUICK PROVIDER ACCESS */}
         <TouchableOpacity
           style={[local.actionBtn, local.ghostBtn]}
-          onPress={() => navigation.navigate("ServiceProviderProfile")}
+          onPress={() => navigation.navigate("ProviderTabs", { screen: "Posts"})}
         >
           <FontAwesome5 name="user-tie" size={22} color="#4ECDC4" />
           <Text style={local.ghostText}>Open Provider Workspace</Text>
