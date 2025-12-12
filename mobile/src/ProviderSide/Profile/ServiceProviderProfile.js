@@ -9,12 +9,11 @@ import {
   Linking,
   ActivityIndicator,
 } from "react-native";
-import Icon from "react-native-vector-icons/FontAwesome";
+
 import { API } from "../../api/api";
 import io from "socket.io-client";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SOCIAL_ICONS } from "../../icons/socialIcons";
 
-// ⭐ USE YOUR BACKEND IP HERE (same as EditProvider)
 const SOCKET_URL = "http://10.125.36.51:5000";
 
 export default function ServiceProviderProfile({ navigation }) {
@@ -32,14 +31,11 @@ export default function ServiceProviderProfile({ navigation }) {
     setLoading(false);
   };
 
-  /* ---------------------- FIRST LOAD ---------------------- */
   useEffect(() => {
     loadProfile();
   }, []);
 
-  /* --------------------------------------------------------
-      REAL-TIME SOCKET LISTENER FOR AUTO REFRESH
-  -------------------------------------------------------- */
+  /* ---------------------- REAL-TIME SOCKET LISTENER ---------------------- */
   useEffect(() => {
     const setupSocket = async () => {
       try {
@@ -48,10 +44,8 @@ export default function ServiceProviderProfile({ navigation }) {
         const res = await API.get("/service-provider/me");
         const userId = res.data.provider.user_id;
 
-        // Join personal WebSocket room
         socket.emit("join", userId);
 
-        // Listen for real-time updates
         socket.on("providerUpdated", () => {
           console.log("🔥 Real-time update received → refreshing profile");
           loadProfile();
@@ -84,7 +78,7 @@ export default function ServiceProviderProfile({ navigation }) {
     services = [],
   } = provider;
 
-  /* ---------------------- HELPERS ---------------------- */
+  /* ---------------------- OPEN LINK ---------------------- */
   const openUrl = async (url) => {
     try {
       if (await Linking.canOpenURL(url)) Linking.openURL(url);
@@ -96,7 +90,6 @@ export default function ServiceProviderProfile({ navigation }) {
   /* ---------------------- UI ---------------------- */
   return (
     <ScrollView style={styles.container}>
-
       {/* PROFILE HEADER */}
       <View style={styles.header}>
         <Image
@@ -138,7 +131,7 @@ export default function ServiceProviderProfile({ navigation }) {
                     <TouchableOpacity
                       onPress={() => Linking.openURL(`tel:+255${number}`)}
                     >
-                      <Icon name="phone" size={18} color="#007BFF" />
+                      <Text style={styles.callIcon}>📞</Text>
                     </TouchableOpacity>
                   )}
 
@@ -146,12 +139,7 @@ export default function ServiceProviderProfile({ navigation }) {
                     <TouchableOpacity
                       onPress={() => Linking.openURL(`sms:+255${number}`)}
                     >
-                      <Icon
-                        name="comment"
-                        size={18}
-                        color="#007BFF"
-                        style={{ marginLeft: 12 }}
-                      />
+                      <Text style={styles.smsIcon}>💬</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -190,12 +178,9 @@ export default function ServiceProviderProfile({ navigation }) {
               const platform = item.split(":")[0];
               const link = item.substring(item.indexOf(":") + 1);
 
-              const iconName =
-                platform === "tiktok"
-                  ? "music"
-                  : platform === "snapchat"
-                  ? "snapchat-ghost"
-                  : platform;
+              const IconComponent = SOCIAL_ICONS[platform];
+
+              if (!IconComponent) return null;
 
               return (
                 <TouchableOpacity
@@ -203,7 +188,7 @@ export default function ServiceProviderProfile({ navigation }) {
                   onPress={() => openUrl(link)}
                   style={styles.socialIcon}
                 >
-                  <Icon name={iconName} size={24} color="#007BFF" />
+                  <IconComponent width={26} height={26} stroke="#007BFF" />
                 </TouchableOpacity>
               );
             })}
@@ -305,6 +290,17 @@ const styles = StyleSheet.create({
   contactIcons: {
     flexDirection: "row",
     alignItems: "center",
+  },
+
+  callIcon: {
+    fontSize: 20,
+    color: "#007BFF",
+  },
+
+  smsIcon: {
+    fontSize: 20,
+    color: "#007BFF",
+    marginLeft: 12,
   },
 
   chipWrap: {

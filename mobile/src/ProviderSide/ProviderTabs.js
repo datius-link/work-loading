@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { FontAwesome5 } from "@expo/vector-icons";
 
 // Screens
-import ServiceProviderProfile from "../views/Profile/ServiceProviderProfile";
+import ServiceProviderProfile from "./Profile/ServiceProviderProfile";
 
 function OthersScreen() {
   return null; // placeholder — we’ll replace later

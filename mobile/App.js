@@ -12,8 +12,6 @@ import MyAccount from "./src/views/MyAccount";
 
 // MyAccount Flow
 import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
-import ServiceProviderProfile from "./src/views/Profile/ServiceProviderProfile";
-import EditProvider from "./src/views/Profile/components/EditProvider";
 import ServiceProviderLogin from "./src/views/Profile/ServiceProviderLogin";
 
 // Auth
@@ -21,6 +19,8 @@ import AuthLoading from "./src/AuthLoading";
 
 //Provider Side
 import ProviderTabs from "./src/ProviderSide/ProviderTabs";
+import EditProvider from "./src/ProviderSide/Profile/EditProvider";
+import ServiceProviderProfile from "./src/ProviderSide/Profile/ServiceProviderProfile";
 
 
 const Tab = createBottomTabNavigator();

@@ -14,10 +14,10 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
-import Icon from "react-native-vector-icons/FontAwesome";
-import { API } from "../../../api/api";
+
+import { API } from "../../api/api";
 import io from "socket.io-client";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SOCIAL_ICONS } from "../../icons/socialIcons";
 
 const SOCKET_URL = "http://10.125.36.51:5000";
 
@@ -43,23 +43,19 @@ export default function EditProvider({ navigation, route }) {
 
   const incoming = route.params?.provider;
 
-  /* ----------------REAL-TIME SOCKET LISTENER -----------*/
+  /* ---------------- REAL-TIME SOCKET LISTENER ---------------- */
   useEffect(() => {
     const setupSocket = async () => {
       try {
         const socket = io(SOCKET_URL);
-
-        // Get logged-in provider
         const res = await API.get("/service-provider/me");
         const userId = res.data.provider.user_id;
 
-        // Join private room
         socket.emit("join", userId);
 
-        // When backend says data updated...
         socket.on("providerUpdated", () => {
-          console.log("🔥 Profile updated — refreshing…");
-          loadProfile(); // reload your edit page data too
+          console.log("🔥 Provider updated — refreshing...");
+          loadProfile();
         });
       } catch (e) {
         console.log("Socket setup error:", e);
@@ -69,7 +65,7 @@ export default function EditProvider({ navigation, route }) {
     setupSocket();
   }, []);
 
-  /* ---------------------- FUNCTION: Load profile ---------------------- */
+  /* ---------------------- LOAD PROFILE ---------------------- */
   const loadProfile = async () => {
     try {
       const res = await API.get("/service-provider/me");
@@ -95,7 +91,7 @@ export default function EditProvider({ navigation, route }) {
       setSocials(
         (data.socials || []).map((s) => {
           const [platform, handle] = s.split(":");
-          return { platform, icon: platform, handle };
+          return { platform, handle };
         })
       );
 
@@ -105,11 +101,10 @@ export default function EditProvider({ navigation, route }) {
     }
   };
 
-  /* existing useEffect for incoming props — keep it */
   useEffect(() => {
     if (!incoming) return;
     loadProfile();
-  }, []);  
+  }, []);
 
   /* ---------------------- ANIMATIONS ---------------------- */
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -145,68 +140,6 @@ export default function EditProvider({ navigation, route }) {
     }).start();
   };
 
-  /* ---------------------- SOCIAL URL BUILDER ---------------------- */
-  const SOCIAL_MAP = {
-    instagram: (v) => `https://instagram.com/${v}`,
-    twitter: (v) => `https://twitter.com/${v}`,
-    tiktok: (v) => `https://www.tiktok.com/@${v}`,
-    youtube: (v) => `https://youtube.com/@${v}`,
-    threads: (v) => `https://www.threads.net/@${v}`,
-    facebook: (v) => `https://facebook.com/${v}`,
-    snapchat: (v) => `https://www.snapchat.com/add/${v}`,
-  };
-
-  const socialPlatforms = [
-    { id: "instagram", icon: "instagram" },
-    { id: "twitter", icon: "twitter" },
-    { id: "tiktok", icon: "music" },
-    { id: "youtube", icon: "youtube-play" },
-    { id: "threads", icon: "at" },
-    { id: "facebook", icon: "facebook" },
-    { id: "snapchat", icon: "snapchat-ghost" },
-  ];
-
-  const placeholder = "https://via.placeholder.com/150";
-
-  /* ---------------------- LOAD EXISTING DATA ---------------------- */
-  useEffect(() => {
-    setTimeout(() => {
-      triggerSlide();
-      setStatus("idle");
-    }, 100);
-  }, []);
-
-  useEffect(() => {
-    if (!incoming) return;
-
-    setFullName(incoming.fullName || "");
-    setUsername(incoming.username || "");
-    setProfilePic(incoming.profilePic || "");
-    setBio(incoming.bio || "");
-
-    setContacts(
-      (incoming.contacts || []).map((c) => {
-        const [type, number, access] = c.split(":");
-        return {
-          type: type || "phone",
-          value: number || "",
-          allowCall: access?.includes("call") ?? true,
-          allowSMS: access?.includes("sms") ?? true,
-        };
-      })
-    );
-
-    setSocials(
-      (incoming.socials || []).map((s) => {
-        const [platform, handle] = s.split(":");
-        return { platform, icon: platform, handle };
-      })
-    );
-
-    // SERVICES — NO EMOJIS
-    setServices((incoming.services || []).map((name) => ({ name })));
-  }, []);
-
   /* ---------------------- IMAGE PICKER ---------------------- */
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -224,16 +157,16 @@ export default function EditProvider({ navigation, route }) {
       });
 
       if (upload.data.success) {
-        setProfilePic(upload.data.url); // PUBLIC URL from Cloudinary
+        setProfilePic(upload.data.url);
       }
     }
   };
-
 
   /* ---------------------- VALIDATION ---------------------- */
   const validateContacts = () => {
     const nums = contacts.map((c) => c.value.trim()).filter((n) => n !== "");
     const unique = new Set(nums);
+
     if (unique.size !== nums.length) {
       Alert.alert("Duplicate phone numbers are not allowed.");
       return false;
@@ -241,7 +174,7 @@ export default function EditProvider({ navigation, route }) {
     return true;
   };
 
-  /* ---------------------- SAVE ---------------------- */
+  /* ---------------------- SAVE PROFILE ---------------------- */
   const handleSave = async () => {
     if (!validateContacts()) return;
 
@@ -259,12 +192,8 @@ export default function EditProvider({ navigation, route }) {
 
       const formattedSocials = socials.map((s) => {
         let handle = s.handle.trim();
-
         if (handle.startsWith("@")) handle = handle.substring(1);
-        if (handle.startsWith("http")) return `${s.platform}:${handle}`;
-
-        const makeUrl = SOCIAL_MAP[s.platform];
-        return `${s.platform}:${makeUrl ? makeUrl(handle) : handle}`;
+        return `${s.platform}:${handle}`;
       });
 
       await API.put("/service-provider/update", {
@@ -272,7 +201,7 @@ export default function EditProvider({ navigation, route }) {
         username,
         contacts: formattedContacts,
         socials: formattedSocials,
-        services: services.map((s) => s.name), // CLEAN — NO ICONS
+        services: services.map((s) => s.name),
         profilePic,
       });
 
@@ -287,7 +216,7 @@ export default function EditProvider({ navigation, route }) {
       setLoading(false);
       navigation.navigate("ServiceProviderProfile", { updated: true });
     } catch (err) {
-      console.log(err);
+      console.log("Save error:", err);
       setStatus("error");
       triggerSlide();
 
@@ -300,46 +229,31 @@ export default function EditProvider({ navigation, route }) {
     }
   };
 
-  /* ---------------------- CONTACT HELPERS ---------------------- */
-  const updateContact = (i, key, value) => {
-    const arr = [...contacts];
-    if (key === "value") {
-      const cleaned = value.replace(/\s+/g, "");
-      if (!/^\d*$/.test(cleaned)) return;
-      if (cleaned.startsWith("0")) return;
-      if (cleaned.length > 9) return;
-      arr[i].value = cleaned;
-    } else {
-      arr[i][key] = value;
-    }
-    setContacts(arr);
-  };
+  /* ---------------------- SOCIAL PLATFORM GRID ---------------------- */
+  const SOCIAL_OPTIONS = [
+    "instagram",
+    "facebook",
+    "tiktok",
+    "twitter",
+    "linkedin",
+    "threads",
+    "youtube",
+    "snapchat",
+  ];
 
-  const removeContact = (i) => {
-    setContacts((prev) => prev.filter((_, idx) => idx !== i));
-  };
-
-  /* ---------------------- SERVICE HELPERS ---------------------- */
-  const updateService = (i, key, value) => {
-    const arr = [...services];
-    arr[i][key] = value;
-    setServices(arr);
-  };
-
-  const removeService = (i) => {
-    setServices((prev) => prev.filter((_, idx) => idx !== i));
-  };
-
-  /* ---------------------- SOCIAL HELPERS ---------------------- */
-  const handleSelectSocial = (platform, icon) => {
+  const addSocial = (platform) => {
     if (socials.some((s) => s.platform === platform)) return;
-    setSocials([...socials, { platform, icon, handle: "" }]);
+
+    setSocials([...socials, { platform, handle: "" }]);
+  };
+
+  const removeSocial = (i) => {
+    setSocials((prev) => prev.filter((_, idx) => idx !== i));
   };
 
   /* ---------------------- UI ---------------------- */
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* SAVE BAR */}
       <Animated.View
         style={[
           styles.saveBar,
@@ -384,7 +298,7 @@ export default function EditProvider({ navigation, route }) {
           <View style={styles.profilePicSection}>
             <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
               <Image
-                source={{ uri: profilePic || placeholder }}
+                source={{ uri: profilePic || "https://via.placeholder.com/150" }}
                 style={styles.profileImage}
               />
               <Text style={styles.editPicText}>Change Photo</Text>
@@ -430,10 +344,16 @@ export default function EditProvider({ navigation, route }) {
                     { borderColor: c.allowCall ? "#007BFF" : "#ccc" },
                   ]}
                   onPress={() =>
-                    updateContact(i, "allowCall", !c.allowCall)
+                    setContacts((prev) =>
+                      prev.map((item, idx) =>
+                        idx === i
+                          ? { ...item, allowCall: !item.allowCall }
+                          : item
+                      )
+                    )
                   }
                 >
-                  <Icon name="phone" size={15} color="#007BFF" />
+                  <Text style={{ color: "#007BFF" }}>📞</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -442,10 +362,16 @@ export default function EditProvider({ navigation, route }) {
                     { borderColor: c.allowSMS ? "#007BFF" : "#ccc" },
                   ]}
                   onPress={() =>
-                    updateContact(i, "allowSMS", !c.allowSMS)
+                    setContacts((prev) =>
+                      prev.map((item, idx) =>
+                        idx === i
+                          ? { ...item, allowSMS: !item.allowSMS }
+                          : item
+                      )
+                    )
                   }
                 >
-                  <Icon name="comment" size={15} color="#007BFF" />
+                  <Text style={{ color: "#007BFF" }}>💬</Text>
                 </TouchableOpacity>
 
                 <Text>+255</Text>
@@ -456,7 +382,15 @@ export default function EditProvider({ navigation, route }) {
                   value={c.value}
                   keyboardType="numeric"
                   maxLength={9}
-                  onChangeText={(t) => updateContact(i, "value", t)}
+                  onChangeText={(t) => {
+                    const cleaned = t.replace(/\D+/g, "");
+                    if (cleaned.startsWith("0")) return;
+                    setContacts((prev) =>
+                      prev.map((item, idx) =>
+                        idx === i ? { ...item, value: cleaned } : item
+                      )
+                    );
+                  }}
                 />
 
                 <TouchableOpacity onPress={() => removeContact(i)}>
@@ -478,7 +412,7 @@ export default function EditProvider({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          {/* SERVICES — CLEAN, NO EMOJI */}
+          {/* SERVICES - TEXT ONLY */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Services</Text>
 
@@ -495,60 +429,73 @@ export default function EditProvider({ navigation, route }) {
                   style={styles.serviceNameInput}
                   placeholder="Service name"
                   value={s.name}
-                  onChangeText={(t) => updateService(i, "name", t)}
+                  onChangeText={(t) =>
+                    setServices((prev) =>
+                      prev.map((item, idx) =>
+                        idx === i ? { ...item, name: t } : item
+                      )
+                    )
+                  }
                 />
 
-                <TouchableOpacity onPress={() => removeService(i)}>
+                <TouchableOpacity onPress={() => removeSocial(i)}>
                   <Text style={styles.removeXSmall}>✕</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </View>
 
-          {/* SOCIALS */}
+          {/* SOCIAL MEDIA WITH SVG ICONS */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Social Media</Text>
 
             <View style={styles.socialGrid}>
-              {socialPlatforms.map((sp) => (
-                <TouchableOpacity
-                  key={sp.id}
-                  style={styles.socialGridBtn}
-                  onPress={() => handleSelectSocial(sp.id, sp.icon)}
-                >
-                  <Icon name={sp.icon} size={20} color="#fff" />
-                </TouchableOpacity>
-              ))}
+              {SOCIAL_OPTIONS.map((platform) => {
+                const IconComponent = SOCIAL_ICONS[platform];
+
+                return (
+                  <TouchableOpacity
+                    key={platform}
+                    style={styles.socialGridBtn}
+                    onPress={() => addSocial(platform)}
+                  >
+                    <IconComponent width={22} height={22} stroke="#fff" />
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            {socials.map((s, i) => (
-              <View style={styles.socialRow} key={i}>
-                <Icon
-                  name={s.icon}
-                  size={20}
-                  style={{ color: "#007BFF", marginRight: 8 }}
-                />
+            {socials.map((s, i) => {
+              const IconComponent = SOCIAL_ICONS[s.platform];
 
-                <TextInput
-                  style={styles.socialInputRow}
-                  placeholder={`Enter ${s.platform} username or link`}
-                  value={s.handle}
-                  onChangeText={(text) => {
-                    const arr = [...socials];
-                    arr[i].handle = text;
-                    setSocials(arr);
-                  }}
-                />
+              return (
+                <View style={styles.socialRow} key={i}>
+                  <IconComponent
+                    width={24}
+                    height={24}
+                    stroke="#007BFF"
+                    style={{ marginRight: 8 }}
+                  />
 
-                <TouchableOpacity
-                  onPress={() =>
-                    setSocials((prev) => prev.filter((_, idx) => idx !== i))
-                  }
-                >
-                  <Text style={styles.removeXSmall}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+                  <TextInput
+                    style={styles.socialInputRow}
+                    placeholder={`Enter ${s.platform} username or link`}
+                    value={s.handle}
+                    onChangeText={(text) =>
+                      setSocials((prev) =>
+                        prev.map((item, idx) =>
+                          idx === i ? { ...item, handle: text } : item
+                        )
+                      )
+                    }
+                  />
+
+                  <TouchableOpacity onPress={() => removeSocial(i)}>
+                    <Text style={styles.removeXSmall}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -581,7 +528,6 @@ const styles = StyleSheet.create({
 
   title: { fontSize: 22, fontWeight: "700", textAlign: "center" },
 
-  /* PROFILE */
   profilePicSection: { alignItems: "center", marginBottom: 15 },
   imageWrapper: { alignItems: "center" },
   profileImage: {
@@ -592,7 +538,6 @@ const styles = StyleSheet.create({
   },
   editPicText: { marginTop: 8, color: "#007BFF", fontWeight: "600" },
 
-  /* SECTIONS */
   section: {
     backgroundColor: "#fff",
     padding: 16,
@@ -610,7 +555,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  /* CONTACTS */
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -622,6 +566,7 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     marginBottom: 10,
   },
+
   smallCircleIcon: {
     width: 28,
     height: 28,
@@ -630,6 +575,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   contactInput: {
     flex: 1,
     borderWidth: 1,
@@ -638,11 +584,12 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
   },
+
   removeXSmall: { fontWeight: "700", fontSize: 16, color: "red" },
+
   addBtn: { alignSelf: "center", marginTop: 6 },
   addText: { color: "#007BFF", fontWeight: "700" },
 
-  /* SERVICES */
   serviceRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -657,6 +604,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
   },
+
   addServiceBtn: {
     borderWidth: 1,
     borderColor: "#ddd",
@@ -667,13 +615,13 @@ const styles = StyleSheet.create({
   },
   addServiceText: { fontWeight: "700", color: "#007BFF" },
 
-  /* SOCIALS */
   socialGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
     marginBottom: 10,
   },
+
   socialGridBtn: {
     width: 44,
     height: 44,
@@ -682,6 +630,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   socialRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -693,6 +642,7 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     marginBottom: 10,
   },
+
   socialInputRow: {
     flex: 1,
     backgroundColor: "#fff",
