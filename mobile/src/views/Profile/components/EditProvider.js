@@ -16,6 +16,10 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/FontAwesome";
 import { API } from "../../../api/api";
+import io from "socket.io-client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const SOCKET_URL = "http://10.125.36.51:5000";
 
 /* ---------------------- IMAGE PICKER ---------------------- */
 let ImagePicker;
@@ -38,6 +42,74 @@ export default function EditProvider({ navigation, route }) {
   const [status, setStatus] = useState("idle");
 
   const incoming = route.params?.provider;
+
+  /* ----------------REAL-TIME SOCKET LISTENER -----------*/
+  useEffect(() => {
+    const setupSocket = async () => {
+      try {
+        const socket = io(SOCKET_URL);
+
+        // Get logged-in provider
+        const res = await API.get("/service-provider/me");
+        const userId = res.data.provider.user_id;
+
+        // Join private room
+        socket.emit("join", userId);
+
+        // When backend says data updated...
+        socket.on("providerUpdated", () => {
+          console.log("🔥 Profile updated — refreshing…");
+          loadProfile(); // reload your edit page data too
+        });
+      } catch (e) {
+        console.log("Socket setup error:", e);
+      }
+    };
+
+    setupSocket();
+  }, []);
+
+  /* ---------------------- FUNCTION: Load profile ---------------------- */
+  const loadProfile = async () => {
+    try {
+      const res = await API.get("/service-provider/me");
+      const data = res.data.provider;
+
+      setFullName(data.fullName || "");
+      setUsername(data.username || "");
+      setProfilePic(data.profilePic || "");
+      setBio(data.bio || "");
+
+      setContacts(
+        (data.contacts || []).map((c) => {
+          const [type, number, access] = c.split(":");
+          return {
+            type: type || "phone",
+            value: number || "",
+            allowCall: access?.includes("call") ?? true,
+            allowSMS: access?.includes("sms") ?? true,
+          };
+        })
+      );
+
+      setSocials(
+        (data.socials || []).map((s) => {
+          const [platform, handle] = s.split(":");
+          return { platform, icon: platform, handle };
+        })
+      );
+
+      setServices((data.services || []).map((name) => ({ name })));
+    } catch (err) {
+      console.log("Load profile error:", err);
+    }
+  };
+
+  /* existing useEffect for incoming props — keep it */
+  useEffect(() => {
+    if (!incoming) return;
+    loadProfile();
+  }, []);  
 
   /* ---------------------- ANIMATIONS ---------------------- */
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -137,19 +209,26 @@ export default function EditProvider({ navigation, route }) {
 
   /* ---------------------- IMAGE PICKER ---------------------- */
   const pickImage = async () => {
-    if (!ImagePicker) return Alert.alert("expo-image-picker not installed.");
-
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== "granted") return;
-
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
+      base64: true,
     });
 
-    if (!result.canceled) setProfilePic(result.assets[0].uri);
+    if (!result.canceled) {
+      const base64Img = "data:image/jpg;base64," + result.assets[0].base64;
+
+      const upload = await API.post("/service-provider/upload-pic", {
+        image: base64Img,
+      });
+
+      if (upload.data.success) {
+        setProfilePic(upload.data.url); // PUBLIC URL from Cloudinary
+      }
+    }
   };
+
 
   /* ---------------------- VALIDATION ---------------------- */
   const validateContacts = () => {

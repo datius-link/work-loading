@@ -10,25 +10,30 @@ import Feed from "./src/views/Feed";
 import Alerts from "./src/views/Alerts";
 import MyAccount from "./src/views/MyAccount";
 
-// Provider
+// MyAccount Flow
 import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
 import ServiceProviderProfile from "./src/views/Profile/ServiceProviderProfile";
 import EditProvider from "./src/views/Profile/components/EditProvider";
 import ServiceProviderLogin from "./src/views/Profile/ServiceProviderLogin";
 
-// NEW loading screen
-import AuthLoading from "./src/views/AuthLoading";
+// Auth
+import AuthLoading from "./src/AuthLoading";
+
+//Provider Side
+import ProviderTabs from "./src/ProviderSide/ProviderTabs";
+
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// Bottom Tabs
+/* ---------------------------
+   MAIN USER BOTTOM TABS
+--------------------------- */
 function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-
         tabBarIcon: ({ color, size }) => {
           let iconName;
 
@@ -49,23 +54,95 @@ function MainTabs() {
   );
 }
 
+/* ---------------------------
+   APP ROOT NAVIGATION
+--------------------------- */
 export default function App() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator>
 
-          {/* LOAD FIRST */}
-          <Stack.Screen name="AuthLoading" component={AuthLoading} />
+          {/* ----------------------
+              AUTH LOADING SCREEN
+              - NO BACK
+          ----------------------- */}
+          <Stack.Screen
+            name="AuthLoading"
+            component={AuthLoading}
+            options={{ headerShown: false }}
+          />
 
-          {/* User tabs */}
-          <Stack.Screen name="Main" component={MainTabs} />
+          {/* ----------------------
+              MAIN USER TABS
+              - NO BACK
+          ----------------------- */}
+          <Stack.Screen
+            name="Main"
+            component={MainTabs}
+            options={{ headerShown: false }}
+          />
 
-          {/* Provider Routes */}
-          <Stack.Screen name="ServiceProviderSignUp" component={ServiceProviderSignUp} />
-          <Stack.Screen name="ServiceProviderProfile" component={ServiceProviderProfile} />
-          <Stack.Screen name="EditProvider" component={EditProvider} />
-          <Stack.Screen name="ServiceProviderLogin" component={ServiceProviderLogin} />
+          {/* ----------------------
+              PROVIDER LOGIN
+              - BACK TO MyAccount ONLY
+          ----------------------- */}
+          <Stack.Screen
+            name="ServiceProviderLogin"
+            component={ServiceProviderLogin}
+            options={{
+              headerShown: true,
+              title: "Provider Login",
+              headerBackTitleVisible: false,
+            }}
+          />
+
+          {/* ----------------------
+              PROVIDER SIGN UP
+              - BACK TO MyAccount ONLY
+          ----------------------- */}
+          <Stack.Screen
+            name="ServiceProviderSignUp"
+            component={ServiceProviderSignUp}
+            options={{
+              headerShown: true,
+              title: "Create Provider Account",
+              headerBackTitleVisible: false,
+            }}
+          />
+
+          {/* ----------------------
+              PROVIDER PROFILE
+              - NO BACK BUTTON
+          ----------------------- */}
+          <Stack.Screen
+            name="ServiceProviderProfile"
+            component={ServiceProviderProfile}
+            options={{
+              headerShown: false,
+            }}
+          />
+
+          {/* ----------------------
+              EDIT PROVIDER
+              - BACK ONLY TO PROFILE
+          ----------------------- */}
+          <Stack.Screen
+            name="EditProvider"
+            component={EditProvider}
+            options={{
+              headerShown: true,
+              title: "Edit Profile",
+              headerBackTitleVisible: false,
+            }}
+          />
+
+          <Stack.Screen
+            name="ProviderTabs"
+            component={ProviderTabs}
+            options={{ headerShown: false }}
+          />
+
 
         </Stack.Navigator>
       </NavigationContainer>

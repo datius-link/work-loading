@@ -1,4 +1,5 @@
 import db from "../../../models/index.js";
+import { io } from "../../server.js"
 
 export const getMyProfile = async (req, res) => {
   try {
@@ -119,11 +120,6 @@ export const updateProfile = async (req, res) => {
     }
 
     // -----------------------------------------
-    // 6. DO NOT UPDATE USER.PHONE ANYMORE ❌
-    //    We removed primary phone logic completely.
-    // -----------------------------------------
-
-    // -----------------------------------------
     // 7. Update SERVICE PROVIDER PROFILE ONLY
     // -----------------------------------------
     await db.ServiceProvider.update(
@@ -138,6 +134,18 @@ export const updateProfile = async (req, res) => {
       },
       { where: { user_id: userId } }
     );
+
+    // 🔥 REAL-TIME BROADCAST
+    io.to(userId).emit("providerUpdated", {
+      updated: true,
+      time: Date.now(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Profile updated successfully.",
+    });
+
 
     return res.json({
       success: true,

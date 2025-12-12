@@ -48,7 +48,7 @@ export default function ServiceProviderLogin({ navigation }) {
       setSuccessMsg("Login successful!");
 
       setTimeout(() => {
-        navigation.replace("ServiceProviderProfile");
+        navigation.replace("ProviderTabs");
       }, 500);
 
     } catch (e) {

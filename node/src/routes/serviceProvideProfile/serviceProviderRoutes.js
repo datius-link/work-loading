@@ -1,11 +1,12 @@
 import express from "express";
-import { getMyProfile } from "../../controllers/serviceProvideProfile/serviceProviderController.js";
+import { getMyProfile, updateProfile } from "../../controllers/serviceProvideProfile/serviceProviderController.js";
+import { uploadImage } from "../../controllers/serviceProvideProfile/uploadController.js";
 import authMiddleware from "../../middleware/auth.js";
-import { updateProfile } from "../../controllers/serviceProvideProfile/serviceProviderController.js";
 
 const router = express.Router();
 
 router.get("/me", authMiddleware, getMyProfile);
 router.put("/update", authMiddleware, updateProfile);
+router.post("/upload-pic", authMiddleware, uploadImage);
 
 export default router;

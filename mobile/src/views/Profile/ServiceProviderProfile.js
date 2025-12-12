@@ -11,6 +11,11 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/FontAwesome";
 import { API } from "../../api/api";
+import io from "socket.io-client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// ⭐ USE YOUR BACKEND IP HERE (same as EditProvider)
+const SOCKET_URL = "http://10.125.36.51:5000";
 
 export default function ServiceProviderProfile({ navigation }) {
   const [provider, setProvider] = useState(null);
@@ -27,10 +32,39 @@ export default function ServiceProviderProfile({ navigation }) {
     setLoading(false);
   };
 
+  /* ---------------------- FIRST LOAD ---------------------- */
   useEffect(() => {
     loadProfile();
   }, []);
 
+  /* --------------------------------------------------------
+      REAL-TIME SOCKET LISTENER FOR AUTO REFRESH
+  -------------------------------------------------------- */
+  useEffect(() => {
+    const setupSocket = async () => {
+      try {
+        const socket = io(SOCKET_URL);
+
+        const res = await API.get("/service-provider/me");
+        const userId = res.data.provider.user_id;
+
+        // Join personal WebSocket room
+        socket.emit("join", userId);
+
+        // Listen for real-time updates
+        socket.on("providerUpdated", () => {
+          console.log("🔥 Real-time update received → refreshing profile");
+          loadProfile();
+        });
+      } catch (err) {
+        console.log("Socket setup error:", err);
+      }
+    };
+
+    setupSocket();
+  }, []);
+
+  /* ---------------------- LOADING UI ---------------------- */
   if (loading || !provider) {
     return (
       <View style={styles.center}>
@@ -67,12 +101,11 @@ export default function ServiceProviderProfile({ navigation }) {
       <View style={styles.header}>
         <Image
           source={{
-            uri:
-              profilePic ||
-              "https://via.placeholder.com/150",
+            uri: profilePic || "https://via.placeholder.com/150",
           }}
           style={styles.profileImage}
         />
+
         <Text style={styles.name}>{fullName}</Text>
         <Text style={styles.username}>@{username}</Text>
 
@@ -80,9 +113,7 @@ export default function ServiceProviderProfile({ navigation }) {
 
         <TouchableOpacity
           style={styles.editBtn}
-          onPress={() =>
-            navigation.navigate("EditProvider", { provider })
-          }
+          onPress={() => navigation.navigate("EditProvider", { provider })}
         >
           <Text style={styles.editBtnText}>Edit Profile</Text>
         </TouchableOpacity>
@@ -244,7 +275,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  /* CARD */
   card: {
     backgroundColor: "#fff",
     padding: 18,
@@ -259,7 +289,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  /* CONTACTS */
   contactRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -278,7 +307,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  /* SERVICES */
   chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -297,7 +325,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  /* SOCIALS */
   socialGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
