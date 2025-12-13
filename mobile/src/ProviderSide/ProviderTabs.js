@@ -3,14 +3,11 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { FontAwesome5 } from "@expo/vector-icons";
 
 // Screens
-import ServiceProviderProfile from "./Profile/MyProfile";
+import MyProfile from "./Profile/MyProfile";
+import PostsScreen from "./providerPosts/PostsScreen";
 
 function OthersScreen() {
   return null; // placeholder — we’ll replace later
-}
-
-function PostsScreen() {
-  return null; // placeholder
 }
 
 function RequestsScreen() {
@@ -59,7 +56,7 @@ export default function ProviderTabs() {
       <Tab.Screen name="Posts" component={PostsScreen} />
       <Tab.Screen name="Requests" component={RequestsScreen} />
       <Tab.Screen name="Alerts" component={ProviderAlertsScreen} />
-      <Tab.Screen name="MyProfile" component={ServiceProviderProfile} />
+      <Tab.Screen name="MyProfile" component={MyProfile} />
     </Tab.Navigator>
   );
 }
