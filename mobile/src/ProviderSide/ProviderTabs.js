@@ -1,17 +1,17 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { FontAwesome5 } from "@expo/vector-icons";
+import { BackHandler } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 
 // Screens
 import MyProfile from "./Profile/MyProfile";
 import PostsScreen from "./providerPosts/PostsScreen";
+import OthersScreen from "./Others/OthersScreen";
 
-function OthersScreen() {
-  return null; // placeholder — we’ll replace later
-}
 
 function RequestsScreen() {
-  return null; // placeholder
+  return null;
 }
 
 function ProviderAlertsScreen() {
@@ -21,6 +21,24 @@ function ProviderAlertsScreen() {
 const Tab = createBottomTabNavigator();
 
 export default function ProviderTabs() {
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBackPress = () => {
+        return true; // 🚫 block back button completely
+      };
+
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress
+      );
+
+      return () => {
+        subscription.remove(); // ✅ CORRECT cleanup
+      };
+    }, [])
+  );
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({

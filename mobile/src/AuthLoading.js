@@ -8,7 +8,7 @@ export default function AuthLoading({ navigation }) {
       const role = await AsyncStorage.getItem("role");
 
       if (role === "SERVICE_PROVIDER") {
-        navigation.replace("ServiceProviderProfile");
+        navigation.replace("ProviderTabs", { screen : "Posts"});
       } else {
         navigation.replace("Main");
       }

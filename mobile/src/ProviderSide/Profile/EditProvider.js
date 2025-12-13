@@ -1,27 +1,32 @@
-import React, { useState, useEffect, useRef } from "react";
+// EditProvider.js
+// Full service provider profile editor with image upload, contacts, services, socials,
+// real-time sync, animations, and clean normalized data handling.
+
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
   Image,
-  Alert,
+  StyleSheet,
   SafeAreaView,
-  Animated,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
+  Alert,
 } from "react-native";
-
+import { FontAwesome5 } from "@expo/vector-icons";
 import { API } from "../../api/api";
 import io from "socket.io-client";
 import { SOCIAL_ICONS } from "../../icons/socialIcons";
 
+/* ---------------- CONFIG ---------------- */
 const SOCKET_URL = "http://10.125.36.51:5000";
 
-/* ---------------------- IMAGE PICKER ---------------------- */
+/* ---------------- IMAGE PICKER ---------------- */
 let ImagePicker;
 try {
   ImagePicker = require("expo-image-picker");
@@ -29,110 +34,48 @@ try {
   ImagePicker = null;
 }
 
-export default function EditProvider({ navigation, route }) {
-  /* ---------------------- STATE ---------------------- */
+export default function EditProvider({ navigation }) {
+  /* ---------------- STATE ---------------- */
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
-  const [contacts, setContacts] = useState([]);
-  const [socials, setSocials] = useState([]);
-  const [services, setServices] = useState([]);
-  const [profilePic, setProfilePic] = useState("");
   const [bio, setBio] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [profilePic, setProfilePic] = useState("");
+
+  const [contacts, setContacts] = useState([]);
+  const [services, setServices] = useState([]);
+  const [socials, setSocials] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("idle");
 
-  const incoming = route.params?.provider;
-
-  /* ---------------- REAL-TIME SOCKET LISTENER ---------------- */
-  useEffect(() => {
-    const setupSocket = async () => {
-      try {
-        const socket = io(SOCKET_URL);
-        const res = await API.get("/service-provider/me");
-        const userId = res.data.provider.user_id;
-
-        socket.emit("join", userId);
-
-        socket.on("providerUpdated", () => {
-          console.log("🔥 Provider updated — refreshing...");
-          loadProfile();
-        });
-      } catch (e) {
-        console.log("Socket setup error:", e);
-      }
-    };
-
-    setupSocket();
-  }, []);
-
-  /* ---------------------- LOAD PROFILE ---------------------- */
-  const loadProfile = async () => {
-    try {
-      const res = await API.get("/service-provider/me");
-      const data = res.data.provider;
-
-      setFullName(data.fullName || "");
-      setUsername(data.username || "");
-      setProfilePic(data.profilePic || "");
-      setBio(data.bio || "");
-
-      setContacts(
-        (data.contacts || []).map((c) => {
-          const [type, number, access] = c.split(":");
-          return {
-            type: type || "phone",
-            value: number || "",
-            allowCall: access?.includes("call") ?? true,
-            allowSMS: access?.includes("sms") ?? true,
-          };
-        })
-      );
-
-      setSocials(
-        (data.socials || []).map((s) => {
-          const [platform, handle] = s.split(":");
-          return { platform, handle };
-        })
-      );
-
-      setServices((data.services || []).map((name) => ({ name })));
-    } catch (err) {
-      console.log("Load profile error:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (!incoming) return;
-    loadProfile();
-  }, []);
-
-  /* ---------------------- ANIMATIONS ---------------------- */
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  /* ---------------- ANIMATION ---------------- */
+  const slideAnim = useRef(new Animated.Value(-70)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  const triggerSlide = () => {
+  const showSaveBar = () => {
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 260,
+        duration: 240,
         useNativeDriver: false,
       }),
       Animated.sequence([
         Animated.timing(fadeAnim, {
-          toValue: 0.45,
-          duration: 200,
+          toValue: 0.5,
+          duration: 160,
           useNativeDriver: false,
         }),
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 200,
+          duration: 160,
           useNativeDriver: false,
         }),
       ]),
     ]).start();
   };
 
-  const hideSlide = () => {
+  const hideSaveBar = () => {
     Animated.timing(slideAnim, {
       toValue: -70,
       duration: 240,
@@ -140,150 +83,149 @@ export default function EditProvider({ navigation, route }) {
     }).start();
   };
 
-  /* ---------------------- IMAGE PICKER ---------------------- */
+  /* ---------------- LOAD PROFILE ---------------- */
+  const loadProfile = async () => {
+    try {
+      const res = await API.get("/service-provider/me");
+      const p = res.data.provider;
+
+      setFullName(p.fullName || "");
+      setUsername(p.username || "");
+      setBio(p.bio || "");
+      setProfilePic(p.profilePic || "");
+
+      setServices((p.services || []).map(s => ({ name: s })));
+
+      setContacts(
+        (p.contacts || []).map(c => {
+          const [, number, access] = c.split(":");
+          return {
+            number,
+            allowCall: access?.includes("call"),
+            allowSMS: access?.includes("sms"),
+          };
+        })
+      );
+
+      setSocials(
+        (p.socials || []).map(s => {
+          const [platform, handle] = s.split(":");
+          return { platform, handle };
+        })
+      );
+    } catch (e) {
+      console.log("Load profile error:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ---------------- SOCKET ---------------- */
+  useEffect(() => {
+    loadProfile();
+
+    const socket = io(SOCKET_URL);
+    socket.on("providerUpdated", () => loadProfile());
+
+    return () => socket.disconnect();
+  }, []);
+
+  /* ---------------- IMAGE PICK ---------------- */
   const pickImage = async () => {
+    if (!ImagePicker) return;
+
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7,
       base64: true,
+      quality: 0.7,
     });
 
     if (!result.canceled) {
-      const base64Img = "data:image/jpg;base64," + result.assets[0].base64;
-
-      const upload = await API.post("/service-provider/upload-pic", {
-        image: base64Img,
-      });
-
-      if (upload.data.success) {
-        setProfilePic(upload.data.url);
-      }
+      const base64 = "data:image/jpg;base64," + result.assets[0].base64;
+      const upload = await API.post("/service-provider/upload-pic", { image: base64 });
+      if (upload.data.success) setProfilePic(upload.data.url);
     }
   };
 
-  /* ---------------------- VALIDATION ---------------------- */
-  const validateContacts = () => {
-    const nums = contacts.map((c) => c.value.trim()).filter((n) => n !== "");
-    const unique = new Set(nums);
-
-    if (unique.size !== nums.length) {
-      Alert.alert("Duplicate phone numbers are not allowed.");
-      return false;
-    }
-    return true;
-  };
-
-  /* ---------------------- SAVE PROFILE ---------------------- */
-  const handleSave = async () => {
-    if (!validateContacts()) return;
-
+  /* ---------------- SAVE ---------------- */
+  const saveProfile = async () => {
+    setSaving(true);
     setStatus("saving");
-    setLoading(true);
-    triggerSlide();
+    showSaveBar();
 
     try {
-      const formattedContacts = contacts.map((c) => {
-        const access = [];
-        if (c.allowCall) access.push("call");
-        if (c.allowSMS) access.push("sms");
-        return `${c.type}:${c.value}:${access.join(",")}`;
-      });
-
-      const formattedSocials = socials.map((s) => {
-        let handle = s.handle.trim();
-        if (handle.startsWith("@")) handle = handle.substring(1);
-        return `${s.platform}:${handle}`;
-      });
-
       await API.put("/service-provider/update", {
         fullName,
         username,
-        contacts: formattedContacts,
-        socials: formattedSocials,
-        services: services.map((s) => s.name),
+        bio,
         profilePic,
+        services: services.map(s => s.name),
+        socials: socials.map(s => `${s.platform}:${s.handle.replace(/^@/, "")}`),
+        contacts,
       });
 
       setStatus("success");
-      triggerSlide();
-
       setTimeout(() => {
-        setStatus("idle");
-        hideSlide();
-      }, 2000);
-
-      setLoading(false);
-      navigation.navigate("ProviderTabs", {screen: "MyProfile" });
-    } catch (err) {
-      console.log("Save error:", err);
+        hideSaveBar();
+        navigation.navigate("ProviderTabs", { screen: "MyProfile" });
+      }, 1200);
+    } catch (e) {
+      console.log("Save error:", e);
       setStatus("error");
-      triggerSlide();
-
-      setTimeout(() => {
-        setStatus("idle");
-        hideSlide();
-      }, 2000);
-
-      setLoading(false);
+      Alert.alert("Error", "Failed to save profile");
+      setTimeout(hideSaveBar, 1500);
+    } finally {
+      setSaving(false);
     }
   };
 
-  /* ---------------------- SOCIAL PLATFORM GRID ---------------------- */
-  const SOCIAL_OPTIONS = [
-    "instagram",
-    "facebook",
-    "tiktok",
-    "twitter",
-    "linkedin",
-    "threads",
-    "youtube",
-    "snapchat",
-  ];
+  /* ---------------- UI ---------------- */
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#0B6B63" />
+      </View>
+    );
+  }
 
-  const addSocial = (platform) => {
-    if (socials.some((s) => s.platform === platform)) return;
-
-    setSocials([...socials, { platform, handle: "" }]);
-  };
-
-  const removeSocial = (i) => {
-    setSocials((prev) => prev.filter((_, idx) => idx !== i));
-  };
-
-  /* ---------------------- UI ---------------------- */
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <FontAwesome5 name="arrow-left" size={20} color="#0B6B63" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Edit Profile</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      {/* SAVE BAR */}
       <Animated.View
         style={[
           styles.saveBar,
           {
             top: slideAnim,
+            opacity: fadeAnim,
             backgroundColor:
               status === "success"
                 ? "#2ECC71"
                 : status === "error"
                 ? "#E74C3C"
-                : "#FFFFFF",
-            opacity: fadeAnim,
+                : "#0B6B63",
           },
         ]}
       >
-        <TouchableOpacity style={styles.saveBarBtn} onPress={handleSave}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            {status === "saving" && (
-              <ActivityIndicator size="small" color="#333" />
-            )}
-            <Text style={styles.saveBarText}>
-              {status === "saving"
-                ? "Saving..."
-                : status === "success"
-                ? "✓ Saved"
-                : status === "error"
-                ? "✕ Error"
-                : "Save Changes"}
-            </Text>
-          </View>
+        <TouchableOpacity onPress={saveProfile}>
+          <Text style={styles.saveText}>
+            {status === "saving"
+              ? "Saving..."
+              : status === "success"
+              ? "Saved ✓"
+              : status === "error"
+              ? "Error ✕"
+              : "Save Changes"}
+          </Text>
         </TouchableOpacity>
       </Animated.View>
 
@@ -292,363 +234,226 @@ export default function EditProvider({ navigation, route }) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView contentContainerStyle={styles.container}>
-          <Text style={styles.title}>Edit Profile</Text>
-
           {/* PROFILE PIC */}
-          <View style={styles.profilePicSection}>
-            <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
-              <Image
-                source={{ uri: profilePic || "https://via.placeholder.com/150" }}
-                style={styles.profileImage}
-              />
-              <Text style={styles.editPicText}>Change Photo</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.avatarWrap} onPress={pickImage}>
+            <Image
+              source={{ uri: profilePic || "https://via.placeholder.com/120" }}
+              style={styles.avatar}
+            />
+            <Text style={styles.changePic}>Change photo</Text>
+          </TouchableOpacity>
 
           {/* BASIC INFO */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Basic Info</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Full name"
+            value={fullName}
+            onChangeText={setFullName}
+          />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Full Name"
-              value={fullName}
-              onChangeText={setFullName}
-            />
+          <TextInput
+            style={styles.input}
+            placeholder="Username (optional)"
+            value={username}
+            onChangeText={setUsername}
+          />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Username"
-              value={username}
-              onChangeText={setUsername}
-            />
-
-            <TextInput
-              style={[styles.input, { height: 90 }]}
-              placeholder="Bio"
-              multiline
-              value={bio}
-              onChangeText={setBio}
-            />
-          </View>
+          <TextInput
+            style={[styles.input, styles.bio]}
+            placeholder="Bio"
+            multiline
+            value={bio}
+            onChangeText={setBio}
+          />
 
           {/* CONTACTS */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Contacts</Text>
-
-            {contacts.map((c, i) => (
-              <View style={styles.contactRow} key={i}>
-                <TouchableOpacity
-                  style={[
-                    styles.smallCircleIcon,
-                    { borderColor: c.allowCall ? "#007BFF" : "#ccc" },
-                  ]}
-                  onPress={() =>
-                    setContacts((prev) =>
-                      prev.map((item, idx) =>
-                        idx === i
-                          ? { ...item, allowCall: !item.allowCall }
-                          : item
-                      )
+          <Text style={styles.section}>Contacts</Text>
+          {contacts.map((c, i) => (
+            <View key={i} style={styles.row}>
+              <Text>+255</Text>
+              <TextInput
+                style={styles.phoneInput}
+                keyboardType="numeric"
+                maxLength={9}
+                value={c.number}
+                onChangeText={t =>
+                  setContacts(prev =>
+                    prev.map((x, idx) =>
+                      idx === i ? { ...x, number: t.replace(/\D/g, "") } : x
                     )
-                  }
-                >
-                  <Text style={{ color: "#007BFF" }}>📞</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.smallCircleIcon,
-                    { borderColor: c.allowSMS ? "#007BFF" : "#ccc" },
-                  ]}
-                  onPress={() =>
-                    setContacts((prev) =>
-                      prev.map((item, idx) =>
-                        idx === i
-                          ? { ...item, allowSMS: !item.allowSMS }
-                          : item
-                      )
-                    )
-                  }
-                >
-                  <Text style={{ color: "#007BFF" }}>💬</Text>
-                </TouchableOpacity>
-
-                <Text>+255</Text>
-
-                <TextInput
-                  style={styles.contactInput}
-                  placeholder="712345678"
-                  value={c.value}
-                  keyboardType="numeric"
-                  maxLength={9}
-                  onChangeText={(t) => {
-                    const cleaned = t.replace(/\D+/g, "");
-                    if (cleaned.startsWith("0")) return;
-                    setContacts((prev) =>
-                      prev.map((item, idx) =>
-                        idx === i ? { ...item, value: cleaned } : item
-                      )
-                    );
-                  }}
-                />
-
-                <TouchableOpacity onPress={() => removeContact(i)}>
-                  <Text style={styles.removeXSmall}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() =>
-                setContacts([
-                  ...contacts,
-                  { type: "phone", value: "", allowCall: true, allowSMS: true },
-                ])
-              }
-            >
-              <Text style={styles.addText}>+ Add Contact</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* SERVICES - TEXT ONLY */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Services</Text>
-
-            <TouchableOpacity
-              style={styles.addServiceBtn}
-              onPress={() => setServices([...services, { name: "" }])}
-            >
-              <Text style={styles.addServiceText}>+ Add Service</Text>
-            </TouchableOpacity>
-
-            {services.map((s, i) => (
-              <View style={styles.serviceRow} key={i}>
-                <TextInput
-                  style={styles.serviceNameInput}
-                  placeholder="Service name"
-                  value={s.name}
-                  onChangeText={(t) =>
-                    setServices((prev) =>
-                      prev.map((item, idx) =>
-                        idx === i ? { ...item, name: t } : item
-                      )
-                    )
-                  }
-                />
-
-                <TouchableOpacity onPress={() => removeSocial(i)}>
-                  <Text style={styles.removeXSmall}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-
-          {/* SOCIAL MEDIA WITH SVG ICONS */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Social Media</Text>
-
-            <View style={styles.socialGrid}>
-              {SOCIAL_OPTIONS.map((platform) => {
-                const IconComponent = SOCIAL_ICONS[platform];
-
-                return (
-                  <TouchableOpacity
-                    key={platform}
-                    style={styles.socialGridBtn}
-                    onPress={() => addSocial(platform)}
-                  >
-                    <IconComponent width={22} height={22} stroke="#fff" />
-                  </TouchableOpacity>
-                );
-              })}
+                  )
+                }
+              />
             </View>
+          ))}
 
-            {socials.map((s, i) => {
-              const IconComponent = SOCIAL_ICONS[s.platform];
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() =>
+              setContacts([...contacts, { number: "", allowCall: true, allowSMS: true }])
+            }
+          >
+            <Text style={styles.addText}>+ Add Contact</Text>
+          </TouchableOpacity>
 
+          {/* SERVICES */}
+          <Text style={styles.section}>Services</Text>
+          {services.map((s, i) => (
+            <View key={i} style={styles.row}>
+              <TextInput
+                style={styles.serviceInput}
+                placeholder="Service name"
+                value={s.name}
+                onChangeText={t =>
+                  setServices(prev =>
+                    prev.map((x, idx) => (idx === i ? { ...x, name: t } : x))
+                  )
+                }
+              />
+              <TouchableOpacity
+                onPress={() => setServices(prev => prev.filter((_, idx) => idx !== i))}
+              >
+                <Text style={styles.remove}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => setServices([...services, { name: "" }])}
+          >
+            <Text style={styles.addText}>+ Add Service</Text>
+          </TouchableOpacity>
+
+          {/* SOCIALS */}
+          <Text style={styles.section}>Social Media</Text>
+          <View style={styles.socialGrid}>
+            {Object.keys(SOCIAL_ICONS).map(p => {
+              const Icon = SOCIAL_ICONS[p];
               return (
-                <View style={styles.socialRow} key={i}>
-                  <IconComponent
-                    width={24}
-                    height={24}
-                    stroke="#007BFF"
-                    style={{ marginRight: 8 }}
-                  />
-
-                  <TextInput
-                    style={styles.socialInputRow}
-                    placeholder={`Enter ${s.platform} username or link`}
-                    value={s.handle}
-                    onChangeText={(text) =>
-                      setSocials((prev) =>
-                        prev.map((item, idx) =>
-                          idx === i ? { ...item, handle: text } : item
-                        )
-                      )
-                    }
-                  />
-
-                  <TouchableOpacity onPress={() => removeSocial(i)}>
-                    <Text style={styles.removeXSmall}>✕</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  key={p}
+                  style={styles.socialBtn}
+                  onPress={() =>
+                    !socials.find(s => s.platform === p) &&
+                    setSocials([...socials, { platform: p, handle: "" }])
+                  }
+                >
+                  <Icon width={22} height={22} stroke="#fff" />
+                </TouchableOpacity>
               );
             })}
           </View>
+
+          {socials.map((s, i) => {
+            const Icon = SOCIAL_ICONS[s.platform];
+            return (
+              <View key={i} style={styles.row}>
+                <Icon width={22} height={22} stroke="#0B6B63" />
+                <TextInput
+                  style={styles.socialInput}
+                  placeholder={`${s.platform} username`}
+                  value={s.handle}
+                  onChangeText={t =>
+                    setSocials(prev =>
+                      prev.map((x, idx) => (idx === i ? { ...x, handle: t } : x))
+                    )
+                  }
+                />
+                <TouchableOpacity
+                  onPress={() => setSocials(prev => prev.filter((_, idx) => idx !== i))}
+                >
+                  <Text style={styles.remove}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+
+          <View style={{ height: 120 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-/* ------------------- STYLES ------------------- */
+/* ---------------- STYLES ---------------- */
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#f4f4f4" },
+  safeArea: { flex: 1, backgroundColor: "#F4FFFD" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#0B6B63" },
 
   saveBar: {
     position: "absolute",
     left: 0,
     right: 0,
-    height: 60,
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
+    height: 56,
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 999,
-    elevation: 10,
-    shadowColor: "#000",
+    zIndex: 10,
   },
+  saveText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 
-  saveBarBtn: { width: "100%", alignItems: "center" },
-  saveBarText: { fontSize: 17, fontWeight: "700" },
-
-  container: { padding: 22, paddingTop: 80, paddingBottom: 150 },
-
-  title: { fontSize: 22, fontWeight: "700", textAlign: "center" },
-
-  profilePicSection: { alignItems: "center", marginBottom: 15 },
-  imageWrapper: { alignItems: "center" },
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#ddd",
-  },
-  editPicText: { marginTop: 8, color: "#007BFF", fontWeight: "600" },
-
-  section: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 10,
-    marginTop: 20,
-  },
-  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
+  container: { padding: 18 },
+  avatarWrap: { alignItems: "center", marginBottom: 20 },
+  avatar: { width: 120, height: 120, borderRadius: 60 },
+  changePic: { marginTop: 6, color: "#4ECDC4", fontWeight: "600" },
 
   input: {
-    backgroundColor: "#f8f9fa",
     borderWidth: 1,
     borderColor: "#ddd",
+    borderRadius: 8,
     padding: 12,
-    borderRadius: 8,
-    marginBottom: 10,
+    marginBottom: 12,
   },
+  bio: { height: 100, textAlignVertical: "top" },
 
-  contactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#f8f9fa",
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    marginBottom: 10,
-  },
+  section: { fontWeight: "700", marginVertical: 10, color: "#0B6B63" },
 
-  smallCircleIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  contactInput: {
+  row: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  phoneInput: {
     flex: 1,
     borderWidth: 1,
     borderColor: "#ddd",
-    backgroundColor: "#fff",
-    padding: 8,
-    borderRadius: 8,
+    padding: 10,
+    borderRadius: 6,
   },
-
-  removeXSmall: { fontWeight: "700", fontSize: 16, color: "red" },
-
-  addBtn: { alignSelf: "center", marginTop: 6 },
-  addText: { color: "#007BFF", fontWeight: "700" },
-
-  serviceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-  },
-  serviceNameInput: {
+  serviceInput: {
     flex: 1,
     borderWidth: 1,
     borderColor: "#ddd",
-    backgroundColor: "#fff",
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 6,
   },
-
-  addServiceBtn: {
+  socialInput: {
+    flex: 1,
     borderWidth: 1,
     borderColor: "#ddd",
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  addServiceText: { fontWeight: "700", color: "#007BFF" },
-
-  socialGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 10,
+    padding: 10,
+    borderRadius: 6,
   },
 
-  socialGridBtn: {
+  addBtn: { alignSelf: "center", marginBottom: 14 },
+  addText: { color: "#4ECDC4", fontWeight: "700" },
+
+  remove: { fontSize: 18, color: "#E74C3C" },
+
+  socialGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 10 },
+  socialBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#1E1E1E",
+    backgroundColor: "#0B6B63",
     justifyContent: "center",
     alignItems: "center",
-  },
-
-  socialRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#f8f9fa",
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    marginBottom: 10,
-  },
-
-  socialInputRow: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 8,
   },
 });

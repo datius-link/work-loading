@@ -20,7 +20,9 @@ import AuthLoading from "./src/AuthLoading";
 //Provider Side
 import ProviderTabs from "./src/ProviderSide/ProviderTabs";
 import EditProvider from "./src/ProviderSide/Profile/EditProvider";
-import MyProfile from "./src/ProviderSide/Profile/MyProfile";
+import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
+
+
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -113,13 +115,6 @@ export default function App() {
               PROVIDER PROFILE
               - NO BACK BUTTON
           ----------------------- */}
-          <Stack.Screen
-            name="MyProfile"
-            component={MyProfile}
-            options={{
-              headerShown: false,
-            }}
-          />
 
           {/* ----------------------
               EDIT PROVIDER
@@ -140,6 +135,13 @@ export default function App() {
             component={ProviderTabs}
             options={{ headerShown: false }}
           />
+
+        <Stack.Screen
+          name="ProviderSettings"
+          component={ProviderSettings}
+          options={{ headerShown: false }}
+        />
+
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaView>
