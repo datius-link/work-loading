@@ -6,9 +6,10 @@ export default function AuthLoading({ navigation }) {
   useEffect(() => {
     const checkRole = async () => {
       const role = await AsyncStorage.getItem("role");
+      const token = await AsyncStorage.getItem("token");
 
-      if (role === "SERVICE_PROVIDER") {
-        navigation.replace("ProviderTabs", { screen : "Posts"});
+      if (token && role === "SERVICE_PROVIDER") {
+        navigation.replace("ProviderTabs");
       } else {
         navigation.replace("Main");
       }

@@ -6,9 +6,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 // Main Pages
 import Home from "./src/views/Home";
-import Feed from "./src/views/Feed";
-import Alerts from "./src/views/Alerts";
-import MyAccount from "./src/views/MyAccount";
+import Activities from "./src/views/Activities";
+import MyJobs from "./src/views/MyJobs";
+import You from "./src/views/You";
 
 // MyAccount Flow
 import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
@@ -39,18 +39,18 @@ function MainTabs() {
           let iconName;
 
           if (route.name === "Home") iconName = "home";
-          else if (route.name === "Feed") iconName = "stream";
-          else if (route.name === "Alerts") iconName = "bell";
-          else if (route.name === "MyAccount") iconName = "user";
+          else if (route.name === "Activities") iconName = "bolt";
+          else if (route.name === "MyJobs") iconName = "briefcase";
+          else if (route.name === "You") iconName = "user";
 
           return <FontAwesome5 name={iconName} size={size} color={color} />;
         },
       })}
     >
       <Tab.Screen name="Home" component={Home} />
-      <Tab.Screen name="Feed" component={Feed} />
-      <Tab.Screen name="Alerts" component={Alerts} />
-      <Tab.Screen name="MyAccount" component={MyAccount} />
+      <Tab.Screen name="Activities" component={Activities} />
+      <Tab.Screen name="MyJobs" component={MyJobs} options={{ title: "My Jobs" }} />
+      <Tab.Screen name="You" component={You} />
     </Tab.Navigator>
   );
 }

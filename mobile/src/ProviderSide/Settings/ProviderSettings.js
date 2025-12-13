@@ -6,6 +6,8 @@ import {
   StyleSheet,
   SafeAreaView,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Alert } from "react-native";
 import { FontAwesome5 } from "@expo/vector-icons";
 
 export default function ProviderSettings({ navigation, route }) {
@@ -16,6 +18,38 @@ export default function ProviderSettings({ navigation, route }) {
       screen: from === "MyProfile" ? "MyProfile" : "Others",
     });
   };
+
+    const handleLogout = async () => {
+    Alert.alert(
+        "Logout",
+        "Are you sure you want to logout?",
+        [
+        { text: "Cancel", style: "cancel" },
+        {
+            text: "Logout",
+            style: "destructive",
+            onPress: async () => {
+            try {
+                await AsyncStorage.multiRemove([
+                "token",
+                "role",
+                "user",
+                "provider",
+                ]);
+
+                navigation.reset({
+                index: 0,
+                routes: [{ name: "AuthLoading" }],
+                });
+            } catch (e) {
+                console.log("Logout error:", e);
+            }
+            },
+        },
+        ]
+    );
+    };
+
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -47,10 +81,11 @@ export default function ProviderSettings({ navigation, route }) {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.row}>
-          <FontAwesome5 name="sign-out-alt" size={18} color="#E74C3C" />
-          <Text style={[styles.text, { color: "#E74C3C" }]}>Logout</Text>
+        <TouchableOpacity style={styles.row} onPress={handleLogout}>
+        <FontAwesome5 name="sign-out-alt" size={18} color="#E74C3C" />
+        <Text style={[styles.text, { color: "#E74C3C" }]}>Logout</Text>
         </TouchableOpacity>
+
       </View>
     </SafeAreaView>
   );

@@ -71,18 +71,7 @@ export default function MyAccount() {
             Create a provider account and start offering services.
           </Text>
         </TouchableOpacity>
-
-        {/* QUICK PROVIDER ACCESS */}
-        <TouchableOpacity
-          style={[local.actionBtn, local.ghostBtn]}
-          onPress={() => navigation.navigate("ProviderTabs", { screen: "Posts"})}
-        >
-          <FontAwesome5 name="user-tie" size={22} color="#4ECDC4" />
-          <Text style={local.ghostText}>Open Provider Workspace</Text>
-          <Text style={local.subTextDark}>
-            For already logged-in providers.
-          </Text>
-        </TouchableOpacity>
+        
       </View>
 
       {/* SETTINGS */}
