@@ -22,6 +22,9 @@ import ProviderTabs from "./src/ProviderSide/ProviderTabs";
 import EditProvider from "./src/ProviderSide/Profile/EditProvider";
 import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
 
+//icon
+import ActivitiesIcon from "./src/icons/huge/activities.svg";
+
 
 
 const Tab = createBottomTabNavigator();
@@ -39,7 +42,9 @@ function MainTabs() {
           let iconName;
 
           if (route.name === "Home") iconName = "home";
-          else if (route.name === "Activities") iconName = "bolt";
+          else if (route.name === "Activities") {
+              return <ActivitiesIcon width={22} height={22} fill={color} />;
+            }
           else if (route.name === "MyJobs") iconName = "briefcase";
           else if (route.name === "You") iconName = "user";
 
