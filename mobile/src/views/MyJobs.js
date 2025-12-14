@@ -6,20 +6,10 @@ import {
   FlatList,
   StyleSheet,
 } from "react-native";
-import LightLoginModal from "./LightLoginModal";
-
-/**
- * MyJobs Screen
- * --------------------
- * Purpose:
- * - Show jobs posted by the user
- * - Act as the control center for job posting
- * - Enforce light login BEFORE posting a job
- *
- * RULE:
- * - If user is NOT lightly logged in → show login modal
- * - If user IS lightly logged in → allow posting
- */
+import LightLoginModal from "./LightUsers/LightLoginModal";
+import PostJobModal from "./LightUsers/PostJobModal";
+import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function MyJobs() {
   /* --------------------------------
@@ -27,10 +17,16 @@ export default function MyJobs() {
    * -------------------------------- */
   const [isLightUser, setIsLightUser] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [showPostJob, setShowPostJob] = useState(false);
 
-  /* --------------------------------
-   * JOB DATA (MVP – local)
-   * -------------------------------- */
+
+  
+  const navigation = useNavigation();
+
+  
+
+
+
   const [jobs] = useState([
     {
       id: "1",
@@ -111,17 +107,17 @@ export default function MyJobs() {
   /* --------------------------------
    * CTA HANDLER (THE INTERLOCK)
    * -------------------------------- */
-  const handlePostJob = () => {
-    if (!isLightUser) {
-      // 🔐 Enforce light login BEFORE posting
+  const handlePostJob = async () => {
+    const token = await AsyncStorage.getItem("lightToken");
+
+    if (!token) {
       setShowLogin(true);
       return;
     }
 
-    // ✅ User is authenticated enough
-    console.log("User can now post a job");
-    // later → navigation.navigate("PostJob")
+    setShowPostJob(true);
   };
+
 
   return (
     <View style={styles.container}>
@@ -150,15 +146,26 @@ export default function MyJobs() {
         <Text style={styles.postBtnText}>Post a Job</Text>
       </TouchableOpacity>
 
+      <PostJobModal
+        visible={showPostJob}
+        onClose={() => setShowPostJob(false)}
+        onSubmit={(job) => {
+          console.log("Job posted:", job);
+          // later → send to backend + refresh list
+        }}
+      />
+
+
       {/* LIGHT LOGIN MODAL */}
       <LightLoginModal
         visible={showLogin}
         onClose={() => setShowLogin(false)}
         onSuccess={() => {
-          setIsLightUser(true);   // ✅ AUTH GRANTED
           setShowLogin(false);
+          setShowPostJob(true);
         }}
       />
+
     </View>
   );
 }

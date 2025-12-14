@@ -10,6 +10,35 @@ import {
   Platform,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+
+const handleContinue = async () => {
+  if (!isValid) return;
+
+  const payload =
+    mode === "phone"
+      ? { type: "phone", contact: "+255" + phone }
+      : { type: "email", contact: email.toLowerCase() };
+
+  try {
+    const res = await axios.post(
+      `${API}/auth/light-login`,
+      payload
+    );
+
+    await AsyncStorage.setItem("lightToken", res.data.token);
+    await AsyncStorage.setItem(
+      "lightUser",
+      JSON.stringify(res.data.user)
+    );
+
+    onSuccess();
+    onClose();
+  } catch (err) {
+    console.log("Light login failed", err);
+  }
+};
 
 export default function LightLoginModal({ visible, onClose, onSuccess }) {
   const [mode, setMode] = useState("phone");
@@ -17,9 +46,6 @@ export default function LightLoginModal({ visible, onClose, onSuccess }) {
   const [email, setEmail] = useState("");
   const [phoneError, setPhoneError] = useState("");
 
-  /* ---------------------------
-   * PHONE INPUT (same logic as SignUp)
-   * --------------------------- */
   const handlePhoneInput = (value) => {
     setPhoneError("");
 
