@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import db from "../models/index.js";
 import authRoutes from "./routes/authRoutes.js";
 import serviceProviderRoutes from "./routes/serviceProvideProfile/serviceProviderRoutes.js";
+import jobRoutes from "./routes/jobRoutes.js";
 
 dotenv.config();
 const { sequelize } = db;
@@ -41,6 +42,7 @@ io.on("connection", (socket) => {
 // 4️⃣ Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/service-provider", serviceProviderRoutes);
+app.use("/api/jobs", jobRoutes);
 
 const PORT = process.env.PORT || 5000;
 

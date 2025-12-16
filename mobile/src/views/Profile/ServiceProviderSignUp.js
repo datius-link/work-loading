@@ -63,10 +63,14 @@ export default function ServiceProviderSignUp({ navigation }) {
           await AsyncStorage.setItem("token", token);
         }
 
-        // Navigate to login or profile later
+        // Navigate to verify user
         setTimeout(() => {
-            navigation.navigate("ProviderTabs", {screen: "MyProfile"});
-        }, 1200);
+          navigation.navigate("VerifyProvider", {
+            email,
+            phone: "+255" + phone,
+          });
+        }, 800);
+
         } else {
         setErrorMsg(response.data.message);
         setSuccessMsg("");

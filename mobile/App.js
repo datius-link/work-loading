@@ -24,6 +24,7 @@ import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
 
 //icon
 import ActivitiesIcon from "./src/icons/huge/activities.svg";
+import VerifyProvider from "./src/views/Profile/VerifyProvider";
 
 
 
@@ -65,8 +66,9 @@ function MainTabs() {
 --------------------------- */
 export default function App() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
-      <NavigationContainer>
+    <NavigationContainer>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+      
         <Stack.Navigator>
           {/* ----------------------
               AUTH LOADING SCREEN
@@ -116,6 +118,16 @@ export default function App() {
             }}
           />
 
+          <Stack.Screen
+            name="VerifyProvider"
+            component={VerifyProvider}
+            options={{
+              headerShown: false,
+              headerBackTitleVisible: true,
+            }}
+          />
+
+
           {/* ----------------------
               PROVIDER PROFILE
               - NO BACK BUTTON
@@ -148,7 +160,7 @@ export default function App() {
         />
 
         </Stack.Navigator>
-      </NavigationContainer>
-    </SafeAreaView>
+        </SafeAreaView>
+    </NavigationContainer>  
   );
 }
