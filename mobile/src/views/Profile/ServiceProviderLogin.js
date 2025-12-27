@@ -40,6 +40,22 @@ export default function ServiceProviderLogin({ navigation }) {
         return;
       }
 
+      if (res.data.requireVerification) {
+        await AsyncStorage.setItem("token", res.data.token);
+        navigation.replace("VerifyProvider", {
+          id: res.data.id,
+          email: res.data.email,
+          phone: res.data.phone,
+        });
+        return;
+      }
+
+      if (!res.data.success) {
+        setErrorMsg(res.data.message);
+        setSuccessMsg("");
+        return;
+      }
+
       const { token, user } = res.data;
 
       await AsyncStorage.setItem("token", token);
@@ -122,6 +138,14 @@ export default function ServiceProviderLogin({ navigation }) {
             <Text style={styles.signInText}>
               Don’t have an account?{" "}
               <Text style={styles.signInLink}>Create one</Text>
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate("ForgotPassword")}
+          >
+            <Text style={{ textAlign: "center", color: "#0B6B63", marginTop: 12 }}>
+              Forgot password?
             </Text>
           </TouchableOpacity>
 

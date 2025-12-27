@@ -63,13 +63,12 @@ export default function ServiceProviderSignUp({ navigation }) {
           await AsyncStorage.setItem("token", token);
         }
 
-        // Navigate to verify user
-        setTimeout(() => {
-          navigation.navigate("VerifyProvider", {
-            email,
-            phone: "+255" + phone,
-          });
-        }, 800);
+        await AsyncStorage.setItem("token", response.data.token);
+
+        navigation.navigate("VerifyProvider", {
+          email,
+          phone: "+255" + phone,
+        });
 
         } else {
         setErrorMsg(response.data.message);

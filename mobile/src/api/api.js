@@ -3,17 +3,23 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Create axios instance
 export const API = axios.create({
-  baseURL: "http://10.72.101.51:5000/api",
+  baseURL: process.env.EXPO_PUBLIC_API_URL,
   timeout: 10000,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-// Interceptor
-API.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem("token");
+// Attach token globally
+API.interceptors.request.use(
+  async (config) => {
+    const token = await AsyncStorage.getItem("token");
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-  return config;
-});
+    return config;
+  },
+  (error) => Promise.reject(error)
+);

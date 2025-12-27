@@ -13,6 +13,8 @@ import You from "./src/views/You";
 // MyAccount Flow
 import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
 import ServiceProviderLogin from "./src/views/Profile/ServiceProviderLogin";
+import ForgotPassword from "./src/views/Profile/ForgotPassword";
+import ResetPassword from "./src/views/Profile/ResetPassword";
 
 // Auth
 import AuthLoading from "./src/AuthLoading";
@@ -158,6 +160,19 @@ export default function App() {
           component={ProviderSettings}
           options={{ headerShown: false }}
         />
+
+        <Stack.Screen
+          name="ForgotPassword"
+          component={ForgotPassword}
+          options={{ title: "Forgot Password" }}
+        />
+
+        <Stack.Screen
+          name="ResetPassword"
+          component={ResetPassword}
+          options={{ title: "Reset Password" }}
+        />
+
 
         </Stack.Navigator>
         </SafeAreaView>
