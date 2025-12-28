@@ -133,60 +133,51 @@ export const loginUser = async (req, res) => {
 /* -----------------------------
  * RESET PASSWORD
  * ----------------------------- */
-  export const resetPassword = async (req, res) => {
-    try {
-      const { identifier, otp, newPassword } = req.body;
+export const resetPassword = async (req, res) => {
+  try {
+    const { identifier, otp, newPassword } = req.body;
 
-      if (!identifier || !otp || !newPassword) {
-        return res.json({
-          success: false,
-          message: "All fields are required",
-        });
-      }
+    if (!identifier || !otp || !newPassword) {
+      return res.json({ success: false, message: "All fields are required" });
+    }
 
-      const otpRecord = await Otp.findOne({
-        where: {
-          contact: identifier,
-          type: "password_reset",
-          code: otp,
-          verified: false,
-          expiresAt: { [Op.gt]: new Date() },
-        },
-      });
+    const otpRecord = await Otp.findOne({
+      where: {
+        contact: identifier,
+        type: "password_reset",
+        code: otp,
+        verified: true, // 🔥 FIX
+        expiresAt: { [Op.gt]: new Date() },
+      },
+    });
 
-      if (!otpRecord) {
-        return res.json({
-          success: false,
-          message: "Invalid or expired OTP",
-        });
-      }
-
-      const user = await User.findByPk(otpRecord.user_id);
-      if (!user) {
-        return res.json({
-          success: false,
-          message: "User not found",
-        });
-      }
-
-      user.password = await bcrypt.hash(newPassword, 10);
-      await user.save();
-
-      otpRecord.verified = true;
-      await otpRecord.save();
-
-      return res.json({
-        success: true,
-        message: "Password reset successful",
-      });
-    } catch (err) {
-      console.log("RESET PASSWORD ERROR:", err);
+    if (!otpRecord) {
       return res.json({
         success: false,
-        message: "Password reset failed",
+        message: "Invalid or expired OTP",
       });
     }
-  };
+
+    const user = await User.findByPk(otpRecord.user_id);
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    await otpRecord.destroy(); // 🔐 consume OTP
+
+    return res.json({
+      success: true,
+      message: "Password reset successful",
+    });
+  } catch (err) {
+    console.log("RESET PASSWORD ERROR:", err);
+    return res.json({ success: false, message: "Password reset failed" });
+  }
+};
+
 
 
   export const updateServiceProviderDetails = async (req, res) => {

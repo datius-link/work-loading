@@ -1,8 +1,8 @@
 // MyProfile.js
-// Displays service provider profile cleanly with normalized data,
-// real-time updates, and safe rendering (no dirty UI).
+// Service Provider Profile (read-only view)
+// Clean, consistent phone formatting, realtime updates
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -19,46 +19,67 @@ import { API } from "../../api/api";
 import io from "socket.io-client";
 import { SOCIAL_ICONS } from "../../icons/socialIcons";
 
-/* ---------------- CONFIG ---------------- */
+/* ================= CONFIG ================= */
 const SOCKET_URL = "http://10.125.36.51:5000";
 
+/* ================= PHONE HELPERS ================= */
+/**
+ * System rule:
+ * - Backend stores phone as digits only (9 digits)
+ * - UI adds +255 everywhere
+ */
+const normalizePhone = (phone = "") =>
+  phone.replace(/\D/g, "").replace(/^255/, "");
+
+const formatPhoneDisplay = (phone = "") =>
+  `+255 ${normalizePhone(phone)}`;
+
+const formatPhoneLink = (phone = "") =>
+  `+255${normalizePhone(phone)}`;
+
+/* ================= COMPONENT ================= */
 export default function MyProfile({ navigation }) {
   const [provider, setProvider] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  /* ---------------- LOAD PROFILE ---------------- */
-  const loadProfile = async () => {
+  /* ---------- LOAD PROFILE ---------- */
+  const loadProfile = useCallback(async () => {
     try {
+      setError(null);
       const res = await API.get("/service-provider/me");
-      setProvider(res.data.provider || null);
+      setProvider(res.data?.provider ?? null);
     } catch (err) {
       console.log("Profile load error:", err);
+      setError("Failed to load profile");
+      setProvider(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  /* ---------------- SOCKET ---------------- */
+  /* ---------- SOCKET ---------- */
   useEffect(() => {
     loadProfile();
 
     const socket = io(SOCKET_URL);
-    socket.on("providerUpdated", () => loadProfile());
+    socket.on("providerUpdated", loadProfile);
 
     return () => socket.disconnect();
-  }, []);
+  }, [loadProfile]);
 
-  /* ---------------- HELPERS ---------------- */
+  /* ---------- LINK HANDLER ---------- */
   const openUrl = async (url) => {
     try {
       if (await Linking.canOpenURL(url)) {
-        Linking.openURL(url);
+        await Linking.openURL(url);
       }
     } catch (e) {
       console.log("Open URL error:", e);
     }
   };
 
+  /* ================= STATES ================= */
   if (loading) {
     return (
       <View style={styles.center}>
@@ -67,49 +88,64 @@ export default function MyProfile({ navigation }) {
     );
   }
 
-  if (!provider) {
+  if (error || !provider) {
     return (
       <View style={styles.center}>
-        <Text style={{ color: "#777" }}>Profile not found</Text>
+        <Text style={styles.errorText}>
+          {error || "Profile not found"}
+        </Text>
+        <TouchableOpacity onPress={loadProfile} style={styles.retryBtn}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
+  /* ---------- DATA ---------- */
   const {
-    fullName,
-    username,
-    bio,
-    profilePic,
+    fullName = "",
+    username = "",
+    bio = "",
+    profilePic = "",
     contacts = [],
     services = [],
     socials = [],
   } = provider;
 
+  /* ================= UI ================= */
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* ---------------- HEADER ---------------- */}
+      {/* ---------- HEADER ---------- */}
       <View style={styles.header}>
         <Text style={styles.logo}>e-kazi</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("ProviderSettings", {from: "MyProfile"})}>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate("ProviderSettings", { from: "MyProfile" })
+          }
+        >
           <FontAwesome5 name="cog" size={22} color="#0B6B63" />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-        {/* ---------------- PROFILE CARD ---------------- */}
+        {/* ---------- PROFILE CARD ---------- */}
         <View style={styles.profileCard}>
           <Image
-            source={{ uri: profilePic || "https://via.placeholder.com/150" }}
+            source={{
+              uri: profilePic || "https://via.placeholder.com/150",
+            }}
             style={styles.avatar}
           />
 
-          <Text style={styles.name}>{fullName}</Text>
+          <Text style={styles.name}>
+            {fullName || "Unnamed Provider"}
+          </Text>
 
-          {username ? (
+          {!!username && (
             <Text style={styles.username}>@{username}</Text>
-          ) : null}
+          )}
 
-          {bio ? <Text style={styles.bio}>{bio}</Text> : null}
+          {!!bio && <Text style={styles.bio}>{bio}</Text>}
 
           <TouchableOpacity
             style={styles.editBtn}
@@ -119,31 +155,36 @@ export default function MyProfile({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* ---------------- CONTACTS ---------------- */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contacts</Text>
-
+        {/* ---------- CONTACTS ---------- */}
+        <Section title="Contacts">
           {contacts.length === 0 ? (
-            <Text style={styles.muted}>No contacts added</Text>
+            <Muted text="No contacts added" />
           ) : (
             contacts.map((c, i) => {
               const [, number, access] = c.split(":");
 
               return (
                 <View key={i} style={styles.contactRow}>
-                  <Text style={styles.contactText}>+255 {number}</Text>
+                  <Text style={styles.contactText}>
+                    {formatPhoneDisplay(number)}
+                  </Text>
 
                   <View style={styles.contactActions}>
                     {access?.includes("call") && (
                       <TouchableOpacity
-                        onPress={() => openUrl(`tel:+255${number}`)}
+                        onPress={() =>
+                          openUrl(`tel:${formatPhoneLink(number)}`)
+                        }
                       >
                         <Text style={styles.actionIcon}>📞</Text>
                       </TouchableOpacity>
                     )}
+
                     {access?.includes("sms") && (
                       <TouchableOpacity
-                        onPress={() => openUrl(`sms:+255${number}`)}
+                        onPress={() =>
+                          openUrl(`sms:${formatPhoneLink(number)}`)
+                        }
                       >
                         <Text style={styles.actionIcon}>💬</Text>
                       </TouchableOpacity>
@@ -153,14 +194,12 @@ export default function MyProfile({ navigation }) {
               );
             })
           )}
-        </View>
+        </Section>
 
-        {/* ---------------- SERVICES ---------------- */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Services</Text>
-
+        {/* ---------- SERVICES ---------- */}
+        <Section title="Services">
           {services.length === 0 ? (
-            <Text style={styles.muted}>No services added</Text>
+            <Muted text="No services added" />
           ) : (
             <View style={styles.chipsWrap}>
               {services.map((s, i) => (
@@ -170,14 +209,12 @@ export default function MyProfile({ navigation }) {
               ))}
             </View>
           )}
-        </View>
+        </Section>
 
-        {/* ---------------- SOCIALS ---------------- */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Social Media</Text>
-
+        {/* ---------- SOCIAL MEDIA ---------- */}
+        <Section title="Social Media">
           {socials.length === 0 ? (
-            <Text style={styles.muted}>No social accounts added</Text>
+            <Muted text="No social accounts added" />
           ) : (
             <View style={styles.socialGrid}>
               {socials.map((s, i) => {
@@ -185,10 +222,9 @@ export default function MyProfile({ navigation }) {
                 const Icon = SOCIAL_ICONS[platform];
                 if (!Icon) return null;
 
-                const url =
-                  handle.startsWith("http")
-                    ? handle
-                    : `https://${platform}.com/${handle}`;
+                const url = handle.startsWith("http")
+                  ? handle
+                  : `https://${platform}.com/${handle}`;
 
                 return (
                   <TouchableOpacity
@@ -202,7 +238,7 @@ export default function MyProfile({ navigation }) {
               })}
             </View>
           )}
-        </View>
+        </Section>
 
         <View style={{ height: 60 }} />
       </ScrollView>
@@ -210,10 +246,31 @@ export default function MyProfile({ navigation }) {
   );
 }
 
-/* ---------------- STYLES ---------------- */
+/* ================= SMALL COMPONENTS ================= */
+const Section = ({ title, children }) => (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    {children}
+  </View>
+);
+
+const Muted = ({ text }) => (
+  <Text style={styles.muted}>{text}</Text>
+);
+
+/* ================= STYLES ================= */
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F4FFFD" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  errorText: { color: "#E74C3C", marginBottom: 10 },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#0B6B63",
+  },
+  retryText: { color: "#fff", fontWeight: "700" },
 
   header: {
     flexDirection: "row",
@@ -225,11 +282,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#E4E4E4",
   },
-  logo: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0B6B63",
-  },
+  logo: { fontSize: 22, fontWeight: "800", color: "#0B6B63" },
 
   container: { padding: 18 },
 

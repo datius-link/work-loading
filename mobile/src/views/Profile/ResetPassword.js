@@ -9,59 +9,51 @@ import {
   Platform,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API } from "../../api/api";
 import styles from "./styles/serviceProviderStyles";
 
 export default function ResetPassword({ navigation, route }) {
-  const { identifier } = route.params;
+  const { identifier, otp } = route.params; // 🔥 IMPORTANT
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleReset = async () => {
     setErrorMsg("");
-    setSuccessMsg("");
 
     if (!newPassword || !confirmPassword) {
-      setErrorMsg("Please fill both fields.");
-      return;
+      return setErrorMsg("Please fill in both fields.");
     }
 
     if (newPassword !== confirmPassword) {
-      setErrorMsg("Passwords do not match.");
-      return;
+      return setErrorMsg("Passwords do not match.");
     }
 
     if (newPassword.length < 6) {
-      setErrorMsg("Password must be at least 6 characters.");
-      return;
+      return setErrorMsg("Password must be at least 6 characters.");
     }
 
     try {
-      setSuccessMsg("Resetting password...");
-
-      const resetToken = await AsyncStorage.getItem("resetToken");
+      setLoading(true);
 
       const res = await API.post("/auth/reset-password", {
         identifier,
+        otp,
         newPassword,
-        // token: resetToken, // Uncomment if backend requires it
       });
 
-      if (res.data.success) {
-        setSuccessMsg(res.data.message || "Password reset successfully!");
-        await AsyncStorage.removeItem("resetToken");
-
-        setTimeout(() => {
-          navigation.replace("ServiceProviderLogin");
-        }, 1500);
-      } else {
-        setErrorMsg(res.data.message || "Failed to reset password.");
+      if (!res.data.success) {
+        return setErrorMsg(res.data.message || "Failed to reset password.");
       }
+
+      // ✅ SUCCESS → GO TO LOGIN
+      navigation.replace("ServiceProviderLogin");
+
     } catch (err) {
       setErrorMsg("Server error. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -80,17 +72,11 @@ export default function ResetPassword({ navigation, route }) {
         <View style={styles.container}>
           <Text style={styles.title}>Reset Your Password</Text>
 
-          {errorMsg && (
+          {errorMsg ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{errorMsg}</Text>
             </View>
-          )}
-
-          {successMsg && (
-            <View style={styles.successBox}>
-              <Text style={styles.successText}>{successMsg}</Text>
-            </View>
-          )}
+          ) : null}
 
           <View style={styles.inputRow}>
             <Feather name="lock" size={20} color="#777" style={styles.icon} />
@@ -114,8 +100,14 @@ export default function ResetPassword({ navigation, route }) {
             />
           </View>
 
-          <TouchableOpacity style={styles.btn} onPress={handleReset}>
-            <Text style={styles.btnText}>Reset Password</Text>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={handleReset}
+            disabled={loading}
+          >
+            <Text style={styles.btnText}>
+              {loading ? "Resetting..." : "Reset Password"}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
