@@ -128,4 +128,100 @@ export default StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
+  segmented: {
+  flexDirection: "row",
+  backgroundColor: "#EAF6F4",
+  borderRadius: 16,
+  padding: 4,
+  marginVertical: 24,
+},
+
+segmentBtn: {
+  flex: 1,
+  flexDirection: "row",
+  justifyContent: "center",
+  alignItems: "center",
+  paddingVertical: 12,
+  borderRadius: 12,
+},
+
+segmentActive: {
+  backgroundColor: "#0B6B63",
+},
+
+segmentText: {
+  marginLeft: 8,
+  fontWeight: "600",
+  color: "#0B6B63",
+},
+
+segmentTextActive: {
+  color: "#fff",
+},
+
+card: {
+  backgroundColor: "#fff",
+  borderRadius: 18,
+  padding: 18,
+  marginBottom: 24,
+  shadowColor: "#000",
+  shadowOpacity: 0.05,
+  shadowRadius: 10,
+  elevation: 2,
+},
+
+cardInfo: {
+  textAlign: "center",
+  color: "#666",
+  fontSize: 13,
+  marginBottom: 14,
+},
+
+phoneRow: {
+  flexDirection: "row",
+  alignItems: "center",
+},
+
+prefixBox: {
+  backgroundColor: "#F1F5F4",
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  borderRadius: 12,
+  marginRight: 10,
+},
+
+prefixText: {
+  fontWeight: "600",
+  color: "#333",
+},
+
+phoneInputRow: {
+  flex: 1,
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#F9FAFA",
+  borderRadius: 12,
+  paddingHorizontal: 12,
+},
+
+phoneInput: {
+  flex: 1,
+  paddingLeft: 10,
+  fontSize: 15,
+},
+
+error: {
+  color: "#E53935",
+  fontSize: 13,
+  marginTop: 10,
+  textAlign: "center",
+},
+
+backText: {
+  textAlign: "center",
+  color: "#0B6B63",
+  marginTop: 16,
+  fontWeight: "600",
+},
+
 });

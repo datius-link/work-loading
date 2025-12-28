@@ -13,7 +13,7 @@ export default (sequelize, DataTypes) => {
       },
 
       type: {
-        type: DataTypes.ENUM("phone", "email"),
+        type: DataTypes.ENUM("phone", "email", "password_reset"),
         allowNull: false,
       },
 

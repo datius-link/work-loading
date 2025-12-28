@@ -133,14 +133,189 @@ export const loginUser = async (req, res) => {
 /* -----------------------------
  * RESET PASSWORD
  * ----------------------------- */
-export const resetPassword = async (req, res) => {
-  try {
-    const { identifier, otp, newPassword } = req.body;
+  export const resetPassword = async (req, res) => {
+    try {
+      const { identifier, otp, newPassword } = req.body;
 
-    if (!identifier || !otp || !newPassword) {
+      if (!identifier || !otp || !newPassword) {
+        return res.json({
+          success: false,
+          message: "All fields are required",
+        });
+      }
+
+      const otpRecord = await Otp.findOne({
+        where: {
+          contact: identifier,
+          type: "password_reset",
+          code: otp,
+          verified: false,
+          expiresAt: { [Op.gt]: new Date() },
+        },
+      });
+
+      if (!otpRecord) {
+        return res.json({
+          success: false,
+          message: "Invalid or expired OTP",
+        });
+      }
+
+      const user = await User.findByPk(otpRecord.user_id);
+      if (!user) {
+        return res.json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      user.password = await bcrypt.hash(newPassword, 10);
+      await user.save();
+
+      otpRecord.verified = true;
+      await otpRecord.save();
+
+      return res.json({
+        success: true,
+        message: "Password reset successful",
+      });
+    } catch (err) {
+      console.log("RESET PASSWORD ERROR:", err);
       return res.json({
         success: false,
-        message: "All fields are required",
+        message: "Password reset failed",
+      });
+    }
+  };
+
+
+  export const updateServiceProviderDetails = async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { email, phone } = req.body;
+
+      const emailTaken = await User.findOne({
+        where: { email, id: { [Op.ne]: userId } },
+      });
+      if (emailTaken) {
+        return res.json({ success: false, message: "Email already in use" });
+      }
+
+      const phoneTaken = await User.findOne({
+        where: { phone, id: { [Op.ne]: userId } },
+      });
+      if (phoneTaken) {
+        return res.json({ success: false, message: "Phone already in use" });
+      }
+
+      await User.update(
+        { email, phone },
+        { where: { id: userId } }
+      );
+
+      return res.json({
+        success: true,
+        message: "Details updated successfully",
+      });
+    } catch (err) {
+      console.error("UPDATE DETAILS ERROR:", err);
+      return res.json({ success: false, message: "Failed to update details" });
+    }
+  };
+
+  export const getMe = async (req, res) => {
+    try {
+      const user = await User.findByPk(req.user.id, {
+        attributes: ["email", "phone", "name", "isVerified"],
+      });
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      return res.json(user);
+    } catch (err) {
+      console.error("GET ME ERROR:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  };
+
+  /* -----------------------------
+  * FORGOT PASSWORD – SEND OTP
+  * ----------------------------- */
+  export const forgotPassword = async (req, res) => {
+    try {
+      const { identifier } = req.body;
+
+      if (!identifier) {
+        return res.json({
+          success: false,
+          message: "Email or phone is required",
+        });
+      }
+
+      // 1. Find user
+      const user = await User.findOne({
+        where: {
+          [Op.or]: [{ email: identifier }, { phone: identifier }],
+        },
+      });
+
+      if (!user) {
+        return res.json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      // 2. Clear old reset OTPs
+      await Otp.destroy({
+        where: {
+          user_id: user.id,
+          type: "password_reset",
+        },
+      });
+
+      // 3. Generate OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+      // 4. Save OTP
+      await Otp.create({
+        user_id: user.id,
+        contact: identifier,
+        type: "password_reset",
+        code: otp,
+        expiresAt,
+      });
+
+      // 5. MOCK SEND (for now)
+      console.log("🔐 PASSWORD RESET OTP:", otp);
+
+      return res.json({
+        success: true,
+        message: "Password reset code sent",
+      });
+    } catch (err) {
+      console.log("FORGOT PASSWORD ERROR:", err);
+      return res.json({
+        success: false,
+        message: "Failed to send reset code",
+      });
+    }
+  };
+
+/* -----------------------------
+ * VERIFY RESET OTP
+ * ----------------------------- */
+export const verifyResetOtp = async (req, res) => {
+  try {
+    const { identifier, otp } = req.body;
+
+    if (!identifier || !otp) {
+      return res.json({
+        success: false,
+        message: "Identifier and OTP are required",
       });
     }
 
@@ -150,9 +325,7 @@ export const resetPassword = async (req, res) => {
         type: "password_reset",
         code: otp,
         verified: false,
-        expiresAt: {
-          [Op.gt]: new Date(),
-        },
+        expiresAt: { [Op.gt]: new Date() },
       },
     });
 
@@ -163,88 +336,18 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({
-      where: {
-        [Op.or]: [{ email: identifier }, { phone: identifier }],
-      },
-    });
-
-    if (!user) {
-      return res.json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    await user.save();
-
-    // invalidate OTP
     otpRecord.verified = true;
     await otpRecord.save();
 
     return res.json({
       success: true,
-      message: "Password reset successful",
+      message: "OTP verified",
     });
   } catch (err) {
-    console.log("RESET PASSWORD ERROR:", err);
+    console.log("VERIFY RESET OTP ERROR:", err);
     return res.json({
       success: false,
-      message: "Password reset failed",
+      message: "OTP verification failed",
     });
-  }
-};
-
-export const updateServiceProviderDetails = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { email, phone } = req.body;
-
-    const emailTaken = await User.findOne({
-      where: { email, id: { [Op.ne]: userId } },
-    });
-    if (emailTaken) {
-      return res.json({ success: false, message: "Email already in use" });
-    }
-
-    const phoneTaken = await User.findOne({
-      where: { phone, id: { [Op.ne]: userId } },
-    });
-    if (phoneTaken) {
-      return res.json({ success: false, message: "Phone already in use" });
-    }
-
-    await User.update(
-      { email, phone },
-      { where: { id: userId } }
-    );
-
-    return res.json({
-      success: true,
-      message: "Details updated successfully",
-    });
-  } catch (err) {
-    console.error("UPDATE DETAILS ERROR:", err);
-    return res.json({ success: false, message: "Failed to update details" });
-  }
-};
-
-export const getMe = async (req, res) => {
-  try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: ["email", "phone", "name", "isVerified"],
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    return res.json(user);
-  } catch (err) {
-    console.error("GET ME ERROR:", err);
-    return res.status(500).json({ message: "Server error" });
   }
 };

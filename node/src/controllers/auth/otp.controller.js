@@ -142,67 +142,6 @@ export const mockVerifyOtp = async (req, res) => {
   }
 };
 
-/* -----------------------------
- * FORGOT PASSWORD – SEND OTP
- * ----------------------------- */
-export const forgotPassword = async (req, res) => {
-  try {
-    const { identifier } = req.body;
-
-    if (!identifier) {
-      return res.json({
-        success: false,
-        message: "Email or phone is required",
-      });
-    }
-
-    const user = await User.findOne({
-      where: {
-        [Op.or]: [{ email: identifier }, { phone: identifier }],
-      },
-    });
-
-    if (!user) {
-      return res.json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // clear old OTPs for this contact
-    await Otp.destroy({
-      where: { contact: identifier },
-    });
-
-
-    const otp = generateOtp();
-    const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 min
-
-    await Otp.create({
-      contact: identifier,
-      type: "password_reset",
-      code: otp,
-      expiresAt: expires,
-    });
-
-    // MOCK DELIVERY
-    console.log("🔐 PASSWORD RESET OTP:", otp);
-
-    console.log("📲 MOCK PHONE OTP:", phoneOtp);
-    console.log("📧 MOCK EMAIL OTP:", emailOtp);
-
-    return res.json({
-      success: true,
-      message: "Password reset code sent",
-    });
-  } catch (err) {
-    console.log("FORGOT PASSWORD ERROR:", err);
-    return res.json({
-      success: false,
-      message: "Failed to send reset code",
-    });
-  }
-};
 
 // SEND VERIFICATION OTP
 export const sendVerificationOtp = async (req, res) => {

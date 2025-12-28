@@ -1,7 +1,6 @@
 import express from "express";
-import { registerUser, loginUser, resetPassword, getMe } from "../controllers/auth/authController.js";
+import { registerUser, loginUser, resetPassword, getMe, forgotPassword, verifyResetOtp } from "../controllers/auth/authController.js";
 import { lightLogin } from "../controllers/LightUser/lightAuth.controller.js";
-import { forgotPassword } from "../controllers/auth/otp.controller.js";
 import { mockSendOtp, mockVerifyOtp } from "../controllers/auth/otp.controller.js";
 import { sendVerificationOtp } from "../controllers/auth/otp.controller.js";
 import { updateServiceProviderDetails } from "../controllers/auth/authController.js";
@@ -40,4 +39,5 @@ router.post("/mock-verify-otp", mockVerifyOtp);
 
 router.get("/me", verifyAuth, getMe);
 
+router.post("/verify-reset-otp", verifyResetOtp)
 export default router;
