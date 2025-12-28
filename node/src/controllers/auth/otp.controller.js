@@ -208,6 +208,7 @@ export const forgotPassword = async (req, res) => {
 export const sendVerificationOtp = async (req, res) => {
   try {
     const { email, phone } = req.body;
+    const userId = req.user.id; // Add this – from JWT
 
     if (!email || !phone) {
       return res.json({ success: false, message: "Email and phone required" });
@@ -226,8 +227,8 @@ export const sendVerificationOtp = async (req, res) => {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     await Otp.bulkCreate([
-      { contact: phone, type: "phone", code: phoneOtp, expiresAt },
-      { contact: email, type: "email", code: emailOtp, expiresAt },
+      { user_id: userId, contact: phone, type: "phone", code: phoneOtp, expiresAt }, // Add user_id
+      { user_id: userId, contact: email, type: "email", code: emailOtp, expiresAt }, // Add user_id
     ]);
 
     // 🔥 MOCK DISPLAY (THIS IS WHY YOU "DON'T SEE OTP")

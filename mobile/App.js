@@ -4,54 +4,57 @@ import { createStackNavigator } from "@react-navigation/stack";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// Main Pages
+/* ---------------------------
+   MAIN USER SCREENS
+--------------------------- */
 import Home from "./src/views/Home";
 import Activities from "./src/views/Activities";
 import MyJobs from "./src/views/MyJobs";
 import You from "./src/views/You";
 
-// MyAccount Flow
-import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
+/* ---------------------------
+   AUTH / ACCOUNT SCREENS
+--------------------------- */
+import AuthLoading from "./src/AuthLoading";
 import ServiceProviderLogin from "./src/views/Profile/ServiceProviderLogin";
+import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
+import VerifyProvider from "./src/views/Profile/VerifyProvider";
 import ForgotPassword from "./src/views/Profile/ForgotPassword";
 import ResetPassword from "./src/views/Profile/ResetPassword";
 
-// Auth
-import AuthLoading from "./src/AuthLoading";
-
-//Provider Side
+/* ---------------------------
+   PROVIDER SIDE
+--------------------------- */
 import ProviderTabs from "./src/ProviderSide/ProviderTabs";
 import EditProvider from "./src/ProviderSide/Profile/EditProvider";
 import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
 
-//icon
-import ActivitiesIcon from "./src/icons/huge/activities.svg";
-import VerifyProvider from "./src/views/Profile/VerifyProvider";
-
-
-
-const Tab = createBottomTabNavigator();
-const Stack = createStackNavigator();
-
 /* ---------------------------
-   MAIN USER BOTTOM TABS
+   ICONS
 --------------------------- */
+import ActivitiesIcon from "./src/icons/huge/activities.svg";
+
+const Stack = createStackNavigator();
+const Tab = createBottomTabNavigator();
+
+/* =====================================================
+   MAIN USER TABS
+===================================================== */
 function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ color, size }) => {
-          let iconName;
+          if (route.name === "Activities") {
+            return <ActivitiesIcon width={22} height={22} fill={color} />;
+          }
 
-          if (route.name === "Home") iconName = "home";
-          else if (route.name === "Activities") {
-              return <ActivitiesIcon width={22} height={22} fill={color} />;
-            }
-          else if (route.name === "MyJobs") iconName = "briefcase";
-          else if (route.name === "You") iconName = "user";
+          let icon = "home";
+          if (route.name === "MyJobs") icon = "briefcase";
+          if (route.name === "You") icon = "user";
 
-          return <FontAwesome5 name={iconName} size={size} color={color} />;
+          return <FontAwesome5 name={icon} size={size} color={color} />;
         },
       })}
     >
@@ -63,119 +66,85 @@ function MainTabs() {
   );
 }
 
-/* ---------------------------
-   APP ROOT NAVIGATION
---------------------------- */
+/* =====================================================
+   APP ROOT
+===================================================== */
 export default function App() {
   return (
     <NavigationContainer>
       <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
-      
-        <Stack.Navigator>
-          {/* ----------------------
-              AUTH LOADING SCREEN
-              - NO BACK
-          ----------------------- */}
-          <Stack.Screen
-            name="AuthLoading"
-            component={AuthLoading}
-            options={{ headerShown: false }}
-          />
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
 
-          {/* ----------------------
-              MAIN USER TABS
-              - NO BACK
-          ----------------------- */}
-          <Stack.Screen
-            name="Main"
-            component={MainTabs}
-            options={{ headerShown: false }}
-          />
+          {/* --------------------------------
+              INITIAL AUTH CHECK
+          -------------------------------- */}
+          <Stack.Screen name="AuthLoading" component={AuthLoading} />
 
-          {/* ----------------------
-              PROVIDER LOGIN
-              - BACK TO MyAccount ONLY
-          ----------------------- */}
+          {/* --------------------------------
+              NORMAL USER FLOW
+          -------------------------------- */}
+          <Stack.Screen name="MainTabs" component={MainTabs} />
+
+          {/* --------------------------------
+              PROVIDER AUTH FLOW
+          -------------------------------- */}
           <Stack.Screen
             name="ServiceProviderLogin"
             component={ServiceProviderLogin}
-            options={{
-              headerShown: true,
-              title: "Provider Login",
-              headerBackTitleVisible: false,
-            }}
+            options={{ headerShown: true, title: "Provider Login" }}
           />
 
-          {/* ----------------------
-              PROVIDER SIGN UP
-              - BACK TO MyAccount ONLY
-          ----------------------- */}
           <Stack.Screen
             name="ServiceProviderSignUp"
             component={ServiceProviderSignUp}
-            options={{
-              headerShown: true,
-              title: "Create Provider Account",
-              headerBackTitleVisible: false,
-            }}
+            options={{ headerShown: true, title: "Create Provider Account" }}
           />
 
           <Stack.Screen
             name="VerifyProvider"
             component={VerifyProvider}
-            options={{
-              headerShown: false,
-              headerBackTitleVisible: true,
-            }}
           />
 
-
-          {/* ----------------------
-              PROVIDER PROFILE
-              - NO BACK BUTTON
-          ----------------------- */}
-
-          {/* ----------------------
-              EDIT PROVIDER
-              - BACK ONLY TO PROFILE
-          ----------------------- */}
-          <Stack.Screen
-            name="EditProvider"
-            component={EditProvider}
-            options={{
-              headerShown: true,
-              title: "Edit Profile",
-              headerBackTitleVisible: false,
-            }}
-          />
-
+          {/* --------------------------------
+              PROVIDER ROOT (🔥 IMPORTANT)
+              THIS IS WHERE VERIFY SENDS USER
+          -------------------------------- */}
           <Stack.Screen
             name="ProviderTabs"
             component={ProviderTabs}
-            options={{ headerShown: false }}
           />
 
-        <Stack.Screen
-          name="ProviderSettings"
-          component={ProviderSettings}
-          options={{ headerShown: false }}
-        />
+          {/* --------------------------------
+              PROVIDER EXTRA SCREENS
+          -------------------------------- */}
+          <Stack.Screen
+            name="EditProvider"
+            component={EditProvider}
+            options={{ headerShown: true, title: "Edit Profile" }}
+          />
 
-        <Stack.Screen
-          name="ForgotPassword"
-          component={ForgotPassword}
-          options={{ title: "Forgot Password" }}
-        />
+          <Stack.Screen
+            name="ProviderSettings"
+            component={ProviderSettings}
+          />
 
-        <Stack.Screen
-          name="ResetPassword"
-          component={ResetPassword}
-          options={{ title: "Reset Password" }}
-        />
+          {/* --------------------------------
+              PASSWORD RECOVERY
+          -------------------------------- */}
+          <Stack.Screen
+            name="ForgotPassword"
+            component={ForgotPassword}
+            options={{ headerShown: true, title: "Forgot Password" }}
+          />
 
+          <Stack.Screen
+            name="ResetPassword"
+            component={ResetPassword}
+            options={{ headerShown: true, title: "Reset Password" }}
+          />
 
         </Stack.Navigator>
-        </SafeAreaView>
-    </NavigationContainer>  
+      </SafeAreaView>
+    </NavigationContainer>
   );
 }

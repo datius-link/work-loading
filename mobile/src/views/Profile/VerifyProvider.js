@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -34,17 +34,40 @@ export default function VerifyProvider({ navigation, route }) {
 
   const [cooldown, setCooldown] = useState(0);
 
+  const isMounted = useRef(true);
+  const exiting = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown(cooldown - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+
   /* -------------------------------
    * BLOCK BACK BUTTON
    * ------------------------------- */
   useFocusEffect(
     useCallback(() => {
-      const onBackPress = () => true;
-      BackHandler.addEventListener("hardwareBackPress", onBackPress);
-      return () =>
-        BackHandler.removeEventListener("hardwareBackPress", onBackPress);
+      const onBackPress = () => true; // block back
+
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress
+      );
+
+      return () => {
+        subscription.remove(); // ✅ SAHIHI
+      };
     }, [])
   );
+
 
 
   useEffect(() => {
@@ -122,21 +145,30 @@ export default function VerifyProvider({ navigation, route }) {
    * ------------------------------- */
   const requestOtp = async (silent = false) => {
     try {
-      if (!silent) setLoading(true);
+      if (!silent && isMounted.current && !exiting.current) {
+        setLoading(true);
+      }
 
       await API.post("/auth/send-verification-otp", {
         email,
         phone: "+255" + phone,
       });
 
+      if (!isMounted.current || exiting.current) return;
+
       setCooldown(60);
       setInfo("Verification codes sent.");
     } catch (err) {
-      Alert.alert("Error", "Failed to send OTP");
+      if (!exiting.current) {
+        Alert.alert("Error", "Failed to send OTP");
+      }
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && isMounted.current && !exiting.current) {
+        setLoading(false);
+      }
     }
   };
+
 
   /* -------------------------------
    * VERIFY OTP
@@ -148,6 +180,7 @@ export default function VerifyProvider({ navigation, route }) {
     }
 
     try {
+      exiting.current = true;   // 🔥 freeze everything
       setLoading(true);
 
       const res = await API.post("/auth/verify-otp", {
@@ -156,42 +189,36 @@ export default function VerifyProvider({ navigation, route }) {
       });
 
       if (!res.data.success) {
+        exiting.current = false;
         Alert.alert("Verification failed", res.data.message);
+        if (isMounted.current) setLoading(false);
         return;
       }
-
-      /**
-       * 🔥 THIS IS THE MOST IMPORTANT PART
-       * We REMOVE old token and SAVE the NEW one
-       */
-      await AsyncStorage.multiRemove(["token", "role"]);
 
       await AsyncStorage.multiSet([
         ["token", res.data.token],
         ["role", "serviceProvider"],
       ]);
 
-      /**
-       * OPTIONAL DEBUG (weka mara ya kwanza tu)
-       */
-      const savedToken = await AsyncStorage.getItem("token");
-      console.log("✅ NEW TOKEN SAVED:", savedToken);
+      console.log("✅ NEW TOKEN SAVED:", res.data.token);
 
-      /**
-       * RESET navigation → user anaingia app clean
-       */
+      // ⛔ ABSOLUTE END OF LIFE FOR THIS SCREEN
       navigation.reset({
         index: 0,
         routes: [{ name: "ProviderTabs" }],
       });
 
+      return; // ☠️ NOTHING BELOW THIS LINE
+
     } catch (err) {
+      exiting.current = false;
       console.log("VERIFY ERROR:", err);
       Alert.alert("Error", "Verification failed");
-    } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   };
+
+
 
 
   /* -------------------------------

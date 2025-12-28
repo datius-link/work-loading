@@ -10,7 +10,7 @@ export default function AuthLoading({ navigation }) {
 
       // 1️⃣ Hakuna token → public app
       if (!token) {
-        navigation.replace("Main");
+        navigation.replace("MainTabs");
         return;
       }
 
@@ -31,7 +31,7 @@ export default function AuthLoading({ navigation }) {
       } catch (err) {
         // token mbovu / expired
         await AsyncStorage.multiRemove(["token", "role"]);
-        navigation.replace("Main");
+        navigation.replace("MainTabs");
       }
     };
 
