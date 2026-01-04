@@ -8,6 +8,8 @@ export const API = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+
+
 });
 
 // Attach token globally
@@ -18,6 +20,8 @@ API.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    console.log("API BASE URL 👉", process.env.EXPO_PUBLIC_API_URL);
 
     return config;
   },

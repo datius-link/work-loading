@@ -1,8 +1,4 @@
-// EditProvider.js
-// Full service provider profile editor with image upload, contacts, services, socials,
-// real-time sync, animations, and clean normalized data handling.
-
-import React, { useEffect, useRef, useState } from "react";
+import React, { use, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -20,11 +16,9 @@ import {
 } from "react-native";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { API } from "../../api/api";
-import io from "socket.io-client";
 import { SOCIAL_ICONS } from "../../icons/socialIcons";
+import { uploadProviderPhoto } from "../../lib/storage.providers";
 
-/* ---------------- CONFIG ---------------- */
-const SOCKET_URL = "http://10.125.36.51:5000";
 
 /* ---------------- IMAGE PICKER ---------------- */
 let ImagePicker;
@@ -61,16 +55,8 @@ export default function EditProvider({ navigation }) {
         useNativeDriver: false,
       }),
       Animated.sequence([
-        Animated.timing(fadeAnim, {
-          toValue: 0.5,
-          duration: 160,
-          useNativeDriver: false,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 160,
-          useNativeDriver: false,
-        }),
+        Animated.timing(fadeAnim, { toValue: 0.5, duration: 160, useNativeDriver: false }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 160, useNativeDriver: false }),
       ]),
     ]).start();
   };
@@ -94,61 +80,78 @@ export default function EditProvider({ navigation }) {
       setBio(p.bio || "");
       setProfilePic(p.profilePic || "");
 
-      setServices((p.services || []).map(s => ({ name: s })));
+      setServices((p.services || []).map((s) => ({ name: s })));
 
       setContacts(
-        (p.contacts || []).map(c => {
-          const [, number, access] = c.split(":");
+        (p.contacts || []).map((c) => {
+          const parts = c.split(":");
+          const number = parts[1] || "";
+          const access = parts[2] || "";
           return {
             number,
-            allowCall: access?.includes("call"),
-            allowSMS: access?.includes("sms"),
+            allowCall: access.includes("call"),
+            allowSMS: access.includes("sms"),
           };
         })
       );
 
       setSocials(
-        (p.socials || []).map(s => {
+        (p.socials || []).map((s) => {
           const [platform, handle] = s.split(":");
-          return { platform, handle };
+          return { platform, handle: handle || "" };
         })
       );
     } catch (e) {
       console.log("Load profile error:", e);
+      Alert.alert("Error", "Failed to load profile");
     } finally {
       setLoading(false);
     }
   };
 
-  /* ---------------- SOCKET ---------------- */
-  useEffect(() => {
-    loadProfile();
-
-    const socket = io(SOCKET_URL);
-    socket.on("providerUpdated", () => loadProfile());
-
-    return () => socket.disconnect();
-  }, []);
-
-  /* ---------------- IMAGE PICK ---------------- */
+  /* ---------------- IMAGE PICK (Single Version) ---------------- */
   const pickImage = async () => {
-    if (!ImagePicker) return;
+    if (!ImagePicker) {
+      Alert.alert("Error", "Image picker not available");
+      return;
+    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       aspect: [1, 1],
+      quality: 0.8,
       base64: true,
-      quality: 0.7,
     });
 
-    if (!result.canceled) {
-      const base64 = "data:image/jpg;base64," + result.assets[0].base64;
-      const upload = await API.post("/service-provider/upload-pic", { image: base64 });
-      if (upload.data.success) setProfilePic(upload.data.url);
+    if (result.canceled || !result.assets?.[0]) return;
+
+    try {
+      // Get provider ID first
+      const res = await API.get("/service-provider/me");
+      const providerId = res.data.provider.id;
+
+      const asset = result.assets[0];
+
+      // Upload via Supabase (recommended for direct control & security)
+      const imageUrl = await uploadProviderPhoto(
+        providerId,
+        asset.base64,
+        asset.mimeType || "image/jpeg"
+      );
+
+      // Update local preview immediately
+      setProfilePic(imageUrl);
+    } catch (err) {
+      console.log("Photo upload error:", err);
+      Alert.alert("Error", "Failed to upload photo. Please try again.");
     }
   };
 
-  /* ---------------- SAVE ---------------- */
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  /* ---------------- SAVE PROFILE ---------------- */
   const saveProfile = async () => {
     setSaving(true);
     setStatus("saving");
@@ -160,9 +163,13 @@ export default function EditProvider({ navigation }) {
         username,
         bio,
         profilePic,
-        services: services.map(s => s.name),
-        socials: socials.map(s => `${s.platform}:${s.handle.replace(/^@/, "")}`),
-        contacts,
+        services: services.map((s) => s.name).filter(Boolean),
+        socials: socials
+          .filter((s) => s.handle.trim())
+          .map((s) => `${s.platform}:${s.handle.replace(/^@/, "")}`),
+        contacts: contacts
+          .filter((c) => c.number.length === 9)
+          .map((c) => `+255:${c.number}:${["call", "sms"].filter((t) => c[`allow${t.charAt(0).toUpperCase() + t.slice(1)}`]).join(",")}`),
       });
 
       setStatus("success");
@@ -208,15 +215,11 @@ export default function EditProvider({ navigation }) {
             top: slideAnim,
             opacity: fadeAnim,
             backgroundColor:
-              status === "success"
-                ? "#2ECC71"
-                : status === "error"
-                ? "#E74C3C"
-                : "#0B6B63",
+              status === "success" ? "#2ECC71" : status === "error" ? "#E74C3C" : "#0B6B63",
           },
         ]}
       >
-        <TouchableOpacity onPress={saveProfile}>
+        <TouchableOpacity onPress={saveProfile} disabled={saving}>
           <Text style={styles.saveText}>
             {status === "saving"
               ? "Saving..."
@@ -230,15 +233,17 @@ export default function EditProvider({ navigation }) {
       </Animated.View>
 
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+
         <ScrollView contentContainerStyle={styles.container}>
           {/* PROFILE PIC */}
           <TouchableOpacity style={styles.avatarWrap} onPress={pickImage}>
             <Image
               source={{ uri: profilePic || "https://via.placeholder.com/120" }}
               style={styles.avatar}
+              defaultSource={{ uri: "https://via.placeholder.com/120" }}
             />
             <Text style={styles.changePic}>Change photo</Text>
           </TouchableOpacity>
@@ -270,20 +275,25 @@ export default function EditProvider({ navigation }) {
           <Text style={styles.section}>Contacts</Text>
           {contacts.map((c, i) => (
             <View key={i} style={styles.row}>
-              <Text>+255</Text>
+              <Text style={{ fontSize: 16 }}>+255</Text>
               <TextInput
                 style={styles.phoneInput}
                 keyboardType="numeric"
                 maxLength={9}
                 value={c.number}
-                onChangeText={t =>
-                  setContacts(prev =>
+                onChangeText={(t) =>
+                  setContacts((prev) =>
                     prev.map((x, idx) =>
                       idx === i ? { ...x, number: t.replace(/\D/g, "") } : x
                     )
                   )
                 }
               />
+              <TouchableOpacity
+                onPress={() => setContacts((prev) => prev.filter((_, idx) => idx !== i))}
+              >
+                <Text style={styles.remove}>✕</Text>
+              </TouchableOpacity>
             </View>
           ))}
 
@@ -304,14 +314,14 @@ export default function EditProvider({ navigation }) {
                 style={styles.serviceInput}
                 placeholder="Service name"
                 value={s.name}
-                onChangeText={t =>
-                  setServices(prev =>
+                onChangeText={(t) =>
+                  setServices((prev) =>
                     prev.map((x, idx) => (idx === i ? { ...x, name: t } : x))
                   )
                 }
               />
               <TouchableOpacity
-                onPress={() => setServices(prev => prev.filter((_, idx) => idx !== i))}
+                onPress={() => setServices((prev) => prev.filter((_, idx) => idx !== i))}
               >
                 <Text style={styles.remove}>✕</Text>
               </TouchableOpacity>
@@ -328,16 +338,15 @@ export default function EditProvider({ navigation }) {
           {/* SOCIALS */}
           <Text style={styles.section}>Social Media</Text>
           <View style={styles.socialGrid}>
-            {Object.keys(SOCIAL_ICONS).map(p => {
+            {Object.keys(SOCIAL_ICONS).map((p) => {
               const Icon = SOCIAL_ICONS[p];
+              const isAdded = socials.some((s) => s.platform === p);
               return (
                 <TouchableOpacity
                   key={p}
-                  style={styles.socialBtn}
-                  onPress={() =>
-                    !socials.find(s => s.platform === p) &&
-                    setSocials([...socials, { platform: p, handle: "" }])
-                  }
+                  style={[styles.socialBtn, isAdded && { opacity: 0.5 }]}
+                  onPress={() => !isAdded && setSocials([...socials, { platform: p, handle: "" }])}
+                  disabled={isAdded}
                 >
                   <Icon width={22} height={22} stroke="#fff" />
                 </TouchableOpacity>
@@ -352,16 +361,16 @@ export default function EditProvider({ navigation }) {
                 <Icon width={22} height={22} stroke="#0B6B63" />
                 <TextInput
                   style={styles.socialInput}
-                  placeholder={`${s.platform} username`}
+                  placeholder={`@${s.platform} handle`}
                   value={s.handle}
-                  onChangeText={t =>
-                    setSocials(prev =>
-                      prev.map((x, idx) => (idx === i ? { ...x, handle: t } : x))
+                  onChangeText={(t) =>
+                    setSocials((prev) =>
+                      prev.map((x, idx) => (idx === i ? { ...x, handle: t.replace(/^@/, "") } : x))
                     )
                   }
                 />
                 <TouchableOpacity
-                  onPress={() => setSocials(prev => prev.filter((_, idx) => idx !== i))}
+                  onPress={() => setSocials((prev) => prev.filter((_, idx) => idx !== i))}
                 >
                   <Text style={styles.remove}>✕</Text>
                 </TouchableOpacity>
@@ -405,7 +414,7 @@ const styles = StyleSheet.create({
 
   container: { padding: 18 },
   avatarWrap: { alignItems: "center", marginBottom: 20 },
-  avatar: { width: 120, height: 120, borderRadius: 60 },
+  avatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: "#eee" },
   changePic: { marginTop: 6, color: "#4ECDC4", fontWeight: "600" },
 
   input: {
@@ -414,10 +423,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
+    backgroundColor: "#fff",
   },
   bio: { height: 100, textAlignVertical: "top" },
 
-  section: { fontWeight: "700", marginVertical: 10, color: "#0B6B63" },
+  section: { fontWeight: "700", marginVertical: 14, color: "#0B6B63", fontSize: 16 },
 
   row: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
   phoneInput: {
@@ -426,6 +436,7 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     padding: 10,
     borderRadius: 6,
+    backgroundColor: "#fff",
   },
   serviceInput: {
     flex: 1,
@@ -433,6 +444,7 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     padding: 10,
     borderRadius: 6,
+    backgroundColor: "#fff",
   },
   socialInput: {
     flex: 1,
@@ -440,14 +452,15 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     padding: 10,
     borderRadius: 6,
+    backgroundColor: "#fff",
   },
 
-  addBtn: { alignSelf: "center", marginBottom: 14 },
-  addText: { color: "#4ECDC4", fontWeight: "700" },
+  addBtn: { alignSelf: "center", marginVertical: 10 },
+  addText: { color: "#4ECDC4", fontWeight: "700", fontSize: 15 },
 
-  remove: { fontSize: 18, color: "#E74C3C" },
+  remove: { fontSize: 20, color: "#E74C3C", paddingHorizontal: 8 },
 
-  socialGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 10 },
+  socialGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 16 },
   socialBtn: {
     width: 44,
     height: 44,
