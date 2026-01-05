@@ -6,36 +6,31 @@ import { useFocusEffect } from "@react-navigation/native";
 
 // Screens
 import MyProfile from "./Profile/MyProfile";
-import PostsScreen from "./providerPosts/PostsScreen";
 import OthersScreen from "./Others/OthersScreen";
+import ProviderSettings from "./Settings/ProviderSettings";
 
+// STACK
+import ProviderPostsStack from "./providerPosts/ProviderPostsStack";
+
+const Tab = createBottomTabNavigator();
 
 function RequestsScreen() {
   return null;
 }
 
 function ProviderAlertsScreen() {
-  return null; // placeholder
+  return null;
 }
 
-const Tab = createBottomTabNavigator();
-
 export default function ProviderTabs() {
-
   useFocusEffect(
     React.useCallback(() => {
-      const onBackPress = () => {
-        return true; // 🚫 block back button completely
-      };
-
+      const onBackPress = () => true;
       const subscription = BackHandler.addEventListener(
         "hardwareBackPress",
         onBackPress
       );
-
-      return () => {
-        subscription.remove(); // ✅ CORRECT cleanup
-      };
+      return () => subscription.remove();
     }, [])
   );
 
@@ -46,7 +41,7 @@ export default function ProviderTabs() {
         tabBarActiveTintColor: "#007bff",
         tabBarInactiveTintColor: "#777",
         tabBarIcon: ({ color, size }) => {
-          let iconName;
+          let iconName = "circle";
 
           switch (route.name) {
             case "Others":
@@ -66,12 +61,18 @@ export default function ProviderTabs() {
               break;
           }
 
-          return <FontAwesome5 name={iconName} size={size} color={color} />;
+          return (
+            <FontAwesome5
+              name={iconName}
+              size={size}
+              color={color}
+            />
+          );
         },
       })}
     >
       <Tab.Screen name="Others" component={OthersScreen} />
-      <Tab.Screen name="Posts" component={PostsScreen} />
+      <Tab.Screen name="Posts" component={ProviderPostsStack} />
       <Tab.Screen name="Requests" component={RequestsScreen} />
       <Tab.Screen name="Alerts" component={ProviderAlertsScreen} />
       <Tab.Screen name="MyProfile" component={MyProfile} />

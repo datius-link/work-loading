@@ -1,40 +1,34 @@
 import React from "react";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
-import MyPosts from "./MyPosts";
-import ForMe from "./ForMe";
-import MyFriends from "./MyFriends";
+import MyWork from "./MyWork";
+import DiscoverScreen from "./ForMe";
 import { StyleSheet } from "react-native";
 
 const Tab = createMaterialTopTabNavigator();
 
-export default function PostsScreen() {
+export default function ProviderPostsScreen() {
   return (
     <Tab.Navigator
-      initialRouteName="ForMe"
+      initialRouteName="MyWork"
       screenOptions={{
-        tabBarActiveTintColor: "#007BFF",
-        tabBarInactiveTintColor: "#999",
+        tabBarActiveTintColor: "#111",
+        tabBarInactiveTintColor: "#9CA3AF",
         tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabLabel,
         tabBarIndicatorStyle: styles.indicator,
+        tabBarPressColor: "transparent",
       }}
     >
       <Tab.Screen
-        name="MyPosts"
-        component={MyPosts}
-        options={{ title: "My Posts" }}
+        name="MyWork"
+        component={MyWork}
+        options={{ title: "My Work" }}
       />
 
       <Tab.Screen
-        name="ForMe"
-        component={ForMe}
-        options={{ title: "For Me" }}
-      />
-
-      <Tab.Screen
-        name="MyFriends"
-        component={MyFriends}
-        options={{ title: "My Friends" }}
+        name="Discover"
+        component={DiscoverScreen}
+        options={{ title: "Discover" }}
       />
     </Tab.Navigator>
   );
@@ -42,15 +36,25 @@ export default function PostsScreen() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: "#fff",
-    elevation: 3,
+    backgroundColor: "#F8FAFC", // light, clean
+    elevation: 0,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
   },
+
   tabLabel: {
+    fontSize: 15,
     fontWeight: "700",
-    fontSize: 14,
+    textTransform: "none",
+    letterSpacing: 0.3,
   },
+
   indicator: {
-    backgroundColor: "#007BFF",
-    height: 3,
+    backgroundColor: "#111",
+    height: 4,
+    borderRadius: 4,
+    width: "35%",
+    marginLeft: "7%",
   },
 });

@@ -18,6 +18,7 @@ import { FontAwesome5 } from "@expo/vector-icons";
 import { API } from "../../api/api";
 import { SOCIAL_ICONS } from "../../icons/socialIcons";
 import { uploadProviderPhoto } from "../../lib/storage.providers";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 /* ---------------- IMAGE PICKER ---------------- */
@@ -46,6 +47,8 @@ export default function EditProvider({ navigation }) {
   /* ---------------- ANIMATION ---------------- */
   const slideAnim = useRef(new Animated.Value(-70)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const insets = useSafeAreaInsets();
 
   const showSaveBar = () => {
     Animated.parallel([
@@ -208,17 +211,25 @@ export default function EditProvider({ navigation }) {
       </View>
 
       {/* SAVE BAR */}
-      <Animated.View
-        style={[
-          styles.saveBar,
-          {
-            top: slideAnim,
-            opacity: fadeAnim,
-            backgroundColor:
-              status === "success" ? "#2ECC71" : status === "error" ? "#E74C3C" : "#0B6B63",
-          },
-        ]}
-      >
+          <Animated.View
+            style={[
+              styles.saveBar,
+              {
+                top: slideAnim.interpolate({
+                  inputRange: [-70, 0],
+                  outputRange: [-70, insets.top],
+                }),
+                opacity: fadeAnim,
+                backgroundColor:
+                  status === "success"
+                    ? "#2ECC71"
+                    : status === "error"
+                    ? "#E74C3C"
+                    : "#0B6B63",
+              },
+            ]}
+          >
+
         <TouchableOpacity onPress={saveProfile} disabled={saving}>
           <Text style={styles.saveText}>
             {status === "saving"

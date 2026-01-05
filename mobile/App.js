@@ -29,6 +29,9 @@ import ProviderTabs from "./src/ProviderSide/ProviderTabs";
 import EditProvider from "./src/ProviderSide/Profile/EditProvider";
 import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
 
+import PicksScreen from "./src/ProviderSide/providerPosts/picks/PicksScreen";
+import EngagementSummary from "./src/ProviderSide/providerPosts/engagement/engagementSummary";
+
 /* ---------------------------
    ICONS
 --------------------------- */
@@ -141,6 +144,16 @@ export default function App() {
             name="ResetPassword"
             component={ResetPassword}
             options={{ headerShown: true, title: "Reset Password" }}
+          />
+
+          <Stack.Screen 
+            name="PicksScreen" 
+            component={PicksScreen} 
+          />
+
+          <Stack.Screen 
+            name="EngagementSummary" 
+            component={EngagementSummary} 
           />
 
         </Stack.Navigator>
