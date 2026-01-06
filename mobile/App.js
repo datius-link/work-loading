@@ -32,6 +32,9 @@ import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
 import PicksScreen from "./src/ProviderSide/providerPosts/picks/PicksScreen";
 import EngagementSummary from "./src/ProviderSide/providerPosts/engagement/engagementSummary";
 
+import CreatePost from "./src/ProviderSide/providerPosts/Post/createPost";
+import EditMedia from "./src/ProviderSide/providerPosts/Post/EditMedia";
+import PostDetails from "./src/ProviderSide/providerPosts/Post/PostDetails";
 /* ---------------------------
    ICONS
 --------------------------- */
@@ -63,7 +66,11 @@ function MainTabs() {
     >
       <Tab.Screen name="Home" component={Home} />
       <Tab.Screen name="Activities" component={Activities} />
-      <Tab.Screen name="MyJobs" component={MyJobs} options={{ title: "My Jobs" }} />
+      <Tab.Screen
+        name="MyJobs"
+        component={MyJobs}
+        options={{ title: "My Jobs" }}
+      />
       <Tab.Screen name="You" component={You} />
     </Tab.Navigator>
   );
@@ -77,7 +84,6 @@ export default function App() {
     <NavigationContainer>
       <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-
           {/* --------------------------------
               INITIAL AUTH CHECK
           -------------------------------- */}
@@ -103,19 +109,13 @@ export default function App() {
             options={{ headerShown: true, title: "Create Provider Account" }}
           />
 
-          <Stack.Screen
-            name="VerifyProvider"
-            component={VerifyProvider}
-          />
+          <Stack.Screen name="VerifyProvider" component={VerifyProvider} />
 
           {/* --------------------------------
               PROVIDER ROOT (🔥 IMPORTANT)
               THIS IS WHERE VERIFY SENDS USER
           -------------------------------- */}
-          <Stack.Screen
-            name="ProviderTabs"
-            component={ProviderTabs}
-          />
+          <Stack.Screen name="ProviderTabs" component={ProviderTabs} />
 
           {/* --------------------------------
               PROVIDER EXTRA SCREENS
@@ -126,10 +126,7 @@ export default function App() {
             options={{ headerShown: true, title: "Edit Profile" }}
           />
 
-          <Stack.Screen
-            name="ProviderSettings"
-            component={ProviderSettings}
-          />
+          <Stack.Screen name="ProviderSettings" component={ProviderSettings} />
 
           {/* --------------------------------
               PASSWORD RECOVERY
@@ -146,16 +143,18 @@ export default function App() {
             options={{ headerShown: true, title: "Reset Password" }}
           />
 
-          <Stack.Screen 
-            name="PicksScreen" 
-            component={PicksScreen} 
+          <Stack.Screen name="PicksScreen" component={PicksScreen} />
+
+          <Stack.Screen
+            name="EngagementSummary"
+            component={EngagementSummary}
           />
 
-          <Stack.Screen 
-            name="EngagementSummary" 
-            component={EngagementSummary} 
-          />
+          <Stack.Screen name="CreatePost" component={CreatePost} />
 
+          <Stack.Screen name="EditMedia" component={EditMedia} />
+
+          <Stack.Screen name="PostDetails" component={PostDetails} />
         </Stack.Navigator>
       </SafeAreaView>
     </NavigationContainer>

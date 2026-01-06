@@ -19,6 +19,8 @@
     "axios": "^1.13.2",
     "base64-arraybuffer": "^1.0.2",
     "expo": "~54.0.29",
+    "expo-av": "~16.0.8",
+    "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "^17.0.9",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",

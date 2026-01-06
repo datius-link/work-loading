@@ -4,7 +4,7 @@ import { decode } from "base64-arraybuffer";
 export async function uploadProviderPhoto(providerId, base64, mimeType) {
   const extension = mimeType.split("/")[1];
   const fileName = `photo_${Date.now()}.${extension}`;
-  const path = `service-providers/${providerId}/profile/${fileName}`;
+  const path = `service-providers/SeriveProvider/profile/${fileName}`;
 
   const arrayBuffer = decode(base64);
 

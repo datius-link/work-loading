@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,125 +6,102 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  FlatList,
+  Dimensions,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import { API } from "../../api/api";
+import { theme } from "../../theme/theme";
 
-const API_BASE_URL = "https://api.yourapp.com";
+const { width } = Dimensions.get("window");
+const GRID_SIZE = width / 3;
 
 export default function MyWork({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
-  const [picks, setPicks] = useState({
-    myPicks: 0,
-    pickedMe: 0,
-  });
+  const [activeTab, setActiveTab] = useState("Moments");
 
-useFocusEffect(
-  React.useCallback(() => {
-    loadData();
-  }, [])
-);
+  // placeholder
+  const posts = [];
 
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [])
+  );
 
-  const loadData = async () => {
+  const loadProfile = async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-
-      await Promise.all([
-        fetchProfile(token),
-        fetchPicksSummary(token),
-      ]);
-    } catch (err) {
-      console.log("MyWork load error:", err);
+      const res = await API.get("/service-provider/me");
+      setProfile(res.data?.provider ?? null);
+    } catch (e) {
+      console.log("MyWork profile error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  /* ---------------- API CALLS ---------------- */
-
-  const fetchProfile = async (token) => {
-    const res = await fetch(`${API_BASE_URL}/me/profile`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    const json = await res.json();
-    setProfile(json);
-  };
-
-  const fetchPicksSummary = async (token) => {
-    const res = await fetch(`${API_BASE_URL}/me/picks/summary`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    const json = await res.json();
-    setPicks(json);
-  };
-
-  /* ---------------- UI ---------------- */
-
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="small" color="#111" />
+        <ActivityIndicator color={theme.colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.screen}>
-      {/* ===== HEADER ===== */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("EngagementSummary")}
-        >
-          <Text style={styles.title}>Engagements</Text>
-          <Text style={styles.subtitle}>View summary</Text>
-        </TouchableOpacity>
+    <View style={styles.container}>
+      {/* ===== HEADER ROW ===== */}
+      <View style={styles.headerRow}>
+        {/* LEFT: ENGAGEMENT + PICKS */}
+        <View style={styles.leftColumn}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("EngagementSummary")}
+          >
+            <Text style={styles.engagementTitle}>Engagements</Text>
+            <Text style={styles.engagementLink}>View summary</Text>
+          </TouchableOpacity>
 
+          <View style={styles.picksRow}>
+            <TouchableOpacity
+              style={styles.pickBtn}
+              onPress={() =>
+                navigation.navigate("PicksScreen", { type: "my" })
+              }
+            >
+              <Text style={styles.pickCount}>0</Text>
+              <Text style={styles.pickLabel}>My Picks</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.pickBtn}
+              onPress={() =>
+                navigation.navigate("PicksScreen", { type: "pickedMe" })
+              }
+            >
+              <Text style={styles.pickCount}>0</Text>
+              <Text style={styles.pickLabel}>Picked Me</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* RIGHT: BIG PROFILE PIC */}
         <TouchableOpacity
           onPress={() => navigation.navigate("MyProfile")}
         >
           <Image
             source={{
               uri:
-                profile?.profile_pic ||
-                "https://ui-avatars.com/api/?background=ddd",
+                profile?.profilePic ||
+                "https://ui-avatars.com/api/?background=6D5AE6&color=fff&size=256",
             }}
-            style={styles.avatar}
+            style={styles.profilePic}
           />
         </TouchableOpacity>
       </View>
 
-      {/* ===== PICKS ===== */}
-      <View style={styles.picksRow}>
-        <TouchableOpacity
-          style={styles.pickItem}
-          onPress={() =>
-            navigation.navigate("PicksScreen", { tab: "my" })
-          }
-        >
-          <Text style={styles.pickLabel}>My Picks</Text>
-          <Text style={styles.pickCount}>{picks.myPicks}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.pickItem}
-          onPress={() =>
-            navigation.navigate("PicksScreen", { tab: "picked" })
-          }
-        >
-          <Text style={styles.pickLabel}>Picked Me</Text>
-          <Text style={styles.pickCount}>{picks.pickedMe}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ===== CREATE POST ===== */}
+      {/* ===== POST ACTION ===== */}
       <TouchableOpacity
         style={styles.postBtn}
         onPress={() => navigation.navigate("CreatePost")}
@@ -132,17 +109,59 @@ useFocusEffect(
         <Text style={styles.postBtnText}>+ Post something</Text>
       </TouchableOpacity>
 
-      {/* POSTS FEED COMES BELOW */}
+      {/* ===== POSTS TOP BAR ===== */}
+      <View style={styles.tabs}>
+        {["Moments", "Clips"].map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            onPress={() => setActiveTab(tab)}
+            style={[
+              styles.tabBtn,
+              activeTab === tab && styles.tabActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === tab && styles.tabTextActive,
+              ]}
+            >
+              {tab}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ===== POSTS GRID ===== */}
+      {posts.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>No posts yet</Text>
+          <Text style={styles.emptyText}>
+            Start sharing moments or clips.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={posts}
+          numColumns={3}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <Image source={{ uri: item.media }} style={styles.gridItem} />
+          )}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 }
 
+/* ================= STYLES ================= */
+
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.colors.bg,
+    paddingHorizontal: theme.spacing.lg,
   },
 
   loader: {
@@ -151,66 +170,130 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  header: {
+  /* HEADER */
+  headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
   },
 
-  title: {
-    fontSize: 18,
+  leftColumn: {
+    flex: 1,
+    paddingRight: theme.spacing.md,
+  },
+
+  engagementTitle: {
+    fontSize: 20,
     fontWeight: "800",
-    color: "#111",
+    color: theme.colors.text,
   },
 
-  subtitle: {
+  engagementLink: {
     fontSize: 13,
-    color: "#777",
+    color: theme.colors.primary,
     marginTop: 2,
-  },
-
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    fontWeight: "600",
   },
 
   picksRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
+    marginTop: theme.spacing.md,
   },
 
-  pickItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-
-  pickLabel: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "600",
+  pickBtn: {
+    marginRight: theme.spacing.lg,
   },
 
   pickCount: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#111",
-    marginTop: 4,
+    color: theme.colors.text,
   },
 
+  pickLabel: {
+    fontSize: 13,
+    color: theme.colors.muted,
+    marginTop: 2,
+  },
+
+  profilePic: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 3,
+    borderColor: theme.colors.primary,
+  },
+
+  /* POST BUTTON */
   postBtn: {
-    marginTop: 24,
-    width: "100%",
-    backgroundColor: "#111",
-    paddingVertical: 14,
-    borderRadius: 12,
+    backgroundColor: theme.colors.text,
+    borderRadius: theme.radius.pill,
+    paddingVertical: 16,
     alignItems: "center",
+    marginBottom: theme.spacing.lg,
   },
 
   postBtnText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "700",
+  },
+
+  /* TABS */
+  tabs: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+  },
+
+  tabBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: theme.spacing.md,
+  },
+
+  tabActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: theme.colors.primary,
+  },
+
+  tabText: {
+    fontSize: 16,
+    color: theme.colors.muted,
+    fontWeight: "600",
+  },
+
+  tabTextActive: {
+    color: theme.colors.text,
+    fontWeight: "700",
+  },
+
+  /* GRID */
+  gridItem: {
+    width: GRID_SIZE,
+    height: GRID_SIZE,
+  },
+
+  /* EMPTY */
+  empty: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing.xl,
+  },
+
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: theme.colors.text,
+    marginBottom: 6,
+  },
+
+  emptyText: {
+    fontSize: 15,
+    color: theme.colors.muted,
+    textAlign: "center",
   },
 });

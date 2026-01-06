@@ -19,8 +19,6 @@ import { API } from "../../api/api";
 import io from "socket.io-client";
 import { SOCIAL_ICONS } from "../../icons/socialIcons";
 
-/* ================= CONFIG ================= */
-const SOCKET_URL = "http://10.125.36.51:5000";
 
 /* ================= PHONE HELPERS ================= */
 /**
@@ -61,9 +59,6 @@ export default function MyProfile({ navigation }) {
   /* ---------- SOCKET ---------- */
   useEffect(() => {
     loadProfile();
-
-    const socket = io(SOCKET_URL);
-    socket.on("providerUpdated", loadProfile);
 
     return () => socket.disconnect();
   }, [loadProfile]);
