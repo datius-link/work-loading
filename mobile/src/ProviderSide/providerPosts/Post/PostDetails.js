@@ -3,255 +3,299 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
+  SafeAreaView,
   TouchableOpacity,
-  ActivityIndicator,
+  TextInput,
+  ScrollView,
   Alert,
-  Image,
+  ActivityIndicator,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase, STORAGE_BUCKET } from "../../../lib/supabase";
-import { API } from "../../../api/api";
+import Icon from "react-native-vector-icons/MaterialIcons";
 
-export default function PostDetails({ route, navigation }) {
-  const { type, media } = route.params;
-
+export default function UploadScreen({ route, navigation }) {
+  const { mediaToUpload, postType } = route.params || {};
   const [caption, setCaption] = useState("");
   const [location, setLocation] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [tags, setTags] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  /* =============== SHARE =============== */
-  const handleShare = async () => {
-    if (uploading) return;
+  const handleUpload = async () => {
+    if (!mediaToUpload || mediaToUpload.length === 0) {
+      Alert.alert("Error", "No media to upload");
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
-      setUploading(true);
+      // TODO: Implement your upload logic here
+      // This would typically involve:
+      // 1. Uploading each media file to your server/cloud storage
+      // 2. Getting back the URLs
+      // 3. Sending the post data to your API
+      
+      // Simulate upload delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      const token = await AsyncStorage.getItem("token");
-      if (!token) throw new Error("Not authenticated");
+      Alert.alert(
+        "Success",
+        `${postType === "reel" ? "Reel" : "Moment"} uploaded successfully!`,
+        [
+          { 
+            text: "OK", 
+            onPress: () => navigation.navigate("Home") 
+          }
+        ]
+      );
 
-      const res = await API.get("/service-provider/me");
-      const providerId = res.data?.provider?.id;
-      if (!providerId) throw new Error("Missing provider id");
-
-      const folder = Date.now().toString();
-      const uploadedMedia = [];
-
-      for (let i = 0; i < media.length; i++) {
-        const item = media[i];
-        const ext = item.uri.split(".").pop();
-        const fileName = `media_${i}.${ext}`;
-
-        const path = `users/${providerId}/posts/${folder}/${fileName}`;
-
-        const file = {
-          uri: item.uri,
-          name: fileName,
-          type: item.type === "video" ? "video/mp4" : "image/jpeg",
-        };
-
-        const { error } = await supabase.storage
-          .from(STORAGE_BUCKET)
-          .upload(path, file);
-
-        if (error) throw error;
-
-        const { data } = supabase.storage
-          .from(STORAGE_BUCKET)
-          .getPublicUrl(path);
-
-        uploadedMedia.push({
-          type: item.type,
-          url: data.publicUrl,
-        });
-      }
-
-      await API.post("/posts", {
-        type,
-        caption,
-        location,
-        media: uploadedMedia,
-      });
-
-      Alert.alert("Posted", "Your content is live 🎉");
-      navigation.popToTop();
-    } catch (e) {
-      console.log("Upload error:", e);
-      Alert.alert("Error", "Failed to share");
+    } catch (error) {
+      console.error("Upload error:", error);
+      Alert.alert("Upload Failed", "Please try again later");
     } finally {
-      setUploading(false);
+      setIsLoading(false);
     }
   };
 
-  /* =============== UI =============== */
+  const mediaCount = mediaToUpload?.length || 0;
+  const imageCount = mediaToUpload?.filter(m => m.type === "image").length || 0;
+  const videoCount = mediaToUpload?.filter(m => m.type === "video").length || 0;
+
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>←</Text>
+          <Icon name="arrow-back" size={26} color="#000" />
         </TouchableOpacity>
 
-        <Text style={styles.title}>
-          {type === "clip" ? "Your Clip" : "Your Post"}
-        </Text>
+        <Text style={styles.title}>Create {postType === "reel" ? "Reel" : "Moment"}</Text>
 
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={handleUpload} disabled={isLoading}>
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#0095f6" />
+          ) : (
+            <Text style={styles.shareText}>Share</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
-      {/* MEDIA PREVIEW */}
-      <View style={styles.mediaWrap}>
-        <Image source={{ uri: media[0].uri }} style={styles.media} />
-
-        {/* LOCATION TOP LEFT */}
-        {location ? (
-          <View style={styles.locBadge}>
-            <Text style={styles.locText}>📍 {location}</Text>
+      <ScrollView style={styles.content}>
+        {/* MEDIA SUMMARY */}
+        <View style={styles.mediaSummary}>
+          <Icon 
+            name={postType === "reel" ? "videocam" : "collections"} 
+            size={24} 
+            color="#0095f6" 
+          />
+          <View style={styles.summaryText}>
+            <Text style={styles.summaryTitle}>
+              {mediaCount} {postType === "reel" ? "Video" : "Media Items"}
+            </Text>
+            {postType === "moment" && (
+              <Text style={styles.summarySubtitle}>
+                {imageCount} photo{imageCount !== 1 ? 's' : ''}
+                {videoCount > 0 && ` • ${videoCount} video${videoCount !== 1 ? 's' : ''}`}
+              </Text>
+            )}
           </View>
-        ) : null}
+        </View>
 
-        {/* COUNT TOP RIGHT */}
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>
-            1/{media.length}
+        {/* CAPTION */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Caption</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Write a caption..."
+            placeholderTextColor="#999"
+            value={caption}
+            onChangeText={setCaption}
+            multiline
+            maxLength={2200}
+          />
+          <Text style={styles.charCount}>{caption.length}/2200</Text>
+        </View>
+
+        {/* LOCATION */}
+        <TouchableOpacity 
+          style={styles.section}
+          onPress={() => Alert.alert("Coming Soon", "Location picker")}
+        >
+          <Text style={styles.sectionTitle}>Add Location</Text>
+          <View style={styles.locationRow}>
+            <Icon name="location-on" size={20} color="#666" />
+            <Text style={styles.locationText}>
+              {location || "Add location"}
+            </Text>
+            <Icon name="chevron-right" size={24} color="#666" />
+          </View>
+        </TouchableOpacity>
+
+        {/* TAGS */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tags</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Add tags separated by commas"
+            placeholderTextColor="#999"
+            value={tags}
+            onChangeText={setTags}
+          />
+          <Text style={styles.helperText}>
+            Tags help people discover your content
           </Text>
         </View>
-      </View>
 
-      {/* CAPTION */}
-      <TextInput
-        style={styles.caption}
-        placeholder="Write a caption…"
-        multiline
-        value={caption}
-        onChangeText={setCaption}
-      />
+        {/* ADVANCED OPTIONS */}
+        <TouchableOpacity 
+          style={styles.advancedBtn}
+          onPress={() => Alert.alert("Advanced Options", "Coming soon")}
+        >
+          <Text style={styles.advancedText}>Advanced Options</Text>
+          <Icon name="chevron-right" size={24} color="#666" />
+        </TouchableOpacity>
+      </ScrollView>
 
-      {/* LOCATION INPUT */}
-      <TextInput
-        style={styles.locationInput}
-        placeholder="Add location"
-        value={location}
-        onChangeText={setLocation}
-      />
-
-      {/* SHARE */}
-      <TouchableOpacity
-        style={[styles.shareBtn, uploading && { opacity: 0.6 }]}
-        onPress={handleShare}
-        disabled={uploading}
-      >
-        {uploading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.shareText}>
-            {type === "clip" ? "Share the clip" : "Share the post"}
-          </Text>
-        )}
-      </TouchableOpacity>
-    </View>
+      {/* LOADING OVERLAY */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#0095f6" />
+          <Text style={styles.loadingText}>Uploading...</Text>
+        </View>
+      )}
+    </SafeAreaView>
   );
 }
 
-/* =============== STYLES =============== */
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: "#fff",
-  },
-
+  container: { flex: 1, backgroundColor: "#fff" },
+  
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
   },
 
-  back: {
-    fontSize: 22,
+  title: { 
+    fontSize: 18, 
     fontWeight: "700",
+    color: "#000",
   },
 
-  title: {
+  shareText: { 
+    color: "#0095f6", 
+    fontSize: 16,
+    fontWeight: "700" 
+  },
+
+  content: {
+    flex: 1,
+    padding: 16,
+  },
+
+  mediaSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+
+  summaryText: {
+    marginLeft: 12,
+  },
+
+  summaryTitle: {
     fontSize: 16,
     fontWeight: "700",
+    color: "#000",
   },
 
-  mediaWrap: {
-    position: "relative",
-    height: 260,
-    borderRadius: 14,
-    overflow: "hidden",
-    marginBottom: 12,
-    backgroundColor: "#eee",
+  summarySubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 2,
   },
 
-  media: {
-    width: "100%",
-    height: "100%",
+  section: {
+    marginBottom: 24,
   },
 
-  locBadge: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-
-  locText: {
-    color: "#fff",
-    fontSize: 12,
+  sectionTitle: {
+    fontSize: 16,
     fontWeight: "600",
+    color: "#000",
+    marginBottom: 8,
   },
 
-  countBadge: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-
-  countText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
-  caption: {
+  textInput: {
     borderWidth: 1,
     borderColor: "#ddd",
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 12,
-    height: 100,
+    fontSize: 16,
+    minHeight: 100,
     textAlignVertical: "top",
-    marginBottom: 10,
   },
 
-  locationInput: {
+  charCount: {
+    textAlign: "right",
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
+  },
+
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: "#ddd",
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 12,
-    marginBottom: 16,
   },
 
-  shareBtn: {
-    backgroundColor: "#111",
-    paddingVertical: 14,
-    borderRadius: 14,
+  locationText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
+    color: "#666",
+  },
+
+  helperText: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
+  },
+
+  advancedBtn: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+
+  advancedText: {
+    fontSize: 16,
+    color: "#000",
+  },
+
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    justifyContent: "center",
     alignItems: "center",
   },
 
-  shareText: {
-    color: "#fff",
+  loadingText: {
+    marginTop: 12,
     fontSize: 16,
-    fontWeight: "700",
+    color: "#666",
+    fontWeight: "600",
   },
 });

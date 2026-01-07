@@ -7,9 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-
-    "platforms": ["ios", "android", "web"],
-
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -30,6 +32,10 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-audio",
+      "expo-video"
+    ]
   }
 }
