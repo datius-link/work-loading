@@ -1,6 +1,8 @@
 import React from "react";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import MyWork from "./MyWork";
 import Discover from "./Discover";
 import { theme } from "../../theme/theme";
@@ -8,32 +10,48 @@ import { theme } from "../../theme/theme";
 const Tab = createMaterialTopTabNavigator();
 
 export default function ProviderPostsScreen() {
+  const insets = useSafeAreaInsets();
+
   return (
-    <Tab.Navigator
-      screenOptions={{
-        tabBarStyle: styles.tabBar,
-        tabBarLabelStyle: styles.label,
-        tabBarActiveTintColor: theme.colors.textPrimary,
-        tabBarInactiveTintColor: theme.colors.textMuted,
-        tabBarIndicatorStyle: styles.indicator,
-        tabBarPressColor: "transparent",
-      }}
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top,
+        },
+      ]}
     >
-      <Tab.Screen
-        name="MyWork"
-        component={MyWork}
-        options={{ title: "My Work" }}
-      />
-      <Tab.Screen
-        name="Discover"
-        component={Discover}
-        options={{ title: "Discover" }}
-      />
-    </Tab.Navigator>
+      <Tab.Navigator
+        screenOptions={{
+          tabBarStyle: styles.tabBar,
+          tabBarLabelStyle: styles.label,
+          tabBarActiveTintColor: theme.colors.textPrimary,
+          tabBarInactiveTintColor: theme.colors.textMuted,
+          tabBarIndicatorStyle: styles.indicator,
+          tabBarPressColor: "transparent",
+        }}
+      >
+        <Tab.Screen
+          name="MyWork"
+          component={MyWork}
+          options={{ title: "My Work" }}
+        />
+        <Tab.Screen
+          name="Discover"
+          component={Discover}
+          options={{ title: "Discover" }}
+        />
+      </Tab.Navigator>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+  },
+
   tabBar: {
     backgroundColor: theme.colors.surface,
     elevation: 0,

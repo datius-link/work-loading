@@ -3,145 +3,155 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   FlatList,
   Dimensions,
   Alert,
   Image,
-  Platform,
+  ActivityIndicator
 } from "react-native";
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from 'expo-file-system';
 import Icon from "react-native-vector-icons/MaterialIcons";
 
 const { width } = Dimensions.get("window");
 const SIZE = width / 3;
+const MAX_MOMENT_ITEMS = 10;
+const MAX_REEL_DURATION = 60;
+const MIN_REEL_DURATION = 1;
 
-// FIXED: Convert duration from milliseconds to seconds
+/* ---------------- utils ---------------- */
 const normalizeDuration = (duration) => {
   const dur = duration || 0;
-  
-  // Video ya sekunde 13 inakuwa 13000ms kwenye iOS/Android
-  // Hivyo kama duration ni kubwa kuliko 60, labda iko kwenye milliseconds
-  if (dur > 60) {
-    return dur / 1000; // Convert milliseconds to seconds
-  }
-  
-  return dur; // Already in seconds
+  return dur > 60 ? dur / 1000 : dur;
 };
 
-function CreatePostContent({ navigation, route }) {
-  const [type, setType] = useState("moment"); // "moment" | "reel"
-  const [media, setMedia] = useState([]);
+const formatDuration = (seconds) => {
+  if (!seconds) return "0s";
+  return seconds >= 1 ? `${Math.floor(seconds)}s` : "<1s";
+};
 
+/* ---------------- screen ---------------- */
+function CreatePostContent({ navigation, route }) {
+  const insets = useSafeAreaInsets();
+
+  const [type, setType] = useState("moment");
+  const [media, setMedia] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  /* params sync */
   useEffect(() => {
-    if (route.params?.selectedMedia) {
-      setMedia(route.params.selectedMedia);
-    }
-    if (route.params?.postType) {
-      setType(route.params.postType);
-    }
+    if (route.params?.selectedMedia) setMedia(route.params.selectedMedia);
+    if (route.params?.postType) setType(route.params.postType);
   }, [route.params]);
 
-  // Request permission
+  /* permissions */
   useEffect(() => {
     (async () => {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
           "Permission Required",
-          "We need access to your media library to select photos and videos."
+          "We need access to your media library to select photos and videos.",
+          [{ text: "OK", style: "default" }]
         );
       }
     })();
   }, []);
 
+  /* picker */
   const openPicker = async () => {
+    if (isLoading) return;
+
     try {
+      setIsLoading(true);
+      
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.All,
         allowsMultipleSelection: type === "moment",
-        selectionLimit: type === "moment" ? 10 : 1,
-        videoMaxDuration: type === "reel" ? 60 : undefined,
-        quality: 1,
+        selectionLimit: type === "moment" ? MAX_MOMENT_ITEMS : 1,
+        videoMaxDuration: type === "reel" ? MAX_REEL_DURATION : undefined,
         orderedSelection: true,
-        exif: false,
+        quality: 1,
+        exif: false, // Improve performance
       });
 
-      if (result.canceled) return;
-
-      const picked = result.assets.map((a, index) => {
-        const rawDuration = a.duration || 0;
-        const durationInSeconds = normalizeDuration(rawDuration);
-        
-        console.log(`Media ${index}:`, {
-          rawDuration: rawDuration,
-          normalized: durationInSeconds,
-          type: a.type,
-          fileName: a.fileName
-        });
-
-        return {
-          id: a.assetId || `media_${Date.now()}_${index}`,
-          uri: a.uri,
-          type: a.type === "video" ? "video" : "image",
-          duration: durationInSeconds,
-          width: a.width,
-          height: a.height,
-          fileName: a.fileName || `media_${index}`,
-          fileSize: a.fileSize,
-          mimeType: a.mimeType,
-        };
-      });
-
-      // REEL VALIDATION - FIXED
-      if (type === "reel") {
-        if (picked.length === 0) {
-          Alert.alert("No Media Selected", "Please select a video for your reel.");
-          return;
-        }
-
-        const video = picked[0];
-
-        if (video.type !== "video") {
-          Alert.alert("Invalid Selection", "Reel must be a video file.");
-          return;
-        }
-
-        // Debug log to see actual duration
-        console.log("Video validation:", {
-          rawDuration: video.duration,
-          isVideo: video.type === "video",
-          fileName: video.fileName
-        });
-
-        // HAPA NDIO FIX MUHIMU - CHECK KWA SEKUNDE
-        if (video.duration > 60) {
-          Alert.alert(
-            "Video Too Long",
-            `This video is ${video.duration.toFixed(1)} seconds long.\nReels must be 60 seconds or less.`
-          );
-          return;
-        }
-
-        // Additional check: video must be at least 1 second
-        if (video.duration < 1) {
-          Alert.alert("Video Too Short", "Video must be at least 1 second long.");
-          return;
-        }
-      }
-
-      // MOMENT VALIDATION
-      if (type === "moment" && picked.length > 10) {
-        Alert.alert("Limit Exceeded", "Moments can have up to 10 items only.");
+      if (result.canceled) {
+        setIsLoading(false);
         return;
       }
 
-      setMedia(picked);
+      const mediaItems = await Promise.all(
+        result.assets.map(async (asset, index) => {
+          let fileSize = asset.fileSize;
+          
+          // Get file size if not provided
+          if (!fileSize && asset.uri) {
+            try {
+              const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+              fileSize = fileInfo.size || 0;
+            } catch (error) {
+              console.warn('Could not get file size:', error);
+            }
+          }
+
+          return {
+            id: asset.assetId || `media_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+            uri: asset.uri,
+            type: asset.type === "video" ? "video" : "image",
+            duration: normalizeDuration(asset.duration),
+            width: asset.width,
+            height: asset.height,
+            fileName: asset.fileName || `media_${Date.now()}_${index}`,
+            fileSize,
+            mimeType: asset.mimeType,
+          };
+        })
+      );
+
+      /* reel validation */
+      if (type === "reel") {
+        const video = mediaItems[0];
+        if (!video || video.type !== "video") {
+          Alert.alert("Invalid Selection", "Reel must be a video file.");
+          setIsLoading(false);
+          return;
+        }
+
+        if (video.duration > MAX_REEL_DURATION) {
+          Alert.alert("Video Too Long", `Reels must be ${MAX_REEL_DURATION} seconds or less.`);
+          setIsLoading(false);
+          return;
+        }
+
+        if (video.duration < MIN_REEL_DURATION) {
+          Alert.alert("Video Too Short", "Reels must be at least 1 second.");
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      if (type === "moment" && mediaItems.length > MAX_MOMENT_ITEMS) {
+        Alert.alert("Limit Exceeded", `Moments can have up to ${MAX_MOMENT_ITEMS} items.`);
+        setIsLoading(false);
+        return;
+      }
+
+      setMedia(mediaItems);
     } catch (error) {
-      console.error("Error picking media:", error);
-      Alert.alert("Error", "Failed to select media. Please try again.");
+      console.error('Picker Error:', error);
+      Alert.alert(
+        "Selection Error",
+        "Failed to select media. Please try again.",
+        [{ text: "OK", style: "default" }]
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -149,323 +159,374 @@ function CreatePostContent({ navigation, route }) {
     setMedia((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const imageCount = media.filter((m) => m.type === "image").length;
-  const videoCount = media.filter((m) => m.type === "video").length;
-  const totalCount = media.length;
-
-  const countText =
-    totalCount === 0
-      ? "No media selected"
-      : `${totalCount} item${totalCount > 1 ? "s" : ""} selected`;
+  const switchPostType = (newType) => {
+    if (type === newType) return;
+    
+    if (media.length > 0) {
+      Alert.alert(
+        "Switch Post Type?",
+        "Changing post type will clear your current selection.",
+        [
+          { 
+            text: "Cancel", 
+            style: "cancel" 
+          },
+          {
+            text: "Switch",
+            style: "destructive",
+            onPress: () => {
+              setType(newType);
+              setMedia([]);
+            },
+          },
+        ]
+      );
+    } else {
+      setType(newType);
+    }
+  };
 
   const goNext = () => {
-    if (media.length === 0) {
-      Alert.alert("No Media", "Please select at least one photo or video.");
+    if (!media.length) {
+      Alert.alert(
+        "No Media Selected",
+        "Please select at least one photo or video to continue.",
+        [{ text: "OK", style: "default" }]
+      );
       return;
     }
 
-    // Additional validation for reel
-    if (type === "reel") {
-      const video = media[0];
-      if (video.duration > 60) {
-        Alert.alert(
-          "Video Too Long",
-          `This video is ${video.duration.toFixed(1)} seconds long.\nReels must be 60 seconds or less.`
-        );
-        return;
-      }
-    }
+    const imageCount = media.filter((item) => item.type === "image").length;
+    const videoCount = media.filter((item) => item.type === "video").length;
 
-    const mediaData = {
+    navigation.navigate("EditMedia", {
       mediaList: media,
       postType: type,
       imageCount,
       videoCount,
-      totalCount,
-    };
-
-    navigation.navigate("EditMedia", mediaData);
+      totalCount: media.length,
+    });
   };
 
-  const MediaItem = ({ item, index }) => (
-    <View style={styles.itemContainer}>
-      <Image source={{ uri: item.uri }} style={styles.media} resizeMode="cover" />
+  const renderMediaItem = ({ item, index }) => (
+    <View style={styles.mediaItem}>
+      <Image 
+        source={{ uri: item.uri }} 
+        style={styles.mediaImage}
+        resizeMode="cover"
+      />
 
       {item.type === "video" && (
         <View style={styles.videoBadge}>
           <Icon name="videocam" size={12} color="#fff" />
-          {item.duration > 0 && (
-            <Text style={styles.durationText}>
-              {Math.floor(item.duration)}s
-            </Text>
-          )}
-        </View>
-      )}
-
-      {type === "moment" && media.length > 1 && (
-        <View style={styles.selectionNumber}>
-          <Text style={styles.numberText}>{index + 1}</Text>
+          <Text style={styles.videoDuration}>
+            {formatDuration(item.duration)}
+          </Text>
         </View>
       )}
 
       <TouchableOpacity
         style={styles.removeButton}
         onPress={() => removeMedia(item.id)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Icon name="close" size={14} color="#fff" />
       </TouchableOpacity>
+      
+      {index === 0 && type === "moment" && media.length > 1 && (
+        <View style={styles.coverBadge}>
+          <Text style={styles.coverText}>Cover</Text>
+        </View>
+      )}
     </View>
   );
 
+  const renderTypeButton = (postType, label, description) => (
+    <TouchableOpacity
+      style={[
+        styles.typeButton,
+        type === postType && styles.typeButtonActive,
+      ]}
+      onPress={() => switchPostType(postType)}
+      disabled={isLoading}
+      activeOpacity={0.7}
+    >
+      <Text
+        style={[
+          styles.typeButtonLabel,
+          type === postType && styles.typeButtonLabelActive,
+        ]}
+      >
+        {label}
+      </Text>
+      <Text style={styles.typeButtonDescription}>
+        {description}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  /* ---------------- UI ---------------- */
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top,
+        },
+      ]}
+    >
+      {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
+        <TouchableOpacity 
           onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          disabled={isLoading}
         >
           <Icon name="close" size={24} color="#000" />
         </TouchableOpacity>
 
-        <Text style={styles.title}>
+        <Text style={styles.headerTitle}>
           {type === "moment" ? "Create Moment" : "Create Reel"}
         </Text>
 
-        <TouchableOpacity
-          style={styles.headerButton}
+        <TouchableOpacity 
+          disabled={!media.length || isLoading} 
           onPress={goNext}
-          disabled={media.length === 0}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Text
-            style={[
-              styles.nextText,
-              media.length === 0 && styles.nextDisabled,
-            ]}
-          >
+          <Text style={[
+            styles.nextButtonText, 
+            (!media.length || isLoading) && styles.nextButtonDisabled
+          ]}>
             Next
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Type Selector */}
+      {/* TYPE SELECTOR */}
       <View style={styles.typeSelector}>
-        <TouchableOpacity
-          style={[
-            styles.typeButton,
-            type === "moment" && styles.typeButtonActive,
-          ]}
-          onPress={() => {
-            if (type !== "moment") {
-              Alert.alert(
-                "Switch to Moment",
-                "Switching will clear your current selection. Continue?",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Switch",
-                    onPress: () => {
-                      setType("moment");
-                      setMedia([]);
-                    },
-                  },
-                ]
-              );
-            }
-          }}
-        >
-          <Text
-            style={[
-              styles.typeButtonText,
-              type === "moment" && styles.typeButtonTextActive,
-            ]}
-          >
-            Moment
-          </Text>
-          <Text style={styles.typeSubText}>Up to 10 photos/videos</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.typeButton,
-            type === "reel" && styles.typeButtonActive,
-          ]}
-          onPress={() => {
-            if (type !== "reel") {
-              Alert.alert(
-                "Switch to Reel",
-                "Switching will clear your current selection. Continue?",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Switch",
-                    onPress: () => {
-                      setType("reel");
-                      setMedia([]);
-                    },
-                  },
-                ]
-              );
-            }
-          }}
-        >
-          <Text
-            style={[
-              styles.typeButtonText,
-              type === "reel" && styles.typeButtonTextActive,
-            ]}
-          >
-            Reel
-          </Text>
-          <Text style={styles.typeSubText}>60s video</Text>
-        </TouchableOpacity>
+        {renderTypeButton("moment", "Moment", "Up to 10 items")}
+        {renderTypeButton("reel", "Reel", "60s video")}
       </View>
 
-      {/* Selection Info */}
+      {/* SELECTION INFO */}
       <View style={styles.selectionInfo}>
-        <TouchableOpacity style={styles.selectButton} onPress={openPicker}>
-          <Icon name="photo-library" size={20} color="#0095f6" />
-          <Text style={styles.selectButtonText}>Select from Gallery</Text>
+        <TouchableOpacity 
+          style={styles.galleryButton} 
+          onPress={openPicker}
+          disabled={isLoading}
+          activeOpacity={0.7}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#0095f6" />
+          ) : (
+            <>
+              <Icon name="photo-library" size={20} color="#0095f6" />
+              <Text style={styles.galleryButtonText}>Select from Gallery</Text>
+            </>
+          )}
         </TouchableOpacity>
-        <Text style={styles.countText}>{countText}</Text>
+
+        <Text style={styles.selectionCount}>
+          {media.length
+            ? `${media.length} item${media.length !== 1 ? 's' : ''} selected`
+            : "No media selected"}
+        </Text>
       </View>
 
-      {/* Media Grid or Empty */}
+      {/* MEDIA GRID */}
       {media.length > 0 ? (
         <FlatList
           data={media}
           keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => (
-            <MediaItem item={item} index={index} />
-          )}
           numColumns={3}
-          contentContainerStyle={styles.gridContainer}
+          contentContainerStyle={[
+            styles.mediaGrid,
+            { paddingBottom: 120 + insets.bottom }
+          ]}
+          renderItem={renderMediaItem}
           showsVerticalScrollIndicator={false}
-          ListFooterComponent={
-            type === "moment" && media.length < 10 ? (
-              <TouchableOpacity style={styles.addMoreButton} onPress={openPicker}>
-                <Icon name="add" size={24} color="#0095f6" />
-                <Text style={styles.addMoreText}>
-                  Add more ({10 - media.length} left)
-                </Text>
-              </TouchableOpacity>
-            ) : null
-          }
         />
       ) : (
         <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Icon
-              name={type === "moment" ? "collections" : "videocam"}
-              size={60}
-              color="#ddd"
-            />
-          </View>
-          <Text style={styles.emptyTitle}>
-            {type === "moment" ? "Create a Moment" : "Create a Reel"}
+          <Icon name="collections" size={64} color="#ddd" />
+          <Text style={styles.emptyStateText}>
+            {type === "moment" 
+              ? "Select up to 10 photos & videos" 
+              : "Select a video up to 60 seconds"}
           </Text>
-          <Text style={styles.emptyDescription}>
-            {type === "moment"
-              ? "Select up to 10 photos and videos to share together"
-              : "Select a video up to 60 seconds to share as a reel"}
-          </Text>
-          <TouchableOpacity style={styles.selectMediaButton} onPress={openPicker}>
-            <Icon name="photo-library" size={20} color="#fff" />
-            <Text style={styles.selectMediaText}>Select Media</Text>
+          <TouchableOpacity 
+            style={styles.emptyStateButton} 
+            onPress={openPicker}
+            disabled={isLoading}
+          >
+            <Text style={styles.emptyStateButtonText}>Browse Gallery</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Bottom Bar */}
+      {/* BOTTOM BAR */}
       {media.length > 0 && (
-        <View style={styles.bottomBar}>
-          <View style={styles.bottomBarInfo}>
-            <Icon
-              name={type === "moment" ? "collections" : "videocam"}
-              size={18}
-              color="#666"
-            />
+        <View
+          style={[
+            styles.bottomBar,
+            { paddingBottom: 12 + insets.bottom },
+          ]}
+        >
+          <View>
             <Text style={styles.bottomBarText}>
               {type === "moment"
-                ? `${imageCount} photo${imageCount !== 1 ? "s" : ""}${
-                    videoCount > 0
-                      ? `, ${videoCount} video${videoCount !== 1 ? "s" : ""}`
-                      : ""
-                  }`
-                : `${Math.floor(media[0]?.duration || 0)}s video`}
+                ? `${media.filter(m => m.type === "image").length} photos, ${media.filter(m => m.type === "video").length} videos`
+                : `${formatDuration(media[0]?.duration)} video`}
             </Text>
+            {type === "moment" && media.length === MAX_MOMENT_ITEMS && (
+              <Text style={styles.maxLimitText}>Maximum limit reached</Text>
+            )}
           </View>
 
-          <TouchableOpacity style={styles.nextButton} onPress={goNext}>
-            <Text style={styles.nextButtonText}>Next</Text>
+          <TouchableOpacity 
+            style={styles.bottomNextButton} 
+            onPress={goNext}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.bottomNextButtonText}>Next</Text>
             <Icon name="arrow-forward" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
-// Main Component with SafeAreaProvider
-export default function CreatePost({ navigation, route }) {
+/* wrapper */
+export default function CreatePost(props) {
   return (
     <SafeAreaProvider>
-      <CreatePostContent navigation={navigation} route={route} />
+      <CreatePostContent {...props} />
     </SafeAreaProvider>
   );
 }
 
+/* ---------------- styles ---------------- */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#fff" 
+  },
+
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e0e0e0",
   },
-  headerButton: { padding: 8, minWidth: 50 },
-  title: { fontSize: 18, fontWeight: "700", color: "#000" },
-  nextText: { fontSize: 16, fontWeight: "700", color: "#0095f6" },
-  nextDisabled: { opacity: 0.3 },
-  typeSelector: { flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+
+  headerTitle: { 
+    fontSize: 18, 
+    fontWeight: "700",
+    color: "#000"
+  },
+  
+  nextButtonText: { 
+    fontWeight: "700", 
+    fontSize: 16,
+    color: "#0095f6" 
+  },
+  
+  nextButtonDisabled: { 
+    opacity: 0.3 
+  },
+
+  typeSelector: {
+    flexDirection: "row",
+    padding: 16,
+    gap: 12,
+  },
+  
   typeButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    backgroundColor: "#f5f5f5",
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: "#f8f9fa",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e9ecef",
   },
-  typeButtonActive: { backgroundColor: "#e3f2fd", borderWidth: 1.5, borderColor: "#0095f6" },
-  typeButtonText: { fontSize: 15, fontWeight: "600", color: "#666" },
-  typeButtonTextActive: { color: "#0095f6" },
-  typeSubText: { fontSize: 11, color: "#888", marginTop: 2 },
+  
+  typeButtonActive: {
+    backgroundColor: "#e7f5ff",
+    borderColor: "#0095f6",
+    borderWidth: 2,
+  },
+  
+  typeButtonLabel: { 
+    fontWeight: "600", 
+    fontSize: 16,
+    color: "#495057",
+    marginBottom: 4
+  },
+  
+  typeButtonLabelActive: { 
+    color: "#0095f6" 
+  },
+  
+  typeButtonDescription: { 
+    fontSize: 12, 
+    color: "#868e96" 
+  },
+
   selectionInfo: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e0e0e0",
   },
-  selectButton: { flexDirection: "row", alignItems: "center", gap: 8 },
-  selectButtonText: { fontSize: 15, fontWeight: "600", color: "#0095f6" },
-  countText: { fontSize: 14, color: "#666" },
-  gridContainer: { padding: 8, paddingBottom: 100 },
-  itemContainer: {
+  
+  galleryButton: { 
+    flexDirection: "row", 
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#f8f9fa"
+  },
+  
+  galleryButtonText: { 
+    color: "#0095f6", 
+    fontWeight: "600",
+    fontSize: 15
+  },
+  
+  selectionCount: { 
+    color: "#666",
+    fontSize: 14
+  },
+
+  mediaGrid: {
+    padding: 8,
+  },
+
+  mediaItem: {
     width: SIZE - 8,
     height: SIZE - 8,
     margin: 4,
     borderRadius: 8,
     overflow: "hidden",
     backgroundColor: "#f5f5f5",
-    position: "relative",
   },
-  media: { width: "100%", height: "100%" },
+
+  mediaImage: { 
+    width: "100%", 
+    height: "100%" 
+  },
+
   videoBadge: {
     position: "absolute",
     top: 6,
@@ -473,51 +534,75 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.8)",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  durationText: { fontSize: 10, color: "#fff", fontWeight: "600" },
-  selectionNumber: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    backgroundColor: "#0095f6",
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: "center",
-    alignItems: "center",
+
+  videoDuration: { 
+    color: "#fff", 
+    fontSize: 10,
+    fontWeight: "500"
   },
-  numberText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+
   removeButton: {
     position: "absolute",
     top: 6,
-    right: 6,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    left: 6,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    borderRadius: 10,
     width: 20,
     height: 20,
-    borderRadius: 10,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
   },
-  addMoreButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", padding: 20, gap: 8 },
-  addMoreText: { color: "#0095f6", fontSize: 15, fontWeight: "600" },
-  emptyState: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 40, paddingBottom: 60 },
-  emptyIcon: { marginBottom: 24 },
-  emptyTitle: { fontSize: 24, fontWeight: "700", color: "#333", marginBottom: 12, textAlign: "center" },
-  emptyDescription: { fontSize: 16, color: "#666", textAlign: "center", lineHeight: 22, marginBottom: 32 },
-  selectMediaButton: {
-    flexDirection: "row",
+
+  coverBadge: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    backgroundColor: "rgba(0,149,246,0.9)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+
+  coverText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+
+  emptyState: {
+    flex: 1,
     alignItems: "center",
-    gap: 10,
+    justifyContent: "center",
+    paddingHorizontal: 40,
+  },
+
+  emptyStateText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 16,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+
+  emptyStateButton: {
     backgroundColor: "#0095f6",
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
   },
-  selectMediaText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+
+  emptyStateButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+
   bottomBar: {
     position: "absolute",
     bottom: 0,
@@ -527,14 +612,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
     backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e0e0e0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 4,
   },
-  bottomBarInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
-  bottomBarText: { fontSize: 14, color: "#666" },
-  nextButton: {
+
+  bottomBarText: { 
+    color: "#495057",
+    fontSize: 14,
+    fontWeight: "500"
+  },
+
+  maxLimitText: {
+    color: "#fa5252",
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  bottomNextButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -543,5 +644,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
-  nextButtonText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+
+  bottomNextButtonText: { 
+    color: "#fff", 
+    fontWeight: "700",
+    fontSize: 15
+  },
 });

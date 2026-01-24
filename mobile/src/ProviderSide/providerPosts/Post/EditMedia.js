@@ -1,75 +1,80 @@
-import React, { useEffect, useState } from "react";
+// EditMedia.js
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   Dimensions,
   Image,
   ScrollView,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useEventListener } from "expo"; // For listening to events
+import { useEventListener } from "expo";
 import Icon from "react-native-vector-icons/MaterialIcons";
 
 const { width } = Dimensions.get("window");
 const PREVIEW_SIZE = width;
 
-export default function EditMedia({ route, navigation }) {
+function EditMediaContent({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { mediaList = [], postType = "moment" } = route.params || {};
 
   const [index, setIndex] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
 
-  if (!Array.isArray(mediaList) || mediaList.length === 0) {
+  if (!mediaList.length) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text style={{ color: "#fff", textAlign: "center", marginTop: 40 }}>
-          No media selected
-        </Text>
-      </SafeAreaView>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <Text style={styles.emptyText}>No media selected</Text>
+      </View>
     );
   }
 
   const current = mediaList[index];
+  const isVideo = current.type === "video";
+  const totalMedia = mediaList.length;
 
-  // Create player – start with null source for images, set when video
-  const player = useVideoPlayer(null, (player) => {
-    player.loop = true;
-    player.muted = muted;
+  const player = useVideoPlayer(null, (p) => {
+    p.loop = true;
+    p.muted = muted;
   });
 
-  // Update muted
   useEffect(() => {
     if (player) player.muted = muted;
   }, [muted, player]);
 
-  // Listen to status change – play when ready
+  const togglePlayPause = () => {
+    if (isPlaying) {
+      player.pause();
+    } else {
+      player.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  useEffect(() => {
+    if (isVideo) {
+      player.replaceAsync(current.uri).then(() => {
+        if (isPlaying) player.play();
+      });
+    } else {
+      player.pause();
+      player.replaceAsync(null);
+    }
+    setIsPlaying(true);
+  }, [index, current.uri, isVideo, player]);
+
   useEventListener(player, "statusChange", ({ status }) => {
-    if (status === "readyToPlay" && current.type === "video") {
+    if (status === "readyToPlay" && isVideo && isPlaying) {
       player.play();
     }
   });
 
-  // When current media changes
-  useEffect(() => {
-    if (current.type === "video") {
-      player.replace(current.uri);
-      // replay() to reset + play when ready (handled by listener above)
-      player.replay();
-    }
-  }, [index, current.uri, player]);
-
-  // Initial setup for first video
-  useEffect(() => {
-    if (current.type === "video") {
-      player.replace(current.uri);
-    }
-  }, []);
-
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -81,7 +86,7 @@ export default function EditMedia({ route, navigation }) {
         <TouchableOpacity
           onPress={() =>
             navigation.navigate("PostDetails", {
-              media: mediaList,
+              mediaList,
               postType,
               muted,
             })
@@ -91,160 +96,167 @@ export default function EditMedia({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* PREVIEW */}
-      <View style={styles.preview}>
-        {current.type === "image" ? (
-          <Image
-            source={{ uri: current.uri }}
-            style={styles.media}
-            resizeMode="contain"
-          />
-        ) : (
-          <VideoView
-            style={styles.media}
-            player={player}
-            contentFit="contain"
-            nativeControls={false}
-            fullscreenOptions={{ enabled: false }}
-            surfaceType="textureView"  // Fix for Android rendering issues
-          />
-        )}
+      {/* MAIN PREVIEW */}
+      <View style={styles.previewContainer}>
+        <View style={styles.preview}>
+          {isVideo ? (
+            <View style={StyleSheet.absoluteFill}>
+              <VideoView
+                style={styles.media}
+                player={player}
+                contentFit="contain"
+                nativeControls={false}
+              />
+              <TouchableOpacity
+                style={styles.playPauseOverlay}
+                onPress={togglePlayPause}
+              >
+                <Icon
+                  name={isPlaying ? "pause-circle-filled" : "play-circle-filled"}
+                  size={60}
+                  color="rgba(255,255,255,0.85)"
+                />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Image source={{ uri: current.uri }} style={styles.media} />
+          )}
+        </View>
 
-        {/* COUNTER */}
-        {mediaList.length > 1 && (
-          <View style={styles.counter}>
-            <Text style={styles.counterText}>
-              {index + 1}/{mediaList.length}
-            </Text>
+        {/* Mute Button - Only for video */}
+        {isVideo && (
+          <View style={styles.actions}>
+            <TouchableOpacity onPress={() => setMuted(!muted)}>
+              <Icon
+                name={muted ? "volume-off" : "volume-up"}
+                size={28}
+                color="#fff"
+              />
+              <Text style={styles.actionText}>
+                {muted ? "Muted" : "Sound"}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
 
-      {/* ACTIONS */}
-      <View style={styles.actions}>
-        {current.type === "video" && (
-          <TouchableOpacity onPress={() => setMuted(!muted)}>
-            <Icon
-              name={muted ? "volume-off" : "volume-up"}
-              size={26}
-              color="#fff"
-            />
-            <Text style={styles.actionText}>
-              {muted ? "Muted" : "Sound"}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* THUMBNAILS + COUNTER */}
+      {totalMedia > 1 && (
+        <View style={styles.bottomSection}>
+          {/* Counter */}
+          <Text style={styles.counter}>
+            {index + 1} / {totalMedia}
+          </Text>
 
-      {/* THUMBNAILS */}
-      {mediaList.length > 1 && (
-        <ScrollView horizontal style={styles.thumbs}>
-          {mediaList.map((item, i) => (
-            <TouchableOpacity
-              key={i}
-              onPress={() => setIndex(i)}
-              style={[
-                styles.thumb,
-                i === index && styles.thumbActive,
-              ]}
-            >
-              <Image source={{ uri: item.uri }} style={styles.thumbImg} />
-              {item.type === "video" && (
-                <Icon
-                  name="play-circle-filled"
-                  size={22}
-                  color="#fff"
-                  style={styles.playIcon}
+          {/* Thumbnails */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.thumbsContent}
+            style={styles.thumbsScroll}
+          >
+            {mediaList.map((item, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={() => setIndex(i)}
+                style={[
+                  styles.thumb,
+                  i === index && styles.thumbActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Image
+                  source={{ uri: item.uri }}
+                  style={styles.thumbImg}
+                  resizeMode="cover"
                 />
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                {item.type === "video" && (
+                  <Icon
+                    name="play-circle-filled"
+                    size={24}
+                    color="rgba(255,255,255,0.9)"
+                    style={styles.videoIcon}
+                  />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  // ... (styles same as before, no change)
-  container: { flex: 1, backgroundColor: "#000" },
+export default function EditMedia(props) {
+  return <EditMediaContent {...props} />;
+}
 
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#343e3eff" },
+  emptyText: { color: "#fff", textAlign: "center", marginTop: 40 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-
-  title: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  next: { color: "#0095f6", fontWeight: "700" },
-
+  title: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  next: { color: "#0095f6", fontWeight: "700", fontSize: 16 },
+  previewContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   preview: {
     width: PREVIEW_SIZE,
     height: PREVIEW_SIZE,
     backgroundColor: "#000",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  media: { width: "100%", height: "100%" },
+  playPauseOverlay: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
   },
+  actions: { alignItems: "center", paddingVertical: 24 },
+  actionText: { color: "#fff", fontSize: 13, marginTop: 6 },
 
-  media: {
-    width: "100%",
-    height: "100%",
+  // Bottom section with counter + thumbnails
+  bottomSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    paddingTop: 8,
   },
-
   counter: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-
-  counterText: { color: "#fff", fontSize: 12 },
-
-  actions: {
-    alignItems: "center",
-    paddingVertical: 20,
-  },
-
-  actionText: {
     color: "#fff",
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 15,
+    fontWeight: "600",
     textAlign: "center",
+    marginBottom: 12,
+    opacity: 0.9,
   },
-
-  thumbs: {
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderColor: "#222",
+  thumbsScroll: {
+    maxHeight: 90,
   },
-
+  thumbsContent: {
+    alignItems: "center",
+  },
   thumb: {
-    width: 70,
-    height: 70,
-    marginRight: 8,
-    borderRadius: 8,
+    width: 76,
+    height: 76,
+    marginHorizontal: 6,
+    borderRadius: 10,
     overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "transparent",
+    backgroundColor: "#222",
+    justifyContent: "center",
+    alignItems: "center",
   },
-
   thumbActive: {
+    borderWidth: 3,
     borderColor: "#0095f6",
   },
-
   thumbImg: {
     width: "100%",
     height: "100%",
   },
-
-  playIcon: {
-    position: "absolute",
-    alignSelf: "center",
-    top: "35%",
-    opacity: 0.9,
-  },
+  videoIcon: { position: "absolute" },
 });

@@ -1,46 +1,90 @@
 import React, { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View, ActivityIndicator, Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API } from "./api/api";
+import { api } from "./api/api";
 
 export default function AuthLoading({ navigation }) {
   useEffect(() => {
     const bootstrap = async () => {
-      const token = await AsyncStorage.getItem("token");
-
-      // 1️⃣ Hakuna token → public app
-      if (!token) {
-        navigation.replace("MainTabs");
-        return;
-      }
-
       try {
-        // 2️⃣ Token ipo → muulize backend huyu ni nani
-        const res = await API.get("/auth/me");
+        const token = await AsyncStorage.getItem("token");
 
-        const user = res.data;
-
-        // 3️⃣ Hajaverified → VerifyProvider
-        if (!user.isVerified) {
-          navigation.replace("VerifyProvider");
+        // 1️⃣ No token → public user
+        if (!token) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "MainTabs" }],
+          });
           return;
         }
 
-        // 4️⃣ Verified → ProviderTabs
-        navigation.replace("ProviderTabs");
+        // 2️⃣ Validate token + profile from backend
+        const res = await api.get("/service-provider/me");
+
+        // 3️⃣ Profile exists → provider app
+        if (res?.data?.provider) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "ProviderTabs" }],
+          });
+          return;
+        }
+
+        // 4️⃣ Fallback (shouldn't happen)
+        throw new Error("Profile missing");
       } catch (err) {
-        // token mbovu / expired
-        await AsyncStorage.multiRemove(["token", "role"]);
-        navigation.replace("MainTabs");
+        const status = err?.response?.status;
+
+        // 🔥 AUTH TOKEN INVALID / EXPIRED
+        if (status === 401) {
+          await AsyncStorage.multiRemove([
+            "token",
+            "verifyToken",
+            "pendingUuid",
+          ]);
+
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "MainTabs" }],
+          });
+          return;
+        }
+
+        // 🧱 PROFILE NOT CREATED YET
+        if (status === 404) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "EditProvider" }],
+          });
+          return;
+        }
+
+        // 🚨 Unexpected error
+        console.error("Auth bootstrap error:", err);
+        Alert.alert(
+          "Error",
+          "Something went wrong while loading your account."
+        );
+
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "MainTabs" }],
+        });
       }
     };
 
     bootstrap();
-  }, []);
+  }, [navigation]);
 
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <ActivityIndicator size="large" color="#4ECDC4" />
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <ActivityIndicator size="large" />
     </View>
   );
 }

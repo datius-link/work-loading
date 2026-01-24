@@ -1,6 +1,10 @@
 // 🚨 MUST BE FIRST LINE
 import "react-native-gesture-handler";
 
+// FIX: Ondoa hii line - usi-enableScreens() kwa sasa
+// import { enableScreens } from 'react-native-screens';
+// enableScreens();
+
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -8,6 +12,7 @@ import { createStackNavigator } from "@react-navigation/stack";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { LanguageProvider } from "./src/LanguageContext";
 
 /* ---------------------------
    MAIN USER SCREENS
@@ -18,14 +23,14 @@ import MyJobs from "./src/views/MyJobs";
 import You from "./src/views/You";
 
 /* ---------------------------
-   AUTH / ACCOUNT SCREENS
+   AUTH SCREENS (PROVIDER)
 --------------------------- */
 import AuthLoading from "./src/AuthLoading";
-import ServiceProviderLogin from "./src/views/Profile/ServiceProviderLogin";
-import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderSignUp";
-import VerifyProvider from "./src/views/Profile/VerifyProvider";
-import ForgotPassword from "./src/views/Profile/ForgotPassword";
-import ResetPassword from "./src/views/Profile/ResetPassword";
+import ServiceProviderLogin from "./src/views/Profile/ServiceProviderAuth/ServiceProviderLogin";
+import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderAuth/ServiceProviderSignUp";
+import VerifyProvider from "./src/views/Profile/ServiceProviderAuth/VerifyProvider";
+import ForgotPassword from "./src/views/Profile/ServiceProviderAuth/ForgotPassword";
+import ResetPassword from "./src/views/Profile/ServiceProviderAuth/ResetPassword";
 
 /* ---------------------------
    PROVIDER SIDE
@@ -36,7 +41,6 @@ import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
 
 import PicksScreen from "./src/ProviderSide/providerPosts/picks/PicksScreen";
 import EngagementSummary from "./src/ProviderSide/providerPosts/engagement/engagementSummary";
-
 import CreatePost from "./src/ProviderSide/providerPosts/Post/createPost";
 import EditMedia from "./src/ProviderSide/providerPosts/Post/EditMedia";
 import PostDetails from "./src/ProviderSide/providerPosts/Post/PostDetails";
@@ -59,18 +63,14 @@ function MainTabs() {
         headerShown: false,
         tabBarIcon: ({ color, size }) => {
           if (route.name === "Activities") {
-            return (
-              <ActivitiesIcon width={22} height={22} fill={color} />
-            );
+            return <ActivitiesIcon width={22} height={22} fill={color} />;
           }
 
           let icon = "home";
           if (route.name === "MyJobs") icon = "briefcase";
           if (route.name === "You") icon = "user";
 
-          return (
-            <FontAwesome5 name={icon} size={size} color={color} />
-          );
+          return <FontAwesome5 name={icon} size={size} color={color} />;
         },
       })}
     >
@@ -83,82 +83,58 @@ function MainTabs() {
 }
 
 /* =====================================================
-   APP ROOT (CLEAN & SAFE)
+   APP ROOT
 ===================================================== */
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {/* ---------- AUTH CHECK ---------- */}
-            <Stack.Screen name="AuthLoading" component={AuthLoading} />
+    <LanguageProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <Stack.Navigator 
+              screenOptions={{ 
+                headerShown: false,
+                // FIX: Usitumie detachPreviousScreen globally
+                // presentation: 'modal', // ONDOA HII
+              }}
+            >
 
-            {/* ---------- NORMAL USER ---------- */}
-            <Stack.Screen name="MainTabs" component={MainTabs} />
+              {/* -------- AUTH CHECK -------- */}
+              <Stack.Screen name="AuthLoading" component={AuthLoading} />
 
-            {/* ---------- PROVIDER AUTH ---------- */}
-            <Stack.Screen
-              name="ServiceProviderLogin"
-              component={ServiceProviderLogin}
-              options={{ headerShown: true, title: "Provider Login" }}
-            />
+              {/* -------- MAIN USER -------- */}
+              <Stack.Screen name="MainTabs" component={MainTabs} />
 
-            <Stack.Screen
-              name="ServiceProviderSignUp"
-              component={ServiceProviderSignUp}
-              options={{ headerShown: true, title: "Create Provider Account" }}
-            />
+              {/* -------- PROVIDER AUTH -------- */}
+              <Stack.Screen name="ServiceProviderLogin" component={ServiceProviderLogin} />
+              <Stack.Screen name="ServiceProviderSignUp" component={ServiceProviderSignUp} />
+              <Stack.Screen name="VerifyProvider" component={VerifyProvider} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+              <Stack.Screen name="ResetPassword" component={ResetPassword} />
 
-            <Stack.Screen
-              name="VerifyProvider"
-              component={VerifyProvider}
-            />
+              {/* -------- PROVIDER APP -------- */}
+              <Stack.Screen name="ProviderTabs" component={ProviderTabs} />
+              <Stack.Screen name="EditProvider" component={EditProvider} />
+              <Stack.Screen name="ProviderSettings" component={ProviderSettings} />
 
-            {/* ---------- PROVIDER ROOT ---------- */}
-            <Stack.Screen
-              name="ProviderTabs"
-              component={ProviderTabs}
-            />
+              {/* -------- POSTS -------- */}
+              <Stack.Screen name="PicksScreen" component={PicksScreen} />
+              <Stack.Screen name="EngagementSummary" component={EngagementSummary} />
+              <Stack.Screen name="CreatePost" component={CreatePost} />
+              <Stack.Screen name="EditMedia" component={EditMedia} />
+              
+              {/* -------- POST DETAILS WITH MINIMAL FIXES -------- */}
+              <Stack.Screen 
+                name="PostDetails" 
+                component={PostDetails}
+                options={{
+                }}
+              />
 
-            {/* ---------- PROVIDER EXTRAS ---------- */}
-            <Stack.Screen
-              name="EditProvider"
-              component={EditProvider}
-              options={{ headerShown: true, title: "Edit Profile" }}
-            />
-
-            <Stack.Screen
-              name="ProviderSettings"
-              component={ProviderSettings}
-            />
-
-            {/* ---------- PASSWORD ---------- */}
-            <Stack.Screen
-              name="ForgotPassword"
-              component={ForgotPassword}
-              options={{ headerShown: true }}
-            />
-
-            <Stack.Screen
-              name="ResetPassword"
-              component={ResetPassword}
-              options={{ headerShown: true }}
-            />
-
-            {/* ---------- POSTS ---------- */}
-            <Stack.Screen name="PicksScreen" component={PicksScreen} />
-            <Stack.Screen
-              name="EngagementSummary"
-              component={EngagementSummary}
-            />
-
-            <Stack.Screen name="CreatePost" component={CreatePost} />
-            <Stack.Screen name="EditMedia" component={EditMedia} />
-            <Stack.Screen name="PostDetails" component={PostDetails} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </LanguageProvider>
   );
 }

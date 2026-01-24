@@ -10,7 +10,7 @@ import {
   Dimensions,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { API } from "../../api/api";
+import { api } from "../../api/api";
 import { theme } from "../../theme/theme";
 
 const { width } = Dimensions.get("window");
@@ -33,10 +33,17 @@ export default function MyWork({ navigation }) {
   const loadProfile = async () => {
     try {
       setLoading(true);
-      const res = await API.get("/service-provider/me");
-      setProfile(res.data?.provider ?? null);
+
+      const res = await api.get("/service-provider/me");
+
+      const provider = res?.data?.provider;
+
+      setProfile({
+        profilePic: provider?.profilePic || null,
+      });
     } catch (e) {
       console.log("MyWork profile error:", e);
+      setProfile(null);
     } finally {
       setLoading(false);
     }

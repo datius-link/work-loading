@@ -1,107 +1,94 @@
-// MyProfile.js
-// Service Provider Profile (read-only view)
-// Clean, consistent phone formatting, realtime updates
-
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
   StyleSheet,
-  Image,
-  Linking,
   ActivityIndicator,
+  ScrollView,
+  Image,
+  TouchableOpacity,
   SafeAreaView,
 } from "react-native";
 import { FontAwesome5 } from "@expo/vector-icons";
-import { API } from "../../api/api";
-import io from "socket.io-client";
-import { SOCIAL_ICONS } from "../../icons/socialIcons";
+import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { api } from "../../api/api";
+import { theme } from "../../theme";
 
-
-/* ================= PHONE HELPERS ================= */
-/**
- * System rule:
- * - Backend stores phone as digits only (9 digits)
- * - UI adds +255 everywhere
- */
-const normalizePhone = (phone = "") =>
-  phone.replace(/\D/g, "").replace(/^255/, "");
-
-const formatPhoneDisplay = (phone = "") =>
-  `+255 ${normalizePhone(phone)}`;
-
-const formatPhoneLink = (phone = "") =>
-  `+255${normalizePhone(phone)}`;
-
-/* ================= COMPONENT ================= */
 export default function MyProfile({ navigation }) {
-  const [provider, setProvider] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const insets = useSafeAreaInsets();
 
-  /* ---------- LOAD PROFILE ---------- */
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [provider, setProvider] = useState(null);
+
+  /* ================= FETCH PROFILE ================= */
   const loadProfile = useCallback(async () => {
     try {
-      setError(null);
-      const res = await API.get("/service-provider/me");
-      setProvider(res.data?.provider ?? null);
+      setLoading(true);
+      setError("");
+
+      const res = await api.get("/service-provider/me");
+
+      if (!res?.data?.provider) {
+        throw new Error("Invalid profile response");
+      }
+
+      setProvider(res.data.provider);
     } catch (err) {
-      console.log("Profile load error:", err);
-      setError("Failed to load profile");
+      console.log("MyProfile error:", err);
+      setError(
+        err.response?.data?.message ||
+          "Failed to load profile. Pull up later."
+      );
       setProvider(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  /* ---------- SOCKET ---------- */
-  useEffect(() => {
-    loadProfile();
+  /* ================= LOAD ON TAB FOCUS ================= */
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [loadProfile])
+  );
 
-    return () => socket.disconnect();
-  }, [loadProfile]);
-
-  /* ---------- LINK HANDLER ---------- */
-  const openUrl = async (url) => {
-    try {
-      if (await Linking.canOpenURL(url)) {
-        await Linking.openURL(url);
-      }
-    } catch (e) {
-      console.log("Open URL error:", e);
-    }
-  };
-
-  /* ================= STATES ================= */
+  /* ================= LOADING ================= */
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#0B6B63" />
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.loadingText}>Loading profile…</Text>
       </View>
     );
   }
 
+  /* ================= ERROR ================= */
   if (error || !provider) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>
-          {error || "Profile not found"}
-        </Text>
-        <TouchableOpacity onPress={loadProfile} style={styles.retryBtn}>
+      <SafeAreaView style={[styles.center, { paddingTop: insets.top }]}>
+        <FontAwesome5
+          name="exclamation-circle"
+          size={48}
+          color={theme.colors.danger}
+        />
+        <Text style={styles.errorTitle}>Profile unavailable</Text>
+        <Text style={styles.errorText}>{error}</Text>
+
+        <TouchableOpacity style={styles.retryBtn} onPress={loadProfile}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
-  /* ---------- DATA ---------- */
+  /* ================= SAFE DATA ================= */
   const {
-    fullName = "",
+    full_name = "",
     username = "",
     bio = "",
-    profilePic = "",
+    profile_pic = "",
     contacts = [],
     services = [],
     socials = [],
@@ -109,133 +96,84 @@ export default function MyProfile({ navigation }) {
 
   /* ================= UI ================= */
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* ---------- HEADER ---------- */}
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.logo}>e-kazi</Text>
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate("ProviderSettings", { from: "MyProfile" })
-          }
-        >
-          <FontAwesome5 name="cog" size={22} color="#0B6B63" />
+        <TouchableOpacity onPress={() => navigation.navigate("ProviderSettings")}>
+          <FontAwesome5 name="cog" size={20} color={theme.colors.primary} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* ---------- PROFILE CARD ---------- */}
-        <View style={styles.profileCard}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Card */}
+        <View style={styles.card}>
           <Image
             source={{
-              uri: profilePic || "https://via.placeholder.com/150",
+              uri:
+                profile_pic ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                  full_name || "User"
+                )}&background=0D47A1&color=fff`,
             }}
             style={styles.avatar}
           />
 
-          <Text style={styles.name}>
-            {fullName || "Unnamed Provider"}
+          <Text style={styles.name}>{full_name || "No name"}</Text>
+          {username ? <Text style={styles.username}>@{username}</Text> : null}
+
+          <Text style={styles.bio}>
+            {bio || "No bio yet. Add something cool."}
           </Text>
-
-          {!!username && (
-            <Text style={styles.username}>@{username}</Text>
-          )}
-
-          {!!bio && <Text style={styles.bio}>{bio}</Text>}
 
           <TouchableOpacity
             style={styles.editBtn}
             onPress={() => navigation.navigate("EditProvider")}
           >
+            <FontAwesome5 name="edit" size={14} color="#fff" />
             <Text style={styles.editText}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
 
-        {/* ---------- CONTACTS ---------- */}
-        <Section title="Contacts">
-          {contacts.length === 0 ? (
-            <Muted text="No contacts added" />
-          ) : (
-            contacts.map((c, i) => {
-              const [, number, access] = c.split(":");
-
-              return (
-                <View key={i} style={styles.contactRow}>
-                  <Text style={styles.contactText}>
-                    {formatPhoneDisplay(number)}
-                  </Text>
-
-                  <View style={styles.contactActions}>
-                    {access?.includes("call") && (
-                      <TouchableOpacity
-                        onPress={() =>
-                          openUrl(`tel:${formatPhoneLink(number)}`)
-                        }
-                      >
-                        <Text style={styles.actionIcon}>📞</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {access?.includes("sms") && (
-                      <TouchableOpacity
-                        onPress={() =>
-                          openUrl(`sms:${formatPhoneLink(number)}`)
-                        }
-                      >
-                        <Text style={styles.actionIcon}>💬</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </Section>
-
-        {/* ---------- SERVICES ---------- */}
+        {/* Services */}
         <Section title="Services">
           {services.length === 0 ? (
-            <Muted text="No services added" />
+            <Empty text="No services added" />
           ) : (
-            <View style={styles.chipsWrap}>
-              {services.map((s, i) => (
-                <View key={i} style={styles.chip}>
-                  <Text style={styles.chipText}>{s}</Text>
-                </View>
-              ))}
-            </View>
+            services.map((s, i) => (
+              <Chip key={i} label={s} />
+            ))
           )}
         </Section>
 
-        {/* ---------- SOCIAL MEDIA ---------- */}
-        <Section title="Social Media">
+        {/* Contacts */}
+        <Section title="Contacts">
+          {contacts.length === 0 ? (
+            <Empty text="No contacts available" />
+          ) : (
+            contacts.map((c, i) => (
+              <Text key={i} style={styles.listItem}>
+                {c}
+              </Text>
+            ))
+          )}
+        </Section>
+
+        {/* Socials */}
+        <Section title="Socials">
           {socials.length === 0 ? (
-            <Muted text="No social accounts added" />
+            <Empty text="No socials linked" />
           ) : (
-            <View style={styles.socialGrid}>
-              {socials.map((s, i) => {
-                const [platform, handle] = s.split(":");
-                const Icon = SOCIAL_ICONS[platform];
-                if (!Icon) return null;
-
-                const url = handle.startsWith("http")
-                  ? handle
-                  : `https://${platform}.com/${handle}`;
-
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={styles.socialIcon}
-                    onPress={() => openUrl(url)}
-                  >
-                    <Icon width={26} height={26} stroke="#4ECDC4" />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            socials.map((s, i) => (
+              <Text key={i} style={styles.listItem}>
+                {s}
+              </Text>
+            ))
           )}
         </Section>
-
-        <View style={{ height: 60 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -249,114 +187,91 @@ const Section = ({ title, children }) => (
   </View>
 );
 
-const Muted = ({ text }) => (
-  <Text style={styles.muted}>{text}</Text>
+const Empty = ({ text }) => (
+  <Text style={styles.empty}>{text}</Text>
+);
+
+const Chip = ({ label }) => (
+  <View style={styles.chip}>
+    <Text style={styles.chipText}>{label}</Text>
+  </View>
 );
 
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F4FFFD" },
+  container: { flex: 1, backgroundColor: theme.colors.bg },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  errorText: { color: "#E74C3C", marginBottom: 10 },
+  loadingText: { marginTop: 12, color: theme.colors.text },
+
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 12,
+  },
+  errorText: {
+    marginVertical: 12,
+    textAlign: "center",
+    color: theme.colors.muted,
+  },
+
   retryBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#0B6B63",
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
   },
   retryText: { color: "#fff", fontWeight: "700" },
 
   header: {
+    padding: 16,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
     backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderColor: "#E4E4E4",
   },
-  logo: { fontSize: 22, fontWeight: "800", color: "#0B6B63" },
+  logo: { fontSize: 22, fontWeight: "800", color: theme.colors.primary },
 
-  container: { padding: 18 },
-
-  profileCard: {
-    backgroundColor: "#E9F7F5",
-    alignItems: "center",
-    paddingVertical: 30,
+  card: {
+    backgroundColor: "#fff",
+    margin: 16,
     borderRadius: 16,
-    marginBottom: 20,
+    padding: 20,
+    alignItems: "center",
   },
+
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 4,
-    borderColor: "#fff",
-  },
-  name: { fontSize: 24, fontWeight: "700", color: "#0B6B63", marginTop: 12 },
-  username: { fontSize: 16, color: "#555", marginTop: 4 },
-  bio: {
-    marginTop: 12,
-    paddingHorizontal: 30,
-    textAlign: "center",
-    color: "#444",
-  },
-
-  editBtn: {
-    marginTop: 20,
-    backgroundColor: "#0B6B63",
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 30,
-  },
-  editText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-
-  section: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: "#E4E4E4",
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#0B6B63",
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     marginBottom: 12,
   },
-  muted: { color: "#777", fontStyle: "italic" },
+  name: { fontSize: 22, fontWeight: "700" },
+  username: { color: theme.colors.muted },
+  bio: { textAlign: "center", marginVertical: 12 },
 
-  contactRow: {
+  editBtn: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: "#eee",
-  },
-  contactText: { fontSize: 16, fontWeight: "600", color: "#333" },
-  contactActions: { flexDirection: "row", gap: 16 },
-  actionIcon: { fontSize: 22, color: "#4ECDC4" },
-
-  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  chip: {
-    backgroundColor: "#E8F7F5",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    gap: 8,
+    backgroundColor: theme.colors.primary,
+    padding: 12,
     borderRadius: 20,
+    marginTop: 8,
   },
-  chipText: { color: "#0B6B63", fontWeight: "600" },
+  editText: { color: "#fff", fontWeight: "700" },
 
-  socialGrid: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
-  socialIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#E8F7F5",
-    justifyContent: "center",
-    alignItems: "center",
+  section: { marginHorizontal: 16, marginTop: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
+
+  empty: { color: theme.colors.muted, fontStyle: "italic" },
+
+  chip: {
+    backgroundColor: theme.colors.border,
+    padding: 10,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
   },
+  chipText: { fontWeight: "600", color: theme.colors.primary },
+
+  listItem: { paddingVertical: 6 },
 });

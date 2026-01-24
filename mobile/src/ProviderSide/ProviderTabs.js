@@ -1,39 +1,70 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { FontAwesome5 } from "@expo/vector-icons";
-import { BackHandler } from "react-native";
+import { BackHandler, ActivityIndicator, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Screens
 import MyProfile from "./Profile/MyProfile";
 import OthersScreen from "./Others/OthersScreen";
-import ProviderSettings from "./Settings/ProviderSettings";
-
-// STACK
 import ProviderPostsStack from "./providerPosts/ProviderPostsStack";
 
 const Tab = createBottomTabNavigator();
 
-function RequestsScreen() {
+function EmptyScreen() {
   return null;
 }
 
-function ProviderAlertsScreen() {
-  return null;
-}
+export default function ProviderTabs({ navigation }) {
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
-export default function ProviderTabs() {
+  /* ================= AUTH GUARD ================= */
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = await AsyncStorage.getItem("token");
+
+      if (!token) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "ServiceProviderLogin" }],
+        });
+        return;
+      }
+
+      setCheckingAuth(false);
+    };
+
+    checkAuth();
+  }, [navigation]);
+
+  /* ================= BLOCK BACK BUTTON ================= */
   useFocusEffect(
     React.useCallback(() => {
       const onBackPress = () => true;
-      const subscription = BackHandler.addEventListener(
+      const sub = BackHandler.addEventListener(
         "hardwareBackPress",
         onBackPress
       );
-      return () => subscription.remove();
+      return () => sub.remove();
     }, [])
   );
 
+  /* ================= LOADING ================= */
+  if (checkingAuth) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  /* ================= TABS ================= */
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -41,29 +72,17 @@ export default function ProviderTabs() {
         tabBarActiveTintColor: "#007bff",
         tabBarInactiveTintColor: "#777",
         tabBarIcon: ({ color, size }) => {
-          let iconName = "circle";
-
-          switch (route.name) {
-            case "Others":
-              iconName = "ellipsis-h";
-              break;
-            case "Posts":
-              iconName = "newspaper";
-              break;
-            case "Requests":
-              iconName = "tasks";
-              break;
-            case "Alerts":
-              iconName = "bell";
-              break;
-            case "MyProfile":
-              iconName = "user";
-              break;
-          }
+          const icons = {
+            Others: "ellipsis-h",
+            Posts: "newspaper",
+            Requests: "tasks",
+            Alerts: "bell",
+            MyProfile: "user",
+          };
 
           return (
             <FontAwesome5
-              name={iconName}
+              name={icons[route.name] || "circle"}
               size={size}
               color={color}
             />
@@ -73,8 +92,8 @@ export default function ProviderTabs() {
     >
       <Tab.Screen name="Others" component={OthersScreen} />
       <Tab.Screen name="Posts" component={ProviderPostsStack} />
-      <Tab.Screen name="Requests" component={RequestsScreen} />
-      <Tab.Screen name="Alerts" component={ProviderAlertsScreen} />
+      <Tab.Screen name="Requests" component={EmptyScreen} />
+      <Tab.Screen name="Alerts" component={EmptyScreen} />
       <Tab.Screen name="MyProfile" component={MyProfile} />
     </Tab.Navigator>
   );
