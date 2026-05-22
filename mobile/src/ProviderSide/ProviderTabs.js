@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { FontAwesome5 } from "@expo/vector-icons";
 import { BackHandler, ActivityIndicator, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLanguage } from "../LanguageContext";
+import AppIcon from "../icons/AppIcon";
 
 import MyProfile from "./Profile/MyProfile";
 import OthersScreen from "./Others/OthersScreen";
@@ -17,6 +18,7 @@ function EmptyScreen() {
 
 export default function ProviderTabs({ navigation }) {
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const { language } = useLanguage();
 
   /* ================= AUTH GUARD ================= */
   useEffect(() => {
@@ -69,24 +71,26 @@ export default function ProviderTabs({ navigation }) {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: "#007bff",
-        tabBarInactiveTintColor: "#777",
+        tabBarActiveTintColor: "#0B6B63",
+        tabBarInactiveTintColor: "#64748B",
+        tabBarLabel:
+          {
+            Others: language === "sw" ? "Mengine" : "Others",
+            Posts: language === "sw" ? "Posts" : "Posts",
+            Requests: language === "sw" ? "Maombi" : "Requests",
+            Alerts: language === "sw" ? "Arifa" : "Alerts",
+            MyProfile: language === "sw" ? "Profile" : "Profile",
+          }[route.name] || route.name,
         tabBarIcon: ({ color, size }) => {
           const icons = {
-            Others: "ellipsis-h",
-            Posts: "newspaper",
+            Others: "dots",
+            Posts: "posts",
             Requests: "tasks",
             Alerts: "bell",
             MyProfile: "user",
           };
 
-          return (
-            <FontAwesome5
-              name={icons[route.name] || "circle"}
-              size={size}
-              color={color}
-            />
-          );
+          return <AppIcon name={icons[route.name] || "user"} size={size} color={color} />;
         },
       })}
     >

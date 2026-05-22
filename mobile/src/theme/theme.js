@@ -14,6 +14,7 @@ export const theme = {
     text: "#0F172A",           // main text (slate)
     textSecondary: "#334155",
     textMuted: "#64748B",
+    muted: "#64748B",
     textVeryMuted: "#94A3B8",
 
     /* STATES */
