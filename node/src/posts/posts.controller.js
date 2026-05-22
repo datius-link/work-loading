@@ -60,6 +60,51 @@ export async function createPost(req, res) {
 }
 
 /* =========================
+   PUBLIC EXPLORE FEED
+========================= */
+export async function listPublicPosts(_req, res) {
+  try {
+    const posts = await db("posts as p")
+      .join("provider_profiles as pp", "pp.provider_uuid", "p.provider_uuid")
+      .leftJoin("post_media as pm", "pm.post_id", "p.id")
+      .select(
+        "p.id",
+        "p.caption",
+        "p.location",
+        "p.type",
+        "p.created_at",
+        "pp.username",
+        "pp.full_name",
+        "pp.profile_pic"
+      )
+      .select(
+        db.raw(
+          `COALESCE(
+            json_agg(
+              json_build_object('url', pm.url, 'type', pm.media_type)
+              ORDER BY pm."order"
+            ) FILTER (WHERE pm.id IS NOT NULL),
+            '[]'
+          ) as media`
+        )
+      )
+      .groupBy(
+        "p.id",
+        "pp.username",
+        "pp.full_name",
+        "pp.profile_pic"
+      )
+      .orderBy("p.created_at", "desc")
+      .limit(50);
+
+    return res.json({ posts });
+  } catch (err) {
+    console.error("listPublicPosts error:", err);
+    return res.status(500).json({ message: "Failed to load posts" });
+  }
+}
+
+/* =========================
    SEARCH USERS (@)
 ========================= */
 export async function searchUsers(req, res) {

@@ -35,9 +35,7 @@ export class UploadManager {
           uri: media.uri,
           bucket: STORAGE_BUCKET,
           path: storagePath,
-          mimeType:
-            media.mimeType ||
-            (media.type === "video" ? "video/mp4" : "image/jpeg"),
+          mimeType: media.mimeType,
         });
 
         this.uploadedMedia.push({

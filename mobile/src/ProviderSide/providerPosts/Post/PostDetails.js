@@ -17,11 +17,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
-import Icon from "react-native-vector-icons/MaterialIcons";
+import Icon from "../../../icons/MaterialIcon";
 import { UploadManager } from "../../../lib/storage/ProviderPosts";
 import VideoPlayer from "./VideoPlayer";
 import { theme } from "../../../theme";
 import { api } from "../../../api/api";
+import AsyncStorage from "@react-native-async-storage/async-storage"; // FIX 1: Added missing import
 
 const { width, height } = Dimensions.get("window");
 const MEDIA_HEIGHT = 400;
@@ -169,7 +170,10 @@ export default function PostDetails({ route, navigation }) {
       Alert.alert("Upload failed", "Please check connection and try again.");
     };
 
-    UploadManager.startUpload(mediaList, postType).catch(() => {});
+    // FIX 2: Replace empty catch with real error logging
+    UploadManager.startUpload(mediaList, postType).catch((err) => {
+      console.log("START UPLOAD ERROR:", JSON.stringify(err, null, 2));
+    });
   };
 
   // ── Share ────────────────────────────────────────────────────────────────────
@@ -178,29 +182,79 @@ export default function PostDetails({ route, navigation }) {
       Alert.alert("Please wait", "Media still uploading.");
       return;
     }
+
     if (!caption.trim()) {
       Alert.alert("Caption required", "Please write something.");
       return;
     }
 
     try {
+      // GET AUTH TOKEN
+      const token = await AsyncStorage.getItem("token");
+
+      if (!token) {
+        Alert.alert("Authentication Error", "Please login again.");
+        return;
+      }
+
+      // VALIDATE MEDIA
+      if (!uploadedMedia || uploadedMedia.length === 0) {
+        Alert.alert("Upload Error", "No uploaded media found.");
+        return;
+      }
+
+      // CREATE PAYLOAD
       const payload = {
         type: postType,
         caption: caption.trim(),
         location: location.trim() || null,
-        media: uploadedMedia.map((m) => ({ url: m.url, type: m.type })),
+
+        media: uploadedMedia.map((m) => ({
+          url: m.url,
+          type: m.type,
+        })),
+
         created_at: new Date().toISOString(),
       };
 
-      await api.post("/posts", payload);
+      // FIX 4: Log token and payload before POST request
+      console.log("TOKEN:", token);
+      console.log("PAYLOAD:", payload);
+      console.log("POST PAYLOAD:", JSON.stringify(payload, null, 2));
+
+      // SEND POST REQUEST
+      const response = await api.post("/posts", payload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      console.log("POST SUCCESS:", response.data);
+
+      // RESET UPLOAD STATE
       UploadManager.reset();
 
-      Alert.alert("Success!", "Posted.", [
-        { text: "OK", onPress: () => navigation.popToTop() },
-      ]);
+      Alert.alert(
+        "Success!",
+        "Post shared successfully.",
+        [
+          {
+            text: "OK",
+            onPress: () => navigation.popToTop(),
+          },
+        ]
+      );
     } catch (err) {
-      console.error(err?.response);
-      Alert.alert("Error", "Could not share post.");
+      console.log(
+        "POST ERROR:",
+        err?.response?.data || err.message || err
+      );
+
+      Alert.alert(
+        "Post Failed",
+        err?.response?.data?.message ||
+          "Could not share post."
+      );
     }
   };
 

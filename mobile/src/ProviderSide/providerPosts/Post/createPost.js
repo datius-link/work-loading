@@ -16,7 +16,7 @@ import {
 } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from 'expo-file-system';
-import Icon from "react-native-vector-icons/MaterialIcons";
+import Icon from "../../../icons/MaterialIcon";
 
 const { width } = Dimensions.get("window");
 const SIZE = width / 3;

@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEventListener } from "expo";
-import Icon from "react-native-vector-icons/MaterialIcons";
+import Icon from "../../../icons/MaterialIcon";
 
 const { width } = Dimensions.get("window");
 const PREVIEW_SIZE = width;
