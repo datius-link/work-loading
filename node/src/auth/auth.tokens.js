@@ -11,6 +11,14 @@ export function generateVerifyToken(uuid) {
   );
 }
 
+export function generatePasswordResetToken(uuid) {
+  return jwt.sign(
+    { uuid, type: "password-reset" },
+    VERIFY_SECRET,
+    { expiresIn: "15m" }
+  );
+}
+
 export function generateAuthToken(uuid) {
   return jwt.sign(
     { uuid, role: "provider" },
