@@ -1,12 +1,13 @@
 import React from "react";
 import {
-  View,
+  SafeAreaView,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
+  View,
 } from "react-native";
-import { FontAwesome5 } from "@expo/vector-icons";
+import AppIcon from "../../icons/AppIcon";
+import { theme } from "../../theme";
 
 export default function OthersScreen({ navigation }) {
   return (
@@ -14,13 +15,11 @@ export default function OthersScreen({ navigation }) {
       <View style={styles.container}>
         <Text style={styles.title}>Others</Text>
 
-        {/* My Activities */}
         <TouchableOpacity style={styles.row}>
-          <FontAwesome5 name="history" size={18} color="#0B6B63" />
+          <AppIcon name="history" size={18} color={theme.colors.primary} />
           <Text style={styles.text}>My Activities</Text>
         </TouchableOpacity>
 
-        {/* Settings */}
         <TouchableOpacity
           style={styles.row}
           onPress={() =>
@@ -29,17 +28,15 @@ export default function OthersScreen({ navigation }) {
             })
           }
         >
-          <FontAwesome5 name="cog" size={18} color="#0B6B63" />
+          <AppIcon name="settings" size={18} color={theme.colors.primary} />
           <Text style={styles.text}>Settings</Text>
         </TouchableOpacity>
 
-        {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Placeholder for future */}
         <TouchableOpacity style={styles.row}>
-          <FontAwesome5 name="question-circle" size={18} color="#777" />
-          <Text style={[styles.text, { color: "#777" }]}>
+          <AppIcon name="help" size={18} color={theme.colors.textMuted} />
+          <Text style={[styles.text, { color: theme.colors.textMuted }]}>
             Help & Support
           </Text>
         </TouchableOpacity>
@@ -51,15 +48,18 @@ export default function OthersScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#F4FFFD",
+    backgroundColor: theme.colors.bg,
   },
   container: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     padding: 20,
   },
   title: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#0B6B63",
+    color: theme.colors.primary,
     marginBottom: 20,
   },
   row: {
@@ -68,12 +68,12 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingVertical: 18,
     borderBottomWidth: 1,
-    borderColor: "#eee",
+    borderColor: theme.colors.border,
   },
   text: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: theme.colors.text,
   },
   divider: {
     height: 20,
