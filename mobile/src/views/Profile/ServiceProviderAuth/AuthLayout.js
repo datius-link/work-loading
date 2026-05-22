@@ -1,9 +1,10 @@
 import React from "react";
 import {
-  View,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import LanguageSwitch from "../../../LanguageSwitch";
@@ -14,8 +15,9 @@ export default function AuthLayout({ children }) {
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top }}>
-      {/* 🌍 Language switch – global & accessible */}
-      <LanguageSwitch />
+      <View style={localStyles.switchWrap}>
+        <LanguageSwitch />
+      </View>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -32,3 +34,11 @@ export default function AuthLayout({ children }) {
     </View>
   );
 }
+
+const localStyles = StyleSheet.create({
+  switchWrap: {
+    alignItems: "flex-end",
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+});

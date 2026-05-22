@@ -1,17 +1,19 @@
 import React, { useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Alert,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
+  View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AuthLayout from "./AuthLayout";
 import AuthBackButton from "../../../AuthBackButton";
 import Txt from "../../../Txt";
-import { styles } from "./styles"; // shared auth styles
-import { theme } from "../../../theme"; // ← new theme import
+import { styles } from "./styles";
+import { theme } from "../../../theme";
 import { api } from "../../../api/api";
+import AppIcon from "../../../icons/AppIcon";
 
 export default function ServiceProviderSignUp({ navigation }) {
   const [email, setEmail] = useState("");
@@ -20,21 +22,41 @@ export default function ServiceProviderSignUp({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !password) {
+      Alert.alert("Error", "Email and password are required");
+      return;
+    }
+
     if (password !== confirm) {
-      alert("Passwords do not match");
+      Alert.alert("Error", "Passwords do not match");
       return;
     }
 
     setLoading(true);
     try {
-      const res = await api.post("/auth/register", { email, password });
+      const res = await api.post("/auth/register", {
+        email: cleanEmail,
+        password,
+      });
+
       await AsyncStorage.multiSet([
         ["verifyToken", res.data.verifyToken],
         ["pendingUuid", res.data.uuid],
       ]);
+
+      Alert.alert(
+        "Code sent",
+        "Your verification code is shown in the backend terminal."
+      );
+
       navigation.replace("VerifyProvider");
     } catch (err) {
-      alert(err.response?.data?.message || "Registration failed");
+      Alert.alert(
+        "Registration failed",
+        err.response?.data?.message || "Registration failed"
+      );
     } finally {
       setLoading(false);
     }
@@ -44,30 +66,27 @@ export default function ServiceProviderSignUp({ navigation }) {
     <AuthLayout>
       <AuthBackButton />
 
-      <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
+      <View style={styles.card}>
+        <View style={localStyles.iconWrap}>
+          <AppIcon name="plusUser" size={28} color={theme.colors.primary} />
+        </View>
+
         <Txt
           en="Become a Service Provider"
           sw="Kuwa Mtoa Huduma"
-          style={[styles.title, { color: theme.colors.text }]}
+          style={styles.title}
         />
 
         <Txt
-          en="Create a provider account and start earning."
-          sw="Fungua akaunti ya mtoa huduma uanze kupata kipato."
-          style={[styles.subtitle, { color: theme.colors.textMuted }]}
+          en="Create a full provider account for posting work, receiving requests, and building your profile."
+          sw="Fungua akaunti kamili ya mtoa huduma kwa kupost kazi, kupokea maombi, na kujenga profile yako."
+          style={styles.subtitle}
         />
 
         <TextInput
           placeholder="Email"
           placeholderTextColor={theme.colors.textVeryMuted}
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.colors.surfaceHover,
-              color: theme.colors.text,
-              borderColor: theme.colors.border,
-            },
-          ]}
+          style={styles.input}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -78,14 +97,7 @@ export default function ServiceProviderSignUp({ navigation }) {
           placeholder="Password"
           placeholderTextColor={theme.colors.textVeryMuted}
           secureTextEntry
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.colors.surfaceHover,
-              color: theme.colors.text,
-              borderColor: theme.colors.border,
-            },
-          ]}
+          style={styles.input}
           value={password}
           onChangeText={setPassword}
         />
@@ -94,37 +106,20 @@ export default function ServiceProviderSignUp({ navigation }) {
           placeholder="Confirm password"
           placeholderTextColor={theme.colors.textVeryMuted}
           secureTextEntry
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.colors.surfaceHover,
-              color: theme.colors.text,
-              borderColor: theme.colors.border,
-            },
-          ]}
+          style={styles.input}
           value={confirm}
           onChangeText={setConfirm}
         />
 
         <TouchableOpacity
-          style={[
-            styles.button,
-            {
-              backgroundColor: theme.colors.primary,
-              opacity: loading ? 0.7 : 1,
-            },
-          ]}
+          style={[styles.button, loading && styles.disabled]}
           onPress={handleRegister}
           disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Txt
-              en="Continue"
-              sw="Endelea"
-              style={styles.buttonText}
-            />
+            <Txt en="Continue" sw="Endelea" style={styles.buttonText} />
           )}
         </TouchableOpacity>
 
@@ -138,8 +133,20 @@ export default function ServiceProviderSignUp({ navigation }) {
             style={[styles.linkText, { color: theme.colors.primary }]}
           />
         </TouchableOpacity>
-
       </View>
     </AuthLayout>
   );
 }
+
+const localStyles = {
+  iconWrap: {
+    alignSelf: "center",
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: theme.spacing.md,
+    backgroundColor: theme.colors.primarySoft,
+  },
+};
