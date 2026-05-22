@@ -1,6 +1,9 @@
 import React, { useEffect } from "react";
-import { TouchableOpacity, Text, StyleSheet, BackHandler } from "react-native";
+import { BackHandler, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import Txt from "./Txt";
+import AppIcon from "./icons/AppIcon";
+import { theme } from "./theme";
 
 export default function AuthBackButton() {
   const navigation = useNavigation();
@@ -12,8 +15,13 @@ export default function AuthBackButton() {
         {
           name: "MainTabs",
           state: {
-            index: 3, // 👈 You tab (0=Home,1=Activities,2=MyJobs,3=You)
-            routes: [{ name: "Home" }, { name: "Activities" }, { name: "MyJobs" }, { name: "You" }],
+            index: 3,
+            routes: [
+              { name: "Home" },
+              { name: "Activities" },
+              { name: "MyJobs" },
+              { name: "You" },
+            ],
           },
         },
       ],
@@ -21,28 +29,40 @@ export default function AuthBackButton() {
     return true;
   };
 
-  // 🔒 Block hardware back
   useEffect(() => {
-    const sub = BackHandler.addEventListener(
-      "hardwareBackPress",
-      exitToYou
-    );
+    const sub = BackHandler.addEventListener("hardwareBackPress", exitToYou);
     return () => sub.remove();
   }, []);
 
   return (
     <TouchableOpacity style={styles.btn} onPress={exitToYou}>
-      <Text style={styles.text}>← Back</Text>
+      <View style={styles.iconWrap}>
+        <AppIcon name="arrowLeft" size={18} color={theme.colors.primary} />
+      </View>
+      <Txt en="Back" sw="Rudi" style={styles.text} />
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   btn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 8,
     marginBottom: 16,
+  },
+  iconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.primarySoft,
   },
   text: {
     fontSize: 15,
     fontWeight: "600",
+    color: theme.colors.primary,
   },
 });

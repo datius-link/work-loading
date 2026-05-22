@@ -9,10 +9,10 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
-import { FontAwesome5 } from "@expo/vector-icons";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { LanguageProvider } from "./src/LanguageContext";
+import { LanguageProvider, useLanguage } from "./src/LanguageContext";
+import AppIcon from "./src/icons/AppIcon";
 
 /* ---------------------------
    MAIN USER SCREENS
@@ -45,11 +45,6 @@ import CreatePost from "./src/ProviderSide/providerPosts/Post/createPost";
 import EditMedia from "./src/ProviderSide/providerPosts/Post/EditMedia";
 import PostDetails from "./src/ProviderSide/providerPosts/Post/PostDetails";
 
-/* ---------------------------
-   ICONS
---------------------------- */
-import ActivitiesIcon from "./src/icons/huge/activities.svg";
-
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -57,20 +52,38 @@ const Tab = createBottomTabNavigator();
    MAIN USER TABS
 ===================================================== */
 function MainTabs() {
+  const { language } = useLanguage();
+  const labels = {
+    Home: language === "sw" ? "Gundua" : "Explore",
+    Activities: language === "sw" ? "Shughuli" : "Activities",
+    MyJobs: language === "sw" ? "Kazi Zangu" : "My Jobs",
+    You: language === "sw" ? "Wewe" : "You",
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        tabBarActiveTintColor: "#0B6B63",
+        tabBarInactiveTintColor: "#64748B",
+        tabBarLabel: labels[route.name] || route.name,
+        tabBarStyle: {
+          borderTopColor: "#E2E8F0",
+          height: 64,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "700",
+        },
         tabBarIcon: ({ color, size }) => {
-          if (route.name === "Activities") {
-            return <ActivitiesIcon width={22} height={22} fill={color} />;
-          }
-
           let icon = "home";
+          if (route.name === "Activities") icon = "activity";
           if (route.name === "MyJobs") icon = "briefcase";
           if (route.name === "You") icon = "user";
 
-          return <FontAwesome5 name={icon} size={size} color={color} />;
+          return <AppIcon name={icon} size={size} color={color} />;
         },
       })}
     >
