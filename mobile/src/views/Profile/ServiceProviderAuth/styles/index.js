@@ -8,15 +8,19 @@ export const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.lg,
     backgroundColor: theme.colors.bg,
   },
 
   card: {
+    width: "100%",
+    maxWidth: 480,
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
+    borderRadius: theme.radius.lg,
     padding: theme.spacing.xl,
-    ...theme.shadow.elevated,
+    ...theme.shadow.card,
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginVertical: theme.spacing.xxl,
@@ -31,7 +35,7 @@ export const styles = StyleSheet.create({
     color: theme.colors.text,
     textAlign: "center",
     marginBottom: theme.spacing.md,
-    letterSpacing: -0.3,
+    letterSpacing: 0,
   },
 
   subtitle: {
@@ -56,7 +60,7 @@ export const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceHover,
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.lg,
+    paddingVertical: 15,
     fontSize: 16,
     color: theme.colors.text,
     borderWidth: 1,
@@ -74,8 +78,9 @@ export const styles = StyleSheet.create({
   ====================== */
   button: {
     backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.lg,
-    borderRadius: theme.radius.lg,
+    minHeight: 52,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     marginTop: theme.spacing.md,
@@ -86,7 +91,7 @@ export const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "700",
-    letterSpacing: 0.2,
+    letterSpacing: 0,
   },
 
   /* =====================
