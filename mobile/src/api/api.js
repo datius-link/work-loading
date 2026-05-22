@@ -11,11 +11,6 @@ export const api = axios.create({
 
 });
 
-/* =====================================================
-   REQUEST INTERCEPTOR
-   - VERIFY token → auth flows only
-   - AUTH token → app flows only
-===================================================== */
 api.interceptors.request.use(
   async (config) => {
     // Respect manual override
@@ -43,9 +38,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-/* =====================================================
-   RESPONSE INTERCEPTOR
-===================================================== */
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
