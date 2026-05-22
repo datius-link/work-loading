@@ -1,15 +1,11 @@
 import React from "react";
-import {
-  View,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-} from "react-native";
-import { FontAwesome5 } from "@expo/vector-icons";
+import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Txt from "../Txt";
+import LanguageSwitch from "../LanguageSwitch";
 import { theme } from "../theme";
+import AppIcon from "../icons/AppIcon";
 
 export default function You() {
   const navigation = useNavigation();
@@ -17,89 +13,69 @@ export default function You() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: theme.colors.bg }}
+      style={styles.screen}
       contentContainerStyle={[
         styles.container,
         { paddingTop: insets.top + theme.spacing.md },
       ]}
+      showsVerticalScrollIndicator={false}
     >
-      {/* ACCOUNT STATUS */}
-      <View style={styles.headerCard}>
-        <FontAwesome5
-          name="user"
-          size={32}
-          color={theme.colors.primary}
-        />
-
-        <Txt
-          en={"You're using a normal account\nUnatumia akaunti ya kawaida"}
-          sw={"Unatumia akaunti ya kawaida\nYou're using a normal account"}
-          style={styles.headerTitle}
-        />
-
-        <Txt
-          en={
-            "Browse services, request help, and chat with professionals.\n\nTo earn and offer services, switch to Provider Mode."
-          }
-          sw={
-            "Vinjari huduma, omba msaada, na wasiliana na wataalamu.\n\nIli kutoa huduma na kupata kipato, badilisha kwenda Provider Mode."
-          }
-          style={styles.headerBody}
-        />
-      </View>
-
-      {/* PROVIDER MODE INFO */}
-      <View style={styles.infoCard}>
-        <Txt
-          en={"What is Provider Mode?\nProvider Mode ni nini?"}
-          sw={"Provider Mode ni nini?\nWhat is Provider Mode?"}
-          style={styles.infoTitle}
-        />
-
-        <Txt
-          en={
-            "Provider Mode gives you tools to work professionally:"
-          }
-          sw={
-            "Provider Mode inakupa zana za kufanya kazi kitaalamu:"
-          }
-          style={styles.infoText}
-        />
-
-        <View style={styles.bullets}>
-          <Txt en="• Post offers & updates" sw="• Chapisha matangazo na taarifa" style={styles.bullet} />
-          <Txt en="• Receive job requests" sw="• Pokea maombi ya kazi" style={styles.bullet} />
-          <Txt en="• Get alerts & notifications" sw="• Pata arifa na taarifa" style={styles.bullet} />
-          <Txt en="• Build your provider profile" sw="• Jenga wasifu wako wa huduma" style={styles.bullet} />
+      <View style={styles.topRow}>
+        <View>
+          <Txt en="You" sw="Wewe" style={styles.pageTitle} />
+          <Txt en="Choose the account level you need." sw="Chagua kiwango cha akaunti unachohitaji." style={styles.pageSubtitle} />
         </View>
+        <LanguageSwitch />
+      </View>
 
+      <View style={styles.hero}>
+        <View style={styles.heroIcon}>
+          <AppIcon name="shield" size={32} color={theme.colors.primary} />
+        </View>
         <Txt
-          en={
-            "If you already have a provider account, log in.\nOtherwise, create one to get started."
-          }
-          sw={
-            "Ikiwa tayari una akaunti ya mtoa huduma, ingia.\nVinginevyo, fungua akaunti mpya uanze."
-          }
-          style={styles.note}
+          en="You are browsing as a normal user"
+          sw="Unavinjari kama user wa kawaida"
+          style={styles.heroTitle}
+        />
+        <Txt
+          en="You can explore service providers without signing in. When you hire someone, light authentication only asks for your email."
+          sw="Unaweza kugundua watoa huduma bila kuingia. Ukiajiri mtu, light authentication itaomba email yako tu."
+          style={styles.heroBody}
         />
       </View>
 
-      {/* ACTIONS */}
+      <View style={styles.infoGrid}>
+        <InfoCard
+          icon="mail"
+          titleEn="Light authentication"
+          titleSw="Light authentication"
+          bodyEn="For people hiring providers. We only collect your email so the provider can contact you about the job."
+          bodySw="Kwa watu wanaoajiri watoa huduma. Tunachukua email tu ili mtoa huduma akupate kuhusu kazi."
+        />
+        <InfoCard
+          icon="plusUser"
+          titleEn="Full provider authentication"
+          titleSw="Full provider authentication"
+          bodyEn="For service providers. You create an account, verify email, complete your profile, post work, and receive requests."
+          bodySw="Kwa watoa huduma. Unafungua akaunti, unathibitisha email, unakamilisha profile, unapost kazi, na unapokea maombi."
+        />
+      </View>
+
       <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.actionBtn, styles.primaryBtn]}
           onPress={() => navigation.navigate("ServiceProviderLogin")}
         >
-          <FontAwesome5 name="sign-in-alt" size={20} color="#fff" />
+          <AppIcon name="login" size={22} color="#fff" />
           <View style={styles.actionTextWrap}>
             <Txt
-              en={"Login as Service Provider\nIngia kama Mtoa Huduma"}
-              sw={"Ingia kama Mtoa Huduma\nLogin as Service Provider"}
+              en="Login as Service Provider"
+              sw="Ingia kama Mtoa Huduma"
               style={styles.primaryText}
             />
             <Txt
-              en="Use this if you already have a provider account"
-              sw="Tumia hapa kama tayari una akaunti ya huduma"
+              en="Use this if you already have a full provider account"
+              sw="Tumia hapa kama tayari una akaunti kamili ya mtoa huduma"
               style={styles.subTextLight}
             />
           </View>
@@ -109,196 +85,168 @@ export default function You() {
           style={[styles.actionBtn, styles.secondaryBtn]}
           onPress={() => navigation.navigate("ServiceProviderSignUp")}
         >
-          <FontAwesome5
-            name="user-plus"
-            size={20}
-            color={theme.colors.primary}
-          />
+          <AppIcon name="plusUser" size={22} color={theme.colors.primary} />
           <View style={styles.actionTextWrap}>
             <Txt
-              en={"Become a Service Provider\nKuwa Mtoa Huduma"}
-              sw={"Kuwa Mtoa Huduma\nBecome a Service Provider"}
+              en="Become a Service Provider"
+              sw="Kuwa Mtoa Huduma"
               style={styles.secondaryText}
             />
             <Txt
-              en="Create a provider account and start earning"
-              sw="Fungua akaunti ya huduma na uanze kupata kipato"
+              en="Create a provider account and start building your work profile"
+              sw="Fungua akaunti ya mtoa huduma na anza kujenga profile yako ya kazi"
               style={styles.subTextDark}
             />
           </View>
         </TouchableOpacity>
       </View>
-
-      {/* SETTINGS */}
-      <TouchableOpacity
-        style={styles.settingsCard}
-        onPress={() => navigation.navigate("Settings")}
-      >
-        <FontAwesome5 name="cog" size={22} color={theme.colors.accent} />
-        <View style={styles.settingsText}>
-          <Txt
-            en={"Settings & Preferences\nMipangilio"}
-            sw={"Mipangilio\nSettings & Preferences"}
-            style={styles.settingsTitle}
-          />
-          <Txt
-            en="Customize the app to your liking"
-            sw="Badilisha mipangilio ya programu"
-            style={styles.settingsDesc}
-          />
-        </View>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
 
+function InfoCard({ icon, titleEn, titleSw, bodyEn, bodySw }) {
+  return (
+    <View style={styles.infoCard}>
+      <View style={styles.infoIcon}>
+        <AppIcon name={icon} size={22} color={theme.colors.primary} />
+      </View>
+      <Txt en={titleEn} sw={titleSw} style={styles.infoTitle} />
+      <Txt en={bodyEn} sw={bodySw} style={styles.infoText} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: theme.colors.bg,
+  },
   container: {
+    width: "100%",
+    maxWidth: 820,
+    alignSelf: "center",
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.xxl,
   },
-
-  headerCard: {
+  topRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: theme.spacing.md,
+  },
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: theme.colors.text,
+  },
+  pageSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: theme.colors.textMuted,
+  },
+  hero: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+    borderRadius: 8,
     padding: theme.spacing.lg,
-    alignItems: "center",
-    marginBottom: theme.spacing.lg,
-    ...theme.shadow.card,
+    marginBottom: theme.spacing.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    ...theme.shadow.soft,
   },
-
-  headerTitle: {
-    marginTop: theme.spacing.sm,
-    fontSize: 18,
-    fontWeight: "700",
+  heroIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: theme.spacing.md,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: "800",
     color: theme.colors.text,
-    textAlign: "center",
   },
-
-  headerBody: {
-    marginTop: theme.spacing.sm,
+  heroBody: {
+    marginTop: 8,
     fontSize: 15,
-    color: theme.colors.textMuted,
-    textAlign: "center",
     lineHeight: 22,
+    color: theme.colors.textMuted,
   },
-
+  infoGrid: {
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
   infoCard: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+    borderRadius: 8,
     padding: theme.spacing.lg,
-    marginBottom: theme.spacing.lg,
-    ...theme.shadow.card,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
-
+  infoIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: theme.spacing.sm,
+    backgroundColor: theme.colors.primarySoft,
+  },
   infoTitle: {
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     color: theme.colors.text,
   },
-
   infoText: {
-    marginTop: theme.spacing.sm,
-    fontSize: 15,
-    color: theme.colors.textSecondary,
-  },
-
-  bullets: {
-    marginTop: theme.spacing.sm,
-  },
-
-  bullet: {
-    fontSize: 15,
+    marginTop: 7,
+    fontSize: 14,
+    lineHeight: 20,
     color: theme.colors.textMuted,
-    lineHeight: 22,
   },
-
-  note: {
-    marginTop: theme.spacing.md,
-    fontSize: 13,
-    color: theme.colors.textVeryMuted,
-    fontStyle: "italic",
-  },
-
   actions: {
-    marginBottom: theme.spacing.lg,
-  },
-
-  actionBtn: {
-    flexDirection: "row",
     gap: theme.spacing.md,
-    padding: theme.spacing.lg,
-    borderRadius: theme.radius.lg,
-    marginBottom: theme.spacing.md,
+  },
+  actionBtn: {
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: 14,
     ...theme.shadow.card,
   },
-
   actionTextWrap: {
     flex: 1,
   },
-
   primaryBtn: {
     backgroundColor: theme.colors.primary,
   },
-
   primaryText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
     color: "#fff",
   },
-
   secondaryBtn: {
     backgroundColor: theme.colors.surface,
     borderWidth: 1.5,
     borderColor: theme.colors.primary,
   },
-
   secondaryText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
     color: theme.colors.primary,
   },
-
   subTextLight: {
     marginTop: 4,
     fontSize: 13,
-    color: "rgba(255,255,255,0.75)",
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.78)",
   },
-
   subTextDark: {
     marginTop: 4,
     fontSize: 13,
-    color: theme.colors.textMuted,
-  },
-
-  settingsCard: {
-    flexDirection: "row",
-    gap: theme.spacing.md,
-    padding: theme.spacing.lg,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surface,
-    ...theme.shadow.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-
-  settingsText: {
-    flex: 1,
-  },
-
-  settingsTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-
-  settingsDesc: {
-    marginTop: 4,
-    fontSize: 14,
+    lineHeight: 18,
     color: theme.colors.textMuted,
   },
 });

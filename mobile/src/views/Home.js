@@ -1,109 +1,48 @@
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
-import FeedTab from "./home/FeedTab";
-import ExploreTab from "./home/ExploreTab";
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-
-const TopTab = createMaterialTopTabNavigator();
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import ExploreTab from "./home/ExploreTab";
+import LanguageSwitch from "../LanguageSwitch";
+import Txt from "../Txt";
+import { theme } from "../theme";
+import AppIcon from "../icons/AppIcon";
 
 export default function Home() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Text style={styles.logo}>e-kazi</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.brandRow}>
+          <AppIcon name="logo" size={34} color={theme.colors.primary} />
+          <Text style={styles.logo}>e-kazi</Text>
+        </View>
 
-        <TouchableOpacity style={styles.selector}>
-          <Text style={styles.selectorText}>What do you need?</Text>
-        </TouchableOpacity>
+        <LanguageSwitch />
+      </View>
+
+      <View style={styles.subHeader}>
+        <View style={styles.titleBlock}>
+          <Txt en="Explore providers" sw="Gundua watoa huduma" style={styles.title} />
+          <Txt
+            en="Find people you can hire for real work."
+            sw="Tafuta watu unaoweza kuwaajiri kwa kazi halisi."
+            style={styles.subtitle}
+          />
+        </View>
 
         <TouchableOpacity
           style={styles.postJobBtn}
           onPress={() => navigation.navigate("MyJobs")}
         >
-          <Text style={styles.postJobText}> Post a Job</Text>
+          <AppIcon name="briefcase" size={16} color={theme.colors.primary} />
+          <Txt en="Post Job" sw="Post Kazi" style={styles.postJobText} />
         </TouchableOpacity>
       </View>
 
-      {/* TOP TABS */}
-      <TopTab.Navigator
-        screenOptions={{
-          // Hide the default underline indicator
-          tabBarIndicatorStyle: { display: "none" },
-          tabBarStyle: {
-            backgroundColor: "#F2F2F2",
-            borderRadius: 30,
-            elevation: 0,
-            shadowOpacity: 0,
-          },
-          tabBarItemStyle: {
-            borderRadius: 26,
-            margin: 2,
-            padding: 0, // stop internal inflation
-          },
-          tabBarActiveTintColor: "#0B6B63",
-          tabBarInactiveTintColor: "#666",
-          tabBarLabelStyle: {
-            fontWeight: "700",
-            textTransform: "none",
-            fontSize: 15,
-          },
-          tabBarPressColor: "transparent",
-        }}
-      >
-        <TopTab.Screen
-          name="Feed"
-          component={FeedTab}
-          options={{
-            tabBarItemStyle: { flex: 0.9 }, // 👈 squeeze Feed
-            tabBarLabel: ({ focused }) => (
-              <View
-                style={[
-                  styles.tabLabelContainer,
-                  focused && styles.activeTabBackground,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    { color: focused ? "#0B6B63" : "#666" },
-                  ]}
-                >
-                  Feed
-                </Text>
-              </View>
-            ),
-          }}
-        />
-
-        <TopTab.Screen
-          name="Explore"
-          component={ExploreTab}
-          options={{
-            tabBarItemStyle: { flex: 1.1 }, // 👈 give Explore more space
-            tabBarLabel: ({ focused }) => (
-              <View
-                style={[
-                  styles.tabLabelContainer,
-                  focused && styles.activeTabBackground,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    { color: focused ? "#0B6B63" : "#666" },
-                  ]}
-                >
-                  Explore
-                </Text>
-              </View>
-            ),
-          }}
-        />
-
-      </TopTab.Navigator>
+      <ExploreTab />
     </View>
   );
 }
@@ -111,77 +50,64 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: theme.colors.bg,
   },
-
-  /* HEADER */
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
+    paddingBottom: 10,
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderColor: "#EFEFEF",
+    borderColor: theme.colors.border,
   },
-
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   logo: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#0B6B63",
+    color: theme.colors.primary,
   },
-
-  selector: {
+  subHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: theme.colors.surface,
+  },
+  titleBlock: {
     flex: 1,
-    marginHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#F4F4F4",
-    alignItems: "center",
   },
-
-  selectorText: {
+  title: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: theme.colors.text,
+  },
+  subtitle: {
+    marginTop: 2,
     fontSize: 13,
-    fontWeight: "600",
-    color: "#333",
+    color: theme.colors.textMuted,
   },
-
   postJobBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#0B6B63",
-    backgroundColor: "#F4FFFD",
-  },
-
-  postJobText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0B6B63",
-  },
-
-  /* CUSTOM TAB LABELS */
-  tabLabelContainer: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    justifyContent: "center",
+    minHeight: 42,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primarySoft,
   },
-
-  activeTabBackground: {
-    backgroundColor: "#fff",
-    borderRadius: 26,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-
-  tabLabel: {
-    fontWeight: "700",
-    textTransform: "none",
+  postJobText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: theme.colors.primary,
   },
 });
