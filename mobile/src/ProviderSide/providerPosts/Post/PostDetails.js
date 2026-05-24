@@ -18,11 +18,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 import Icon from "../../../icons/MaterialIcon";
-import { UploadManager } from "../../../lib/storage/ProviderPosts";
 import VideoPlayer from "./VideoPlayer";
 import { theme } from "../../../theme";
 import { api } from "../../../api/api";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // FIX 1: Added missing import
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { UploadManager } from "../../../utils/UploadManager";
 
 const { width, height } = Dimensions.get("window");
 const MEDIA_HEIGHT = 400;
@@ -584,6 +584,42 @@ export default function PostDetails({ route, navigation }) {
           </View>
         </View>
 
+        {/* Location Section */}
+        <View style={styles.locationSection}>
+          <Text style={styles.sectionTitle}>Location</Text>
+          <Text style={styles.sectionHint}>
+            Add where you're sharing from (optional)
+          </Text>
+
+          <View style={styles.locationContainer}>
+            <View style={styles.locationIconWrapper}>
+              <Icon name="location-on" size={20} color={theme.colors.primary} />
+            </View>
+            <TextInput
+              style={styles.locationInput}
+              placeholder="Enter location..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={location}
+              onChangeText={setLocation}
+              maxLength={100}
+            />
+            {location.trim() ? (
+              <TouchableOpacity
+                onPress={() => setLocation("")}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Icon name="close" size={20} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <View style={styles.locationFooter}>
+            <Text style={styles.charCount}>
+              {location.length} / 100
+            </Text>
+          </View>
+        </View>
+
         {/* Post Info */}
         <View style={styles.infoBox}>
           <Icon name="info" size={18} color={theme.colors.textMuted} />
@@ -861,6 +897,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.textMuted,
     lineHeight: 20,
+  },
+
+  // Location Section
+  locationSection: {
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  locationContainer: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  locationIconWrapper: {
+    marginRight: 12,
+  },
+  locationInput: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.text,
+    paddingVertical: 4,
+  },
+  locationFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
 
   // Suggestions
