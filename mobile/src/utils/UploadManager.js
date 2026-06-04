@@ -65,6 +65,7 @@ export const UploadManager = {
           url: fileUrl,
           storageId,
           type: media.type,
+          fit: media.fit || "cover",
         });
       }
 
