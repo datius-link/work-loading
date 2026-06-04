@@ -1,595 +1,604 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, Image,
-  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
-  Alert, Keyboard, TouchableWithoutFeedback, BackHandler,
+  ActivityIndicator,
+  Alert,
   Animated,
+  BackHandler,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
-import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
-import { api as backendApi } from "../../api/api";
+import * as ImageManipulator from "expo-image-manipulator";
+import * as Haptics from "expo-haptics";
+
+import { api } from "../../api/api";
 import { UploadManager } from "../../utils/UploadManager";
 import { SOCIAL_ICONS } from "../../icons/socialIcons";
-import { theme } from "../../theme";
+import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
-import * as Haptics from "expo-haptics"; // optional, install expo-haptics
+
+const SOCIAL_LIMIT = 3;
+const CONTACT_LIMIT = 2;
+
+function makeId(prefix = "local") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeProfile(profile) {
+  const contacts = (Array.isArray(profile?.contacts) ? profile.contacts : [])
+    .map((contact) => ({
+      id: makeId("contact"),
+      number: String(contact?.number || ""),
+      allowCall: !!contact?.call,
+      allowSMS: !!contact?.sms,
+    }))
+    .filter((contact) => contact.number);
+
+  const services = (Array.isArray(profile?.services) ? profile.services : [])
+    .map((service) => String(service || "").trim())
+    .filter(Boolean)
+    .map((service) => ({ id: makeId("service"), value: service }));
+
+  const socials = (Array.isArray(profile?.socials) ? profile.socials : [])
+    .map((social) => ({
+      id: makeId("social"),
+      platform: String(social?.platform || ""),
+      handle: String(social?.handle || "").replace(/^@/, ""),
+    }))
+    .filter((social) => social.platform && SOCIAL_ICONS[social.platform]);
+
+  return {
+    full_name: profile?.full_name || "",
+    username: profile?.username || "",
+    field: profile?.field || "",
+    location: profile?.location || "",
+    bio: profile?.bio || "",
+    profilePic: profile?.profilePic || profile?.profile_pic || "",
+    contacts,
+    services,
+    socials,
+  };
+}
 
 export default function EditProvider({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Form state
-  const [full_name, setFullName] = useState("");
-  const [username, setUsername] = useState("");
-  const [bio, setBio] = useState("");
-  const [profilePicUrl, setProfilePicUrl] = useState(null);
-  const [tempProfilePicUri, setTempProfilePicUri] = useState(null);
-  const [profilePicLoaded, setProfilePicLoaded] = useState(false);
-  const [contacts, setContacts] = useState([]);
-  const [services, setServices] = useState([]);
-  const [socials, setSocials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgressPct, setUploadProgressPct] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
-  const initialDataRef = useRef(null);
 
-  // Load profile from backend
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [field, setField] = useState("");
+  const [location, setLocation] = useState("");
+  const [bio, setBio] = useState("");
+  const [profilePicUrl, setProfilePicUrl] = useState("");
+  const [tempProfilePicUri, setTempProfilePicUri] = useState(null);
+  const [contacts, setContacts] = useState([]);
+  const [services, setServices] = useState([]);
+  const [socials, setSocials] = useState([]);
+
+  const markChanged = useCallback(() => setHasChanges(true), []);
+
+  const applyProfile = useCallback((profile) => {
+    setFullName(profile.full_name);
+    setUsername(profile.username);
+    setField(profile.field);
+    setLocation(profile.location);
+    setBio(profile.bio);
+    setProfilePicUrl(profile.profilePic);
+    setTempProfilePicUri(null);
+    setContacts(profile.contacts);
+    setServices(profile.services);
+    setSocials(profile.socials);
+    setHasChanges(false);
+  }, []);
+
+  const handleGoBack = useCallback(() => {
+    if (!hasChanges) {
+      if (navigation.canGoBack()) navigation.goBack();
+      else navigation.navigate("MyProfile");
+      return;
+    }
+
+    Alert.alert("Discard changes?", "You have unsaved profile edits.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Discard",
+        style: "destructive",
+        onPress: () => {
+          if (navigation.canGoBack()) navigation.goBack();
+          else navigation.navigate("MyProfile");
+        },
+      },
+    ]);
+  }, [hasChanges, navigation]);
+
   const loadProfile = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await backendApi.get("/service-provider/me");
-      const p = res.data.provider;
-
-      setFullName(p.full_name || "");
-      setUsername(p.username || "");
-      setBio(p.bio || "");
-      setProfilePicUrl(p.profilePic || null);
-      setProfilePicLoaded(!!p.profilePic);
-
-      const rawContacts = Array.isArray(p.contacts) ? p.contacts : [];
-      const parsedContacts = rawContacts
-        .map(c => {
-          if (typeof c === "object" && c !== null) {
-            return {
-              number: String(c.number || ""),
-              allowCall: !!c.call,
-              allowSMS: !!c.sms,
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
-      setContacts(parsedContacts);
-
-      setServices(Array.isArray(p.services) ? p.services : []);
-      
-      const rawSocials = Array.isArray(p.socials) ? p.socials : [];
-      const parsedSocials = rawSocials
-        .map(s => {
-          if (typeof s === "object" && s !== null) {
-            return {
-              platform: String(s.platform || ""),
-              handle: String(s.handle || ""),
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
-      setSocials(parsedSocials);
-
-      initialDataRef.current = {
-        full_name: p.full_name || "",
-        username: p.username || "",
-        bio: p.bio || "",
-        profilePic: p.profilePic || null,
-        contacts: parsedContacts,
-        services: Array.isArray(p.services) ? p.services : [],
-        socials: parsedSocials,
-      };
-    } catch (err) {
-      console.error("Load profile error:", err);
-      Alert.alert("Error", "Failed to load profile. Please try again.");
-      handleGoBack();
-    } finally {
-      setLoading(false);
-      // Fade in after loading
+      const res = await api.get("/service-provider/me");
+      applyProfile(normalizeProfile(res?.data?.provider || {}));
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 300,
+        duration: 260,
         useNativeDriver: true,
       }).start();
+    } catch (err) {
+      Alert.alert("Profile", err.response?.data?.message || "Failed to load profile.");
+      if (navigation.canGoBack()) navigation.goBack();
+      else navigation.navigate("MyProfile");
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [applyProfile, fadeAnim, navigation]);
 
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
 
-  // Hardware back button
   useFocusEffect(
     useCallback(() => {
-      const onBackPress = () => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
         handleGoBack();
         return true;
-      };
-      const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      });
       return () => sub.remove();
-    }, [])
+    }, [handleGoBack])
   );
-
-  // Detect changes
-  useEffect(() => {
-    if (!initialDataRef.current || loading) return;
-    const initial = initialDataRef.current;
-    const isChanged =
-      full_name !== initial.full_name ||
-      username !== initial.username ||
-      bio !== initial.bio ||
-      profilePicUrl !== initial.profilePic ||
-      JSON.stringify(contacts) !== JSON.stringify(initial.contacts) ||
-      JSON.stringify(services) !== JSON.stringify(initial.services) ||
-      JSON.stringify(socials) !== JSON.stringify(initial.socials) ||
-      tempProfilePicUri !== null;
-    setHasChanges(isChanged);
-  }, [full_name, username, bio, profilePicUrl, contacts, services, socials, tempProfilePicUri, loading]);
-
-  const handleGoBack = () => {
-    navigation.goBack();
-  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission Required", "We need camera roll permissions to change your photo.");
+      Alert.alert("Permission required", "Allow photo access to change your profile picture.");
       return;
     }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.85,
     });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setTempProfilePicUri(asset.uri);
-      setProfilePicUrl(asset.uri);
-      setProfilePicLoaded(true);
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    try {
+      setUploadingImage(true);
+      const manipulated = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 768 } }],
+        { compress: 0.76, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      setTempProfilePicUri(manipulated.uri);
+      setProfilePicUrl(manipulated.uri);
+      markChanged();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {
+      setTempProfilePicUri(result.assets[0].uri);
+      setProfilePicUrl(result.assets[0].uri);
+      markChanged();
+    } finally {
+      setUploadingImage(false);
     }
   };
 
-  const saveProfileData = async (finalProfilePicUrl) => {
-    const storedContacts = contacts
-      .filter(c => c.number && c.number.trim())
-      .map(c => ({
-        number: String(c.number || "").trim(),
-        call: !!c.allowCall,
-        sms: !!c.allowSMS,
-      }));
+  const uploadProfilePicture = async () => {
+    if (!tempProfilePicUri) return profilePicUrl;
 
-    const storedServices = services
-      .map(s => String(s || "").trim())
-      .filter(Boolean);
+    setUploadingImage(true);
+    setUploadProgressPct(0);
 
-    const storedSocials = socials
-      .filter(s => s.handle && s.handle.trim())
-      .map(s => ({
-        platform: String(s.platform || ""),
-        handle: String(s.handle || "").trim().replace(/^@/, ""),
-      }));
+    try {
+      const uploadedUrl = await new Promise((resolve, reject) => {
+        UploadManager.callbacks.onComplete = (media) => {
+          media?.[0]?.url ? resolve(media[0].url) : reject(new Error("No URL returned"));
+        };
+        UploadManager.callbacks.onProgress = (progress) => {
+          if (typeof progress?.percentage === "number") {
+            setUploadProgressPct(Math.round(progress.percentage));
+          }
+        };
+        UploadManager.callbacks.onError = reject;
+        UploadManager.startUpload([{ uri: tempProfilePicUri, type: "image" }]);
+      });
+      setTempProfilePicUri(null);
+      setProfilePicUrl(uploadedUrl);
+      return uploadedUrl;
+    } finally {
+      setUploadingImage(false);
+      setUploadProgressPct(null);
+      UploadManager.reset?.();
+    }
+  };
 
-    const payload = {
-      fullName: String(full_name || "").trim(),
-      username: String(username || "").trim(),
-      bio: String(bio || "").trim(),
-      contacts: storedContacts,
-      services: storedServices,
-      socials: storedSocials,
-      profilePic: typeof finalProfilePicUrl === "string" ? finalProfilePicUrl : "",
-    };
+  const validate = () => {
+    if (!fullName.trim()) return "Full name is required.";
+    if (!username.trim()) return "Username is required.";
+    if (username.trim().length < 3) return "Username must be at least 3 characters.";
 
-    await backendApi.put("/service-provider/update", payload);
+    const activeContacts = contacts.filter((contact) => contact.number.trim());
+    if (activeContacts.length > CONTACT_LIMIT) return "Maximum 2 contact numbers allowed.";
+    for (const contact of activeContacts) {
+      if (!/^\d{9}$/.test(contact.number)) return "Phone number must be exactly 9 digits.";
+      if (!contact.allowCall && !contact.allowSMS) {
+        return "Each contact must allow at least Call or SMS.";
+      }
+    }
+    if (socials.filter((social) => social.handle.trim()).length > SOCIAL_LIMIT) {
+      return "Maximum 3 social media accounts.";
+    }
+    return "";
   };
 
   const handleSave = async () => {
     if (saving) return;
-
-    if (!full_name.trim()) {
-      Alert.alert("Validation Error", "Full name is required.");
+    const validationMessage = validate();
+    if (validationMessage) {
+      Alert.alert("Check profile", validationMessage);
       return;
     }
-    if (!username.trim()) {
-      Alert.alert("Validation Error", "Username is required.");
-      return;
-    }
-    if (username.length < 3) {
-      Alert.alert("Validation Error", "Username must be at least 3 characters.");
-      return;
-    }
-    if (contacts.length > 2) {
-      Alert.alert("Validation Error", "Maximum 2 contact numbers allowed.");
-      return;
-    }
-    for (const c of contacts) {
-      if (c.number.trim()) {
-        if (!/^\d{9}$/.test(c.number)) {
-          Alert.alert("Validation Error", "Phone number must be exactly 9 digits (e.g., 712345678).");
-          return;
-        }
-        if (!c.allowCall && !c.allowSMS) {
-          Alert.alert("Validation Error", "Each contact must allow at least Call or SMS.");
-          return;
-        }
-      }
-    }
-    if (socials.length > 3) {
-      Alert.alert("Validation Error", "Maximum 3 social media accounts allowed.");
-      return;
-    }
-
-    setSaving(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      let finalProfilePic = profilePicUrl;
+      setSaving(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      if (tempProfilePicUri) {
-        setUploadingImage(true);
-        try {
-          const mediaItem = { uri: tempProfilePicUri, type: "image" };
-          const uploadPromise = new Promise((resolve, reject) => {
-            UploadManager.callbacks.onComplete = (media) => {
-              if (media && media[0] && media[0].url) {
-                resolve(media[0].url);
-              } else {
-                reject(new Error("UploadManager did not return a valid URL"));
-              }
-            };
-            UploadManager.callbacks.onError = reject;
-            UploadManager.startUpload([mediaItem], "profile");
-          });
-          const publicUrl = await uploadPromise;
-          finalProfilePic = publicUrl;
-          setProfilePicUrl(publicUrl);
-          setTempProfilePicUri(null);
-        } catch (uploadErr) {
-          console.error("Image upload failed:", uploadErr);
-          Alert.alert(
-            "Upload Failed",
-            "Could not upload profile photo. Do you want to continue without changing the photo?",
-            [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Continue",
-                onPress: async () => {
-                  await saveProfileData(profilePicUrl);
-                  Alert.alert("Success", "Profile updated successfully!", [
-                    { text: "OK", onPress: handleGoBack },
-                  ]);
-                  setSaving(false);
-                },
-              },
-            ]
-          );
-          setUploadingImage(false);
-          return;
-        } finally {
-          setUploadingImage(false);
-        }
-      }
+      const finalProfilePic = await uploadProfilePicture();
+      const storedContacts = contacts
+        .filter((contact) => contact.number.trim())
+        .map((contact) => ({
+          number: contact.number.trim(),
+          call: !!contact.allowCall,
+          sms: !!contact.allowSMS,
+        }));
+      const storedServices = services
+        .map((service) => String(service.value || "").trim())
+        .filter(Boolean);
+      const storedSocials = socials
+        .filter((social) => social.handle.trim())
+        .map((social) => ({
+          platform: social.platform,
+          handle: social.handle.trim().replace(/^@/, ""),
+        }));
 
-      await saveProfileData(finalProfilePic);
-      Alert.alert("Success", "Profile updated successfully!", [
-        { text: "OK", onPress: handleGoBack },
+      await api.put("/service-provider/update", {
+        fullName: fullName.trim(),
+        username: username.trim(),
+        field: field.trim(),
+        location: location.trim(),
+        bio: bio.trim(),
+        contacts: storedContacts,
+        services: storedServices,
+        socials: storedSocials,
+        profilePic: finalProfilePic || "",
+      });
+
+      setHasChanges(false);
+      Alert.alert("Saved", "Profile updated.", [
+        {
+          text: "OK",
+          onPress: () => {
+            if (navigation.canGoBack()) navigation.goBack();
+            else navigation.navigate("MyProfile");
+          },
+        },
       ]);
     } catch (err) {
-      console.error("Save error:", err);
-      Alert.alert("Error", err.response?.data?.message || "Failed to save profile.");
+      Alert.alert("Could not save", err.response?.data?.message || "Failed to save profile.");
     } finally {
       setSaving(false);
     }
   };
 
-  // Contact handlers
   const addContact = () => {
-    if (contacts.length >= 2) {
-      Alert.alert("Limit", "Maximum 2 contact numbers allowed.");
+    if (contacts.length >= CONTACT_LIMIT) {
+      Alert.alert("Limit", "Maximum 2 numbers.");
       return;
     }
-    setContacts([...contacts, { number: "", allowCall: true, allowSMS: true }]);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-  const updateContactNumber = (index, text) => {
-    const cleaned = text.replace(/\D/g, "").slice(0, 9);
-    const newContacts = [...contacts];
-    newContacts[index].number = cleaned;
-    setContacts(newContacts);
-  };
-  const toggleContactCall = (index) => {
-    const newContacts = [...contacts];
-    newContacts[index].allowCall = !newContacts[index].allowCall;
-    setContacts(newContacts);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-  const toggleContactSMS = (index) => {
-    const newContacts = [...contacts];
-    newContacts[index].allowSMS = !newContacts[index].allowSMS;
-    setContacts(newContacts);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-  const removeContact = (index) => {
-    setContacts(contacts.filter((_, i) => i !== index));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-  const addService = () => {
-    setServices([...services, ""]);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-  const updateService = (index, text) => {
-    const newServices = [...services];
-    newServices[index] = text;
-    setServices(newServices);
-  };
-  const removeService = (index) => {
-    setServices(services.filter((_, i) => i !== index));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-  const addSocialMedia = (platform) => {
-    if (socials.length >= 3) {
-      Alert.alert("Limit", "Maximum 3 social accounts allowed.");
-      return;
-    }
-    if (!socials.some(s => s.platform === platform)) {
-      setSocials([...socials, { platform, handle: "" }]);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-  };
-  const updateSocialHandle = (index, handle) => {
-    const newSocials = [...socials];
-    newSocials[index].handle = handle.replace(/^@/, "");
-    setSocials(newSocials);
-  };
-  const removeSocialMedia = (index) => {
-    setSocials(socials.filter((_, i) => i !== index));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setContacts((prev) => [
+      ...prev,
+      { id: makeId("contact"), number: "", allowCall: true, allowSMS: true },
+    ]);
+    markChanged();
   };
 
-  // Loading skeleton
+  const updateContact = (index, patch) => {
+    setContacts((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    markChanged();
+  };
+
+  const removeContact = (index) => {
+    setContacts((prev) => prev.filter((_, i) => i !== index));
+    markChanged();
+  };
+
+  const addService = () => {
+    setServices((prev) => [...prev, { id: makeId("service"), value: "" }]);
+    markChanged();
+  };
+
+  const updateService = (index, value) => {
+    setServices((prev) => prev.map((item, i) => (i === index ? { ...item, value } : item)));
+    markChanged();
+  };
+
+  const removeService = (index) => {
+    setServices((prev) => prev.filter((_, i) => i !== index));
+    markChanged();
+  };
+
+  const addSocial = (platform) => {
+    if (socials.some((social) => social.platform === platform)) return;
+    if (socials.length >= SOCIAL_LIMIT) {
+      Alert.alert("Limit", "Maximum 3 social accounts.");
+      return;
+    }
+    setSocials((prev) => [...prev, { id: makeId("social"), platform, handle: "" }]);
+    markChanged();
+  };
+
+  const updateSocial = (index, handle) => {
+    setSocials((prev) =>
+      prev.map((item, i) =>
+        i === index ? { ...item, handle: handle.replace(/^@/, "") } : item
+      )
+    );
+    markChanged();
+  };
+
+  const removeSocial = (index) => {
+    setSocials((prev) => prev.filter((_, i) => i !== index));
+    markChanged();
+  };
+
   if (loading) {
     return (
-      <View style={styles.center}>
+      <SafeAreaView edges={["top"]} style={styles.center}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
         <Text style={styles.loadingText}>Loading profile...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <SafeAreaView style={[styles.safeArea, { paddingTop: insets.top }]}>
+      <SafeAreaView edges={["top"]} style={styles.safeArea}>
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
+          style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          {/* Header with gradient background */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={handleGoBack} style={styles.headerButton}>
-              <AppIcon name="arrowLeft" size={24} color={theme.colors.text} />
+            <TouchableOpacity onPress={handleGoBack} style={styles.headerIcon}>
+              <AppIcon name="arrowLeft" size={20} color={theme.colors.primary} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Edit Profile</Text>
+            <View style={styles.headerCopy}>
+              <Text style={styles.headerTitle}>Edit Profile</Text>
+              <Text style={styles.headerSub}>Keep your public profile sharp</Text>
+            </View>
             <TouchableOpacity
               onPress={handleSave}
-              disabled={saving || !hasChanges}
-              style={[styles.headerButton, (!hasChanges || saving) && { opacity: 0.5 }]}
+              disabled={!hasChanges || saving}
+              style={[styles.saveBtn, (!hasChanges || saving) && styles.saveBtnDisabled]}
             >
-              <Text style={styles.saveText}>{saving ? "Saving..." : "Save"}</Text>
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.saveText}>Save</Text>
+              )}
             </TouchableOpacity>
           </View>
 
           <ScrollView
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 48 }]}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             <Animated.View style={{ opacity: fadeAnim }}>
-              {/* Profile Picture - Modern circular with shadow */}
-              <View style={styles.avatarSection}>
-                <View style={styles.avatarWrap}>
-                  <TouchableOpacity onPress={pickImage} activeOpacity={0.8}>
-                    <View style={styles.avatarContainer}>
-                      {profilePicUrl && profilePicLoaded ? (
-                        <Image
-                          source={{ uri: profilePicUrl }}
-                          style={styles.avatar}
-                          onLoad={() => setProfilePicLoaded(true)}
-                          onError={() => setProfilePicLoaded(false)}
-                        />
-                      ) : (
-                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                          <AppIcon name="user" size={50} color={theme.colors.textMuted} />
-                        </View>
-                      )}
-                      {uploadingImage && (
-                        <View style={styles.uploadingOverlay}>
-                          <ActivityIndicator size="small" color="#fff" />
-                        </View>
-                      )}
-                      <View style={styles.cameraBadge}>
-                        <AppIcon name="camera" size={16} color="#fff" />
+              <View style={styles.hero}>
+                <TouchableOpacity onPress={pickImage} activeOpacity={0.85}>
+                  <View style={styles.avatarWrap}>
+                    {profilePicUrl ? (
+                      <Image source={{ uri: profilePicUrl }} style={styles.avatar} />
+                    ) : (
+                      <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                        <AppIcon name="user" size={44} color={theme.colors.textMuted} />
                       </View>
+                    )}
+                    {uploadingImage && (
+                      <View style={styles.uploadOverlay}>
+                        <ActivityIndicator size="small" color="#fff" />
+                        {typeof uploadProgressPct === "number" && (
+                          <Text style={styles.uploadText}>{uploadProgressPct}%</Text>
+                        )}
+                      </View>
+                    )}
+                    <View style={styles.cameraBadge}>
+                      <AppIcon name="camera" size={16} color="#fff" />
                     </View>
-                  </TouchableOpacity>
-                  <Text style={styles.changePicHint}>Tap to change photo</Text>
-                </View>
+                  </View>
+                </TouchableOpacity>
+                <Text style={styles.avatarHint}>Tap photo to change it</Text>
               </View>
 
-              {/* Basic Info Card */}
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <AppIcon name="user" size={22} color={theme.colors.primary} />
-                  <Text style={styles.cardTitle}>Basic Information</Text>
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Full Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your full name"
-                    value={full_name}
-                    onChangeText={setFullName}
-                    autoCapitalize="words"
-                    maxLength={100}
-                    placeholderTextColor={theme.colors.textMuted}
-                  />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Username</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="username"
-                    value={username}
-                    onChangeText={setUsername}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    maxLength={50}
-                    placeholderTextColor={theme.colors.textMuted}
-                  />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Bio</Text>
-                  <TextInput
-                    style={[styles.input, styles.bioInput]}
-                    placeholder="Tell clients about yourself"
-                    value={bio}
-                    onChangeText={setBio}
-                    multiline
-                    numberOfLines={4}
-                    textAlignVertical="top"
-                    maxLength={500}
-                    placeholderTextColor={theme.colors.textMuted}
-                  />
-                  <Text style={styles.charCount}>{bio.length}/500</Text>
-                </View>
-              </View>
+              <Section title="Identity" styles={styles}>
+                <Field
+                  label="Full name"
+                  value={fullName}
+                  onChangeText={(text) => {
+                    setFullName(text);
+                    markChanged();
+                  }}
+                  placeholder="Your full name"
+                  styles={styles}
+                />
+                <Field
+                  label="Username"
+                  value={username}
+                  onChangeText={(text) => {
+                    setUsername(text.replace(/\s/g, "").toLowerCase());
+                    markChanged();
+                  }}
+                  placeholder="username"
+                  autoCapitalize="none"
+                  styles={styles}
+                />
+                <Field
+                  label="Field"
+                  value={field}
+                  onChangeText={(text) => {
+                    setField(text);
+                    markChanged();
+                  }}
+                  placeholder="e.g. Plumber, Developer"
+                  styles={styles}
+                />
+                <Field
+                  label="Location"
+                  value={location}
+                  onChangeText={(text) => {
+                    setLocation(text);
+                    markChanged();
+                  }}
+                  placeholder="City or area"
+                  styles={styles}
+                />
+                <Field
+                  label="Bio"
+                  value={bio}
+                  onChangeText={(text) => {
+                    setBio(text);
+                    markChanged();
+                  }}
+                  placeholder="Tell clients what you do best"
+                  multiline
+                  maxLength={500}
+                  styles={styles}
+                />
+                <Text style={styles.counter}>{bio.length}/500</Text>
+              </Section>
 
-              {/* Contacts Card */}
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <AppIcon name="phone" size={22} color={theme.colors.primary} />
-                  <Text style={styles.cardTitle}>Contact Numbers</Text>
-                </View>
-                <Text style={styles.sectionHint}>Maximum 2 numbers · 9 digits (e.g., 712345678)</Text>
-                {contacts.map((contact, idx) => (
-                  <View key={`contact-${idx}-${contact.number}`} style={styles.contactCard}>
-                    <View style={styles.phoneRow}>
-                      <Text style={styles.phonePrefix}>+255</Text>
+              <Section title="Contact" subtitle="Up to 2 numbers" styles={styles}>
+                {contacts.map((contact, index) => (
+                  <View key={contact.id} style={styles.contactRow}>
+                    <View style={styles.phoneLine}>
+                      <Text style={styles.prefix}>+255</Text>
                       <TextInput
-                        style={styles.phoneInput}
-                        placeholder="712345678"
-                        keyboardType="phone-pad"
                         value={contact.number}
-                        onChangeText={(text) => updateContactNumber(idx, text)}
-                        maxLength={9}
+                        onChangeText={(text) =>
+                          updateContact(index, { number: text.replace(/\D/g, "").slice(0, 9) })
+                        }
+                        placeholder="712345678"
                         placeholderTextColor={theme.colors.textMuted}
+                        keyboardType="phone-pad"
+                        style={styles.phoneInput}
                       />
+                      <TouchableOpacity onPress={() => removeContact(index)} style={styles.smallIcon}>
+                        <AppIcon name="trash" size={16} color={theme.colors.danger} />
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.contactActions}>
-                      <TouchableOpacity style={styles.toggleBtn} onPress={() => toggleContactCall(idx)}>
-                        <View style={[styles.toggleIcon, contact.allowCall && styles.toggleActive]}>
-                          <AppIcon name="phone" size={16} color={contact.allowCall ? "#fff" : theme.colors.textMuted} />
-                        </View>
-                        <Text style={[styles.toggleLabel, contact.allowCall && styles.toggleLabelActive]}>Call</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.toggleBtn} onPress={() => toggleContactSMS(idx)}>
-                        <View style={[styles.toggleIcon, contact.allowSMS && styles.toggleActive]}>
-                          <AppIcon name="mail" size={16} color={contact.allowSMS ? "#fff" : theme.colors.textMuted} />
-                        </View>
-                        <Text style={[styles.toggleLabel, contact.allowSMS && styles.toggleLabelActive]}>SMS</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => removeContact(idx)} style={styles.removeBtn}>
-                        <AppIcon name="trash" size={18} color={theme.colors.danger} />
-                      </TouchableOpacity>
+                    <View style={styles.toggleRow}>
+                      <ToggleChip
+                        icon="phone"
+                        label="Call"
+                        active={contact.allowCall}
+                        onPress={() => updateContact(index, { allowCall: !contact.allowCall })}
+                        styles={styles}
+                        theme={theme}
+                      />
+                      <ToggleChip
+                        icon="mail"
+                        label="SMS"
+                        active={contact.allowSMS}
+                        onPress={() => updateContact(index, { allowSMS: !contact.allowSMS })}
+                        styles={styles}
+                        theme={theme}
+                      />
                     </View>
                   </View>
                 ))}
-                {contacts.length < 2 && (
-                  <TouchableOpacity style={styles.addButton} onPress={addContact}>
-                    <AppIcon name="plus" size={16} color={theme.colors.accent} />
-                    <Text style={styles.addButtonText}>Add Contact Number</Text>
-                  </TouchableOpacity>
+                {contacts.length < CONTACT_LIMIT && (
+                  <AddButton label="Add number" onPress={addContact} styles={styles} theme={theme} />
                 )}
-              </View>
+              </Section>
 
-              {/* Services Card */}
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <AppIcon name="briefcase" size={22} color={theme.colors.primary} />
-                  <Text style={styles.cardTitle}>Services Offered</Text>
-                </View>
-                {services.map((service, idx) => (
-                  <View key={`service-${idx}-${service}`} style={styles.serviceRow}>
+              <Section title="Services" styles={styles}>
+                {services.map((service, index) => (
+                  <View key={service.id} style={styles.itemRow}>
                     <TextInput
-                      style={styles.serviceInput}
-                      placeholder="e.g., Plumbing, Web Design"
-                      value={service}
-                      onChangeText={(text) => updateService(idx, text)}
-                      maxLength={100}
+                      value={service.value}
+                      onChangeText={(text) => updateService(index, text)}
+                      placeholder="e.g. Plumbing, Web design"
                       placeholderTextColor={theme.colors.textMuted}
+                      style={styles.inlineInput}
                     />
-                    <TouchableOpacity onPress={() => removeService(idx)}>
-                      <AppIcon name="trash" size={18} color={theme.colors.danger} />
+                    <TouchableOpacity onPress={() => removeService(index)} style={styles.smallIcon}>
+                      <AppIcon name="trash" size={16} color={theme.colors.danger} />
                     </TouchableOpacity>
                   </View>
                 ))}
-                <TouchableOpacity style={styles.addButton} onPress={addService}>
-                  <AppIcon name="plus" size={16} color={theme.colors.accent} />
-                  <Text style={styles.addButtonText}>Add Service</Text>
-                </TouchableOpacity>
-              </View>
+                <AddButton label="Add service" onPress={addService} styles={styles} theme={theme} />
+              </Section>
 
-              {/* Social Media Card */}
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <AppIcon name="share" size={22} color={theme.colors.primary} />
-                  <Text style={styles.cardTitle}>Social Media</Text>
-                </View>
-                <Text style={styles.sectionHint}>Add up to 3 accounts</Text>
-                <View style={styles.socialGrid}>
+              <Section title="Socials" subtitle="Icon buttons only on profile" styles={styles}>
+                <View style={styles.socialPicker}>
                   {Object.entries(SOCIAL_ICONS).map(([platform, Icon]) => {
-                    const isAdded = socials.some(s => s.platform === platform);
+                    const added = socials.some((social) => social.platform === platform);
                     return (
                       <TouchableOpacity
                         key={platform}
-                        style={[styles.socialIcon, isAdded && styles.socialIconAdded]}
-                        onPress={() => !isAdded && addSocialMedia(platform)}
-                        disabled={isAdded}
+                        style={[styles.socialPickBtn, added && styles.socialPickBtnAdded]}
+                        disabled={added}
+                        onPress={() => addSocial(platform)}
                       >
-                        <Icon width={28} height={28} stroke={isAdded ? "#aaa" : "#fff"} />
+                        <Icon
+                          width={24}
+                          height={24}
+                          stroke={added ? theme.colors.textMuted : theme.colors.primary}
+                        />
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-                {socials.map((social, idx) => {
+
+                {socials.map((social, index) => {
                   const Icon = SOCIAL_ICONS[social.platform];
                   return (
-                    <View key={`social-${idx}-${social.platform}`} style={styles.socialRow}>
-                      {Icon && <Icon width={24} height={24} stroke={theme.colors.primary} />}
-                      <Text style={styles.socialPlatform}>{social.platform}</Text>
+                    <View key={social.id} style={styles.socialRow}>
+                      <View style={styles.socialIconWrap}>
+                        {Icon && <Icon width={21} height={21} stroke={theme.colors.primary} />}
+                      </View>
+                      <Text style={styles.socialName}>{social.platform}</Text>
                       <TextInput
-                        style={styles.socialInput}
-                        placeholder="username"
                         value={social.handle}
-                        onChangeText={(text) => updateSocialHandle(idx, text)}
+                        onChangeText={(text) => updateSocial(index, text)}
+                        placeholder="username"
                         autoCapitalize="none"
                         placeholderTextColor={theme.colors.textMuted}
+                        style={styles.socialInput}
                       />
-                      <TouchableOpacity onPress={() => removeSocialMedia(idx)}>
-                        <AppIcon name="trash" size={18} color={theme.colors.danger} />
+                      <TouchableOpacity onPress={() => removeSocial(index)} style={styles.smallIcon}>
+                        <AppIcon name="trash" size={16} color={theme.colors.danger} />
                       </TouchableOpacity>
                     </View>
                   );
                 })}
-              </View>
+              </Section>
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -598,125 +607,367 @@ export default function EditProvider({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F8F9FA" }, // light background
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8F9FA" },
-  loadingText: { marginTop: 12, color: theme.colors.text, fontSize: 16 },
-  
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E9ECEF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    elevation: 2,
+function Section({ title, subtitle, children, styles }) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {!!subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function Field({ label, styles, multiline, ...props }) {
+  return (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        {...props}
+        multiline={multiline}
+        textAlignVertical={multiline ? "top" : "center"}
+        placeholderTextColor={styles.placeholder.color}
+        style={[styles.input, multiline && styles.textArea]}
+      />
+    </View>
+  );
+}
+
+function ToggleChip({ icon, label, active, onPress, styles, theme }) {
+  return (
+    <TouchableOpacity style={[styles.toggleChip, active && styles.toggleChipActive]} onPress={onPress}>
+      <AppIcon name={icon} size={14} color={active ? "#fff" : theme.colors.textMuted} />
+      <Text style={[styles.toggleText, active && styles.toggleTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function AddButton({ label, onPress, styles, theme }) {
+  return (
+    <TouchableOpacity style={styles.addBtn} onPress={onPress}>
+      <AppIcon name="plus" size={15} color={theme.colors.accent} />
+      <Text style={styles.addText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const createStyles = (theme) => StyleSheet.create({
+  flex: {
+    flex: 1,
   },
-  headerButton: { padding: 8, minWidth: 60 },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#212529", letterSpacing: -0.3 },
-  saveText: { color: theme.colors.primary, fontWeight: "700", fontSize: 17 },
-  
-  scrollContent: { padding: 20 },
-  
-  avatarSection: { alignItems: "center", marginBottom: 32 },
-  avatarWrap: { alignItems: "center" },
-  avatarContainer: { position: "relative" },
-  avatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 3, borderColor: "#FFFFFF", backgroundColor: "#E9ECEF" },
-  avatarPlaceholder: { backgroundColor: "#E9ECEF", justifyContent: "center", alignItems: "center" },
-  uploadingOverlay: {
-    position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 60,
+  safeArea: {
+    flex: 1,
+    backgroundColor: theme.colors.bg,
+  },
+  center: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: theme.colors.bg,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: theme.colors.textMuted,
+    fontWeight: "700",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCopy: {
+    flex: 1,
+  },
+  headerTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  headerSub: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  saveBtn: {
+    minWidth: 70,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  saveBtnDisabled: {
+    opacity: 0.45,
+  },
+  saveText: {
+    color: "#fff",
+    fontWeight: "900",
+  },
+  scrollContent: {
+    backgroundColor: theme.colors.bg,
+  },
+  hero: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surface,
+    paddingVertical: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  avatarWrap: {
+    position: "relative",
+  },
+  avatar: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    backgroundColor: theme.colors.surfaceSoft,
+    borderWidth: 3,
+    borderColor: theme.colors.primarySoft,
+  },
+  avatarPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 52,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  uploadText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 12,
+    marginTop: 4,
   },
   cameraBadge: {
     position: "absolute",
-    bottom: 0,
-    right: 0,
+    right: 2,
+    bottom: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.accent,
+    borderWidth: 2,
+    borderColor: theme.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarHint: {
+    color: theme.colors.textMuted,
+    fontWeight: "700",
+    fontSize: 12,
+    marginTop: 10,
+  },
+  section: {
+    backgroundColor: theme.colors.surface,
+    marginTop: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  sectionHeader: {
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  sectionSub: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  fieldWrap: {
+    marginBottom: 13,
+  },
+  label: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 7,
+    textTransform: "uppercase",
+  },
+  input: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceSoft,
+    paddingHorizontal: 14,
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  textArea: {
+    minHeight: 112,
+    paddingTop: 12,
+    lineHeight: 20,
+  },
+  placeholder: {
+    color: theme.colors.textMuted,
+  },
+  counter: {
+    color: theme.colors.textMuted,
+    textAlign: "right",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  contactRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingBottom: 14,
+    marginBottom: 14,
+  },
+  phoneLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  prefix: {
+    color: theme.colors.text,
+    fontWeight: "900",
+    fontSize: 15,
+  },
+  phoneInput: {
+    flex: 1,
+    minHeight: 44,
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  smallIcon: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  toggleChip: {
+    minHeight: 36,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: theme.colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  toggleChipActive: {
     backgroundColor: theme.colors.primary,
-    borderRadius: 20,
+    borderColor: theme.colors.primary,
+  },
+  toggleText: {
+    color: theme.colors.textMuted,
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  toggleTextActive: {
+    color: "#fff",
+  },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  inlineInput: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceSoft,
+    paddingHorizontal: 14,
+    color: theme.colors.text,
+    fontWeight: "700",
+  },
+  addBtn: {
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: theme.colors.accent,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  addText: {
+    color: theme.colors.accent,
+    fontWeight: "900",
+  },
+  socialPicker: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 14,
+  },
+  socialPickBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  socialPickBtnAdded: {
+    opacity: 0.45,
+  },
+  socialRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  socialIconWrap: {
     width: 34,
     height: 34,
-    justifyContent: "center",
+    borderRadius: 17,
+    backgroundColor: theme.colors.primarySoft,
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    justifyContent: "center",
   },
-  changePicHint: { fontSize: 13, color: theme.colors.textMuted, marginTop: 12 },
-  
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+  socialName: {
+    width: 78,
+    color: theme.colors.text,
+    fontWeight: "900",
+    textTransform: "capitalize",
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 },
-  cardTitle: { fontSize: 18, fontWeight: "600", color: "#212529", letterSpacing: -0.2 },
-  
-  inputGroup: { marginBottom: 16 },
-  label: { fontSize: 14, fontWeight: "500", color: "#495057", marginBottom: 6 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#DEE2E6",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: "#FFFFFF",
-    color: "#212529",
+  socialInput: {
+    flex: 1,
+    minHeight: 40,
+    color: theme.colors.text,
+    fontWeight: "700",
   },
-  bioInput: { height: 100, textAlignVertical: "top" },
-  charCount: { textAlign: "right", fontSize: 12, color: "#ADB5BD", marginTop: 4 },
-  
-  sectionHint: { fontSize: 12, color: "#6C757D", marginBottom: 12, marginTop: -6 },
-  
-  contactCard: {
-    backgroundColor: "#F8F9FA",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E9ECEF",
-  },
-  phoneRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  phonePrefix: { fontSize: 16, fontWeight: "600", marginRight: 8, color: "#212529" },
-  phoneInput: { flex: 1, fontSize: 16, borderBottomWidth: 1, borderBottomColor: "#DEE2E6", paddingVertical: 4, color: "#212529" },
-  contactActions: { flexDirection: "row", justifyContent: "space-around", alignItems: "center" },
-  toggleBtn: { alignItems: "center", gap: 4 },
-  toggleIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#E9ECEF", justifyContent: "center", alignItems: "center" },
-  toggleActive: { backgroundColor: theme.colors.primary },
-  toggleLabel: { fontSize: 12, color: "#6C757D" },
-  toggleLabelActive: { color: theme.colors.primary, fontWeight: "500" },
-  removeBtn: { padding: 8 },
-  
-  serviceRow: { flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 10 },
-  serviceInput: { flex: 1, borderWidth: 1, borderColor: "#DEE2E6", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, backgroundColor: "#FFFFFF", color: "#212529" },
-  
-  socialGrid: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginBottom: 20 },
-  socialIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: theme.colors.primary, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 },
-  socialIconAdded: { backgroundColor: "#DEE2E6" },
-  socialRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#F8F9FA", borderRadius: 12, padding: 10, marginBottom: 10, gap: 12, borderWidth: 1, borderColor: "#E9ECEF" },
-  socialPlatform: { width: 80, fontWeight: "600", color: "#212529" },
-  socialInput: { flex: 1, fontSize: 16, paddingVertical: 6, color: "#212529" },
-  
-  addButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#F8F9FA", borderWidth: 1, borderColor: theme.colors.accent, borderStyle: "dashed", borderRadius: 14, padding: 14, marginTop: 8 },
-  addButtonText: { color: theme.colors.accent, fontWeight: "600", fontSize: 16 },
 });
