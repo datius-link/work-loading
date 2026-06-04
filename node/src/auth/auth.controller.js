@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { registerUser, loginUser } from "./auth.service.js";
 import {
   validateRegister,
@@ -10,6 +11,7 @@ import db from "../db/index.js";
 import {
   generateAuthToken,
   generatePasswordResetToken,
+  generateViewerToken,
 } from "./auth.tokens.js";
 import { hashPassword } from "../utils/hash.js";
 
@@ -356,5 +358,147 @@ export async function resetPassword(req, res) {
 
     console.error("resetPassword error:", err);
     return res.status(500).json({ message: "Failed to reset password" });
+  }
+}
+
+export async function requestViewerCode(req, res) {
+  try {
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    if (!email.includes("@")) {
+      return res.status(400).json({
+        message: "Valid email required",
+      });
+    }
+
+    let viewer = await db("viewer_users")
+      .where({ email })
+      .first();
+
+    if (!viewer) {
+      const uuid = crypto.randomUUID();
+
+      await db("viewer_users").insert({
+        uuid,
+        email,
+        is_verified: false,
+      });
+
+      viewer = await db("viewer_users")
+        .where({ email })
+        .first();
+    }
+
+    const otp = generateOtp();
+
+    await db("viewer_users")
+      .where({ uuid: viewer.uuid })
+      .update({
+        otp_code: otp,
+        otp_expires_at: db.raw(
+          "NOW() + INTERVAL '10 minutes'"
+        ),
+        updated_at: db.fn.now(),
+      });
+
+    console.log(
+      `[DEV MOCK] viewer otp for ${email}: ${otp}`
+    );
+
+    return res.json({
+      success: true,
+      message: "OTP sent",
+    });
+  } catch (err) {
+    console.error(
+      "requestViewerCode error:",
+      err
+    );
+
+    return res.status(500).json({
+      message: "Failed to send OTP",
+    });
+  }
+}
+
+export async function verifyViewerCode(
+  req,
+  res
+) {
+  try {
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const code = String(req.body.code || "")
+      .trim();
+
+    if (!email || !code) {
+      return res.status(400).json({
+        message: "Email and code required",
+      });
+    }
+
+    const viewer = await db("viewer_users")
+      .where({ email })
+      .first();
+
+    if (!viewer) {
+      return res.status(404).json({
+        message: "Viewer not found",
+      });
+    }
+
+    const storedOtp = String(
+      viewer.otp_code || ""
+    ).trim();
+
+    if (storedOtp !== code) {
+      return res.status(400).json({
+        message: "Invalid OTP",
+      });
+    }
+
+    if (
+      new Date(viewer.otp_expires_at) <
+      new Date()
+    ) {
+      return res.status(400).json({
+        message: "OTP expired",
+      });
+    }
+
+    await db("viewer_users")
+      .where({ uuid: viewer.uuid })
+      .update({
+        is_verified: true,
+        otp_code: null,
+        otp_expires_at: null,
+        updated_at: db.fn.now(),
+      });
+
+    const token = generateViewerToken(
+      viewer.uuid
+    );
+
+    return res.json({
+      success: true,
+      token,
+      viewer: {
+        uuid: viewer.uuid,
+        email: viewer.email,
+      },
+    });
+  } catch (err) {
+    console.error(
+      "verifyViewerCode error:",
+      err
+    );
+
+    return res.status(500).json({
+      message: "Verification failed",
+    });
   }
 }
