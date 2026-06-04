@@ -4,6 +4,7 @@ import { BackHandler, ActivityIndicator, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLanguage } from "../LanguageContext";
+import { useAppTheme } from "../theme";
 import AppIcon from "../icons/AppIcon";
 
 import MyProfile from "./Profile/MyProfile";
@@ -19,6 +20,7 @@ function EmptyScreen() {
 export default function ProviderTabs({ navigation }) {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const { language } = useLanguage();
+  const { theme } = useAppTheme();
 
   /* ================= AUTH GUARD ================= */
   useEffect(() => {
@@ -39,10 +41,12 @@ export default function ProviderTabs({ navigation }) {
     checkAuth();
   }, [navigation]);
 
-  /* ================= BLOCK BACK BUTTON ================= */
+  /* ================= BLOCK BACK BUTTON (ONLY WHEN ON MAIN TABS) ================= */
   useFocusEffect(
     React.useCallback(() => {
-      const onBackPress = () => true;
+      const onBackPress = () => {
+        return true;
+      };
       const sub = BackHandler.addEventListener(
         "hardwareBackPress",
         onBackPress
@@ -71,8 +75,35 @@ export default function ProviderTabs({ navigation }) {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: "#0B6B63",
-        tabBarInactiveTintColor: "#64748B",
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textMuted,
+        tabBarStyle: {
+          position: "absolute",
+          left: 12,
+          right: 12,
+          bottom: 10,
+          height: 66,
+          paddingBottom: 9,
+          paddingTop: 8,
+          borderTopWidth: 0,
+          borderRadius: 22,
+          backgroundColor: theme.colors.surface,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          shadowColor: "#000",
+          shadowOpacity: 0.08,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "700",
+        },
+        tabBarItemStyle: {
+          borderRadius: 18,
+          marginHorizontal: 4,
+        },
         tabBarLabel:
           {
             Others: language === "sw" ? "Mengine" : "Others",
