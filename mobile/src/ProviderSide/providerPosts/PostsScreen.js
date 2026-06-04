@@ -5,11 +5,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MyWork from "./MyWork";
 import Discover from "./Discover";
-import { theme } from "../../theme/theme";
+import { useAppTheme } from "../../theme";
 
 const Tab = createMaterialTopTabNavigator();
 
 export default function ProviderPostsScreen() {
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
   const insets = useSafeAreaInsets();
 
   return (
@@ -25,7 +27,7 @@ export default function ProviderPostsScreen() {
         screenOptions={{
           tabBarStyle: styles.tabBar,
           tabBarLabelStyle: styles.label,
-          tabBarActiveTintColor: theme.colors.textPrimary,
+          tabBarActiveTintColor: theme.colors.text,
           tabBarInactiveTintColor: theme.colors.textMuted,
           tabBarIndicatorStyle: styles.indicator,
           tabBarPressColor: "transparent",
@@ -46,7 +48,7 @@ export default function ProviderPostsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.surface,
@@ -73,3 +75,4 @@ const styles = StyleSheet.create({
     marginLeft: "10%",
   },
 });
+
