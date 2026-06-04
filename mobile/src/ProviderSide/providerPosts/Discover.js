@@ -1,239 +1,261 @@
-// Discover.js
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
-  Image,
   TextInput,
+  TouchableOpacity,
+  Dimensions,
   ActivityIndicator,
-  RefreshControl,
+  Keyboard,
 } from "react-native";
-import { theme } from "../../theme/theme";
-import { API } from "../../api/api";
 
-export default function Discover() {
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { api } from "../../api/api";
+import { useAppTheme } from "../../theme";
+
+import PostCard from "../../views/postCard/PostCard";
+
+import SearchIcon from "../../icons/svg-repo/search.svg";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+export default function Discover({ navigation }) {
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+
   const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
-  // Fetch posts from API (adjust endpoint as per your backend)
-  const fetchPosts = async () => {
-    try {
-      // Example endpoint: get public/discoverable posts from providers
-      const res = await API.get("/posts/discover");
-      setPosts(res.data?.posts || []);
-    } catch (error) {
-      console.log("Discover posts error:", error);
-      setPosts([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [search, setSearch] = useState("");
+
+  const [activePostId, setActivePostId] = useState(null);
+
+  const flatListRef = useRef(null);
+
+  const POST_HEIGHT = useMemo(() => {
+    return SCREEN_HEIGHT - tabBarHeight - insets.top - 71;
+  }, [tabBarHeight, insets.top]);
+
+const fetchPosts = async (pageNumber = 1, append = false) => {
+  try {
+    if (append && loadingMore) return;
+    if (!append && loading) return;
+    if (append && !hasMore) return;
+
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setHasMore(true);
     }
-  };
+
+    console.log(`[Discover] Fetching posts - Page: ${pageNumber}, Search: "${search}"`);
+
+    const res = await api.get("/posts/public", {
+      params: {
+        page: pageNumber,
+        q: search?.trim() || undefined,
+      },
+    });
+
+    const fetchedPosts = res?.data?.posts || [];
+    const paginationHasMore = res?.data?.pagination?.hasMore;
+
+    console.log(`[Discover] Received ${fetchedPosts.length} posts (hasMore: ${paginationHasMore})`);
+
+    if (append) {
+      setPosts((prev) => {
+        const merged = [...prev, ...fetchedPosts];
+        const unique = merged.filter(
+          (item, index, self) =>
+            index === self.findIndex((p) => p.id === item.id)
+        );
+        return unique;
+      });
+    } else {
+      setPosts(fetchedPosts);
+
+      if (fetchedPosts.length > 0 && !activePostId) {
+        setActivePostId(fetchedPosts[0].id);
+      }
+    }
+
+    setHasMore(paginationHasMore !== false);
+
+    if (!append) {
+      setPage(1);
+    }
+
+  } catch (error) {
+    console.error("Discover fetch error:", error?.response?.data || error?.message);
+
+    if (!append) {
+      // Keep previous posts on error to avoid blank flashes
+    }
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+    setLoadingMore(false);
+  }
+};
 
   useEffect(() => {
-    fetchPosts();
+    fetchPosts(1, false);
   }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      fetchPosts(1, false);
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [search]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchPosts();
+    fetchPosts(1, false);
   };
 
-  // Simple client-side search filter (you can move this to backend later)
-  const filteredPosts = posts.filter((post) =>
-    post.caption?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    post.providerName?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleLoadMore = () => {
+    if (loadingMore || loading || !hasMore) return;
 
-  const renderPost = ({ item }) => (
-    <TouchableOpacity style={styles.postCard} activeOpacity={0.9}>
-      {/* Post Media (Image or Video Thumbnail) */}
-      {item.media?.[0]?.type === "image" ? (
-        <Image source={{ uri: item.media[0].url }} style={styles.postImage} />
-      ) : item.media?.[0]?.type === "video" ? (
-        <View style={styles.postImage}>
-          <Image
-            source={{ uri: item.media[0].thumbnail || item.media[0].url }}
-            style={styles.postImage}
-          />
-          <View style={styles.playIcon}>
-            <Text style={{ fontSize: 32 }}>▶</Text>
-          </View>
-        </View>
-      ) : (
-        <View style={[styles.postImage, styles.noMedia]}>
-          <Text style={styles.noMediaText}>No media</Text>
-        </View>
-      )}
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchPosts(nextPage, true);
+  };
 
-      {/* Post Info */}
-      <View style={styles.postInfo}>
-        <Text style={styles.caption} numberOfLines={2}>
-          {item.caption || "No caption"}
-        </Text>
-        <View style={styles.providerRow}>
-          <Image
-            source={{
-              uri:
-                item.providerProfilePic ||
-                "https://ui-avatars.com/api/?background=6D5AE6&color=fff",
-            }}
-            style={styles.providerAvatar}
-          />
-          <Text style={styles.providerName}>{item.providerName || "Provider"}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems?.length > 0) {
+      const firstVisible = viewableItems[0]?.item;
 
-  if (loading) {
+      if (firstVisible?.id) {
+        setActivePostId(firstVisible.id);
+      }
+    }
+  }).current;
+
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 80,
+  };
+
+  const renderItem = ({ item }) => {
+    if (!item) return null;
+
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
+      <PostCard
+        post={item}
+        height={POST_HEIGHT}
+        active={activePostId === item.id}
+        navigation={navigation}
+      />
     );
-  }
+  };
 
   return (
     <View style={styles.container}>
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search posts or providers..."
-          placeholderTextColor={theme.colors.muted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          clearButtonMode="while-editing"
-        />
+      <View style={styles.searchWrapper}>
+        <View style={styles.searchBar}>
+          <SearchIcon width={18} height={18} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search posts, people..."
+            placeholderTextColor="#999"
+            value={search}
+            onChangeText={setSearch}
+            onBlur={() => Keyboard.dismiss()}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch("")}>
+              <SearchIcon width={18} height={18} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
-      {/* Posts List */}
-      <FlatList
-        data={filteredPosts}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderPost}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>
-              {searchQuery ? "No posts found" : "No posts available yet"}
-            </Text>
-            <Text style={styles.emptyText}>
-              {searchQuery
-                ? "Try searching with different keywords"
-                : "Providers will start sharing soon!"}
-            </Text>
-          </View>
-        }
-      />
+      {/* FEED */}
+      {loading && posts.length === 0 ? (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color="#00695C" />
+        </View>
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          data={posts}
+          renderItem={renderItem}
+          keyExtractor={(item, index) =>
+            String(item.id)
+          }
+          pagingEnabled
+          snapToAlignment="start"
+          decelerationRate="fast"
+          snapToInterval={POST_HEIGHT}
+          showsVerticalScrollIndicator={false}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews
+          windowSize={5}
+          maxToRenderPerBatch={5}
+          initialNumToRender={3}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 20 }}>
+                <ActivityIndicator color="#00695C" />
+              </View>
+            ) : null
+          }
+        />
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.bg,
+  },
+  searchWrapper: {
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  searchBar: {
+    height: 50,
+    backgroundColor: theme.colors.surfaceSoft,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: theme.colors.text,
+    fontWeight: "500",
   },
   loader: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: theme.colors.bg,
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: theme.colors.bg,
-  },
-  searchInput: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: theme.colors.text,
-    ...theme.shadow.card,
-  },
-  listContent: {
-    padding: 16,
-    paddingTop: 0,
-  },
-  postCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
-    marginBottom: 16,
-    overflow: "hidden",
-    ...theme.shadow.card,
-  },
-  postImage: {
-    width: "100%",
-    height: 220,
-    backgroundColor: "#f0f0f0",
-  },
-  playIcon: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.3)",
-  },
-  noMedia: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  noMediaText: {
-    color: theme.colors.muted,
-    fontSize: 16,
-  },
-  postInfo: {
-    padding: 16,
-  },
-  caption: {
-    fontSize: 15,
-    color: theme.colors.text,
-    marginBottom: 12,
-    lineHeight: 22,
-  },
-  providerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  providerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 10,
-  },
-  providerName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-  empty: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 32,
-    marginTop: 80,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: theme.colors.text,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 15,
-    color: theme.colors.muted,
-    textAlign: "center",
   },
 });
+
