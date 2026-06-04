@@ -17,6 +17,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from 'expo-file-system';
 import Icon from "../../../icons/MaterialIcon";
+import { useAppTheme } from "../../../theme";
 
 const { width } = Dimensions.get("window");
 const SIZE = width / 3;
@@ -38,6 +39,8 @@ const formatDuration = (seconds) => {
 /* ---------------- screen ---------------- */
 function CreatePostContent({ navigation, route }) {
   const insets = useSafeAreaInsets();
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
 
   const [type, setType] = useState("moment");
   const [media, setMedia] = useState([]);
@@ -218,7 +221,7 @@ function CreatePostContent({ navigation, route }) {
 
       {item.type === "video" && (
         <View style={styles.videoBadge}>
-          <Icon name="videocam" size={12} color="#fff" />
+          <Icon name="videocam" size={12} color={theme.colors.onPrimary} />
           <Text style={styles.videoDuration}>
             {formatDuration(item.duration)}
           </Text>
@@ -230,7 +233,7 @@ function CreatePostContent({ navigation, route }) {
         onPress={() => removeMedia(item.id)}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Icon name="close" size={14} color="#fff" />
+        <Icon name="close" size={14} color={theme.colors.onPrimary} />
       </TouchableOpacity>
       
       {index === 0 && type === "moment" && media.length > 1 && (
@@ -282,7 +285,7 @@ function CreatePostContent({ navigation, route }) {
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           disabled={isLoading}
         >
-          <Icon name="close" size={24} color="#000" />
+          <Icon name="close" size={24} color={theme.colors.text} />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>
@@ -318,10 +321,10 @@ function CreatePostContent({ navigation, route }) {
           activeOpacity={0.7}
         >
           {isLoading ? (
-            <ActivityIndicator size="small" color="#0095f6" />
+            <ActivityIndicator size="small" color={theme.colors.primary} />
           ) : (
             <>
-              <Icon name="photo-library" size={20} color="#0095f6" />
+              <Icon name="photo-library" size={20} color={theme.colors.primary} />
               <Text style={styles.galleryButtonText}>Select from Gallery</Text>
             </>
           )}
@@ -349,7 +352,7 @@ function CreatePostContent({ navigation, route }) {
         />
       ) : (
         <View style={styles.emptyState}>
-          <Icon name="collections" size={64} color="#ddd" />
+          <Icon name="collections" size={64} color={theme.colors.border} />
           <Text style={styles.emptyStateText}>
             {type === "moment" 
               ? "Select up to 10 photos & videos" 
@@ -390,7 +393,7 @@ function CreatePostContent({ navigation, route }) {
             activeOpacity={0.8}
           >
             <Text style={styles.bottomNextButtonText}>Next</Text>
-            <Icon name="arrow-forward" size={18} color="#fff" />
+            <Icon name="arrow-forward" size={18} color={theme.colors.onPrimary} />
           </TouchableOpacity>
         </View>
       )}
@@ -408,10 +411,10 @@ export default function CreatePost(props) {
 }
 
 /* ---------------- styles ---------------- */
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#fff" 
+    backgroundColor: theme.colors.bg 
   },
 
   header: {
@@ -421,19 +424,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e0e0e0",
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
   },
 
   headerTitle: { 
     fontSize: 18, 
     fontWeight: "700",
-    color: "#000"
+    color: theme.colors.text,
   },
   
   nextButtonText: { 
     fontWeight: "700", 
     fontSize: 16,
-    color: "#0095f6" 
+    color: theme.colors.primary,
   },
   
   nextButtonDisabled: { 
@@ -450,32 +454,32 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: theme.colors.surfaceSoft,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#e9ecef",
+    borderColor: theme.colors.border,
   },
   
   typeButtonActive: {
-    backgroundColor: "#e7f5ff",
-    borderColor: "#0095f6",
+    backgroundColor: theme.colors.primarySoft,
+    borderColor: theme.colors.primary,
     borderWidth: 2,
   },
   
   typeButtonLabel: { 
     fontWeight: "600", 
     fontSize: 16,
-    color: "#495057",
+    color: theme.colors.textSecondary,
     marginBottom: 4
   },
   
   typeButtonLabelActive: { 
-    color: "#0095f6" 
+    color: theme.colors.primary,
   },
   
   typeButtonDescription: { 
     fontSize: 12, 
-    color: "#868e96" 
+    color: theme.colors.textMuted,
   },
 
   selectionInfo: {
@@ -485,7 +489,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e0e0e0",
+    borderColor: theme.colors.border,
   },
   
   galleryButton: { 
@@ -495,17 +499,17 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: "#f8f9fa"
+    backgroundColor: theme.colors.surfaceSoft,
   },
   
   galleryButtonText: { 
-    color: "#0095f6", 
+    color: theme.colors.primary,
     fontWeight: "600",
     fontSize: 15
   },
   
   selectionCount: { 
-    color: "#666",
+    color: theme.colors.textMuted,
     fontSize: 14
   },
 
@@ -519,7 +523,7 @@ const styles = StyleSheet.create({
     margin: 4,
     borderRadius: 8,
     overflow: "hidden",
-    backgroundColor: "#f5f5f5",
+    backgroundColor: theme.colors.surfaceSoft,
   },
 
   mediaImage: { 
@@ -541,7 +545,7 @@ const styles = StyleSheet.create({
   },
 
   videoDuration: { 
-    color: "#fff", 
+    color: theme.colors.onPrimary,
     fontSize: 10,
     fontWeight: "500"
   },
@@ -562,14 +566,14 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 6,
     left: 6,
-    backgroundColor: "rgba(0,149,246,0.9)",
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
 
   coverText: {
-    color: "#fff",
+    color: theme.colors.onPrimary,
     fontSize: 10,
     fontWeight: "600",
   },
@@ -583,7 +587,7 @@ const styles = StyleSheet.create({
 
   emptyStateText: {
     fontSize: 16,
-    color: "#666",
+    color: theme.colors.textMuted,
     textAlign: "center",
     marginTop: 16,
     marginBottom: 24,
@@ -591,14 +595,14 @@ const styles = StyleSheet.create({
   },
 
   emptyStateButton: {
-    backgroundColor: "#0095f6",
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
 
   emptyStateButtonText: {
-    color: "#fff",
+    color: theme.colors.onPrimary,
     fontWeight: "600",
     fontSize: 15,
   },
@@ -613,9 +617,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: "#fff",
+    backgroundColor: theme.colors.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e0e0e0",
+    borderColor: theme.colors.border,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05,
@@ -624,13 +628,13 @@ const styles = StyleSheet.create({
   },
 
   bottomBarText: { 
-    color: "#495057",
+    color: theme.colors.textSecondary,
     fontSize: 14,
     fontWeight: "500"
   },
 
   maxLimitText: {
-    color: "#fa5252",
+    color: theme.colors.danger,
     fontSize: 12,
     marginTop: 2,
   },
@@ -639,14 +643,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#0095f6",
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
   },
 
   bottomNextButtonText: { 
-    color: "#fff", 
+    color: theme.colors.onPrimary,
     fontWeight: "700",
     fontSize: 15
   },
