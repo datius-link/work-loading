@@ -7,26 +7,31 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import LanguageSwitch from "../../../LanguageSwitch";
-import { styles } from "./styles";
+import { useAppTheme } from "../../../theme";
+import { createAuthStyles } from "./auth";
 
 export default function AuthLayout({ children }) {
+  const { theme } = useAppTheme();
+  const styles = createAuthStyles(theme);
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top }}>
-      <View style={localStyles.switchWrap}>
-        <LanguageSwitch />
-      </View>
-
+    <View
+      style={[
+        styles.root,
+        { paddingTop: insets.top, backgroundColor: theme.colors.bg },
+      ]}
+    >
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={localStyles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          bounces={false}
         >
           {children}
         </ScrollView>
@@ -36,9 +41,5 @@ export default function AuthLayout({ children }) {
 }
 
 const localStyles = StyleSheet.create({
-  switchWrap: {
-    alignItems: "flex-end",
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
+  flex: { flex: 1 },
 });

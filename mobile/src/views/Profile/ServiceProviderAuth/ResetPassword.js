@@ -9,13 +9,16 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AuthLayout from "./AuthLayout";
 import AuthBackButton from "../../../AuthBackButton";
+import AuthBrand from "./AuthBrand";
 import Txt from "../../../Txt";
-import { styles } from "./styles";
-import { theme } from "../../../theme";
+import { createAuthStyles } from "./auth.js";
+import { useAppTheme } from "../../../theme";
 import { api } from "../../../api/api";
 import AppIcon from "../../../icons/AppIcon";
 
 export default function ResetPassword({ navigation, route }) {
+  const { theme } = useAppTheme();
+  const styles = createAuthStyles(theme);
   const [resetToken, setResetToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -24,10 +27,7 @@ export default function ResetPassword({ navigation, route }) {
   useEffect(() => {
     AsyncStorage.getItem("resetPasswordToken").then((token) => {
       if (!token) {
-        Alert.alert(
-          "Reset session missing",
-          "Please verify your reset code first."
-        );
+        Alert.alert("Session missing", "Please verify your reset code first.");
         navigation.replace("ForgotPassword");
         return;
       }
@@ -40,7 +40,6 @@ export default function ResetPassword({ navigation, route }) {
       Alert.alert("Error", "Password must be at least 4 characters");
       return;
     }
-
     if (password !== confirm) {
       Alert.alert("Error", "Passwords do not match");
       return;
@@ -48,28 +47,15 @@ export default function ResetPassword({ navigation, route }) {
 
     try {
       setLoading(true);
-
-      await api.post("/auth/password/reset", {
-        resetToken,
-        password,
-      });
-
+      await api.post("/auth/password/reset", { resetToken, password });
       await AsyncStorage.removeItem("resetPasswordToken");
-
-      Alert.alert(
-        "Password updated",
-        "You can now login with your new password."
-      );
-
+      Alert.alert("Done", "You can now login with your new password.");
       navigation.reset({
         index: 0,
         routes: [{ name: "ServiceProviderLogin" }],
       });
     } catch (err) {
-      Alert.alert(
-        "Reset failed",
-        err.response?.data?.message || "Failed to reset password"
-      );
+      Alert.alert("Reset failed", err.response?.data?.message || "Failed to reset password");
     } finally {
       setLoading(false);
     }
@@ -80,49 +66,53 @@ export default function ResetPassword({ navigation, route }) {
       <AuthBackButton />
 
       <View style={styles.card}>
-        <View style={localStyles.iconWrap}>
-          <AppIcon name="lock" size={26} color={theme.colors.primary} />
-        </View>
+        <AuthBrand />
 
+        <Txt en="New password" sw="Nenosiri jipya" style={styles.title} />
         <Txt
-          en="Create a new password"
-          sw="Weka nenosiri jipya"
-          style={styles.title}
-        />
-
-        <Txt
-          en={`Use a password you will remember for ${route?.params?.email || "your provider account"}.`}
-          sw={`Tumia nenosiri utakumbuka kwa ${route?.params?.email || "akaunti yako ya mtoa huduma"}.`}
+          en={`Set a new password for ${route?.params?.email || "your account"}.`}
+          sw={`Weka nenosiri jipya kwa ${route?.params?.email || "akaunti yako"}.`}
           style={styles.subtitle}
         />
 
-        <TextInput
-          placeholder="New password"
-          placeholderTextColor={theme.colors.textVeryMuted}
-          secureTextEntry
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-        />
+        <View style={styles.inputRow}>
+          <View style={styles.inputIcon}>
+            <AppIcon name="lock" size={19} color={theme.colors.primary} />
+          </View>
+          <TextInput
+            placeholder="New password"
+            placeholderTextColor={theme.colors.textVeryMuted}
+            secureTextEntry
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+          />
+        </View>
 
-        <TextInput
-          placeholder="Confirm new password"
-          placeholderTextColor={theme.colors.textVeryMuted}
-          secureTextEntry
-          style={styles.input}
-          value={confirm}
-          onChangeText={setConfirm}
-        />
+        <View style={styles.inputRow}>
+          <View style={styles.inputIcon}>
+            <AppIcon name="shield" size={19} color={theme.colors.primary} />
+          </View>
+          <TextInput
+            placeholder="Confirm new password"
+            placeholderTextColor={theme.colors.textVeryMuted}
+            secureTextEntry
+            style={styles.input}
+            value={confirm}
+            onChangeText={setConfirm}
+          />
+        </View>
 
         <TouchableOpacity
           style={[styles.button, loading && styles.disabled]}
           onPress={handleReset}
           disabled={loading || !resetToken}
+          activeOpacity={0.88}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={theme.colors.onPrimary} />
           ) : (
-            <Txt en="Reset password" sw="Badilisha nenosiri" style={styles.buttonText} />
+            <Txt en="Save password" sw="Hifadhi nenosiri" style={styles.buttonText} />
           )}
         </TouchableOpacity>
 
@@ -130,26 +120,9 @@ export default function ResetPassword({ navigation, route }) {
           style={styles.link}
           onPress={() => navigation.replace("ServiceProviderLogin")}
         >
-          <Txt
-            en="Back to login"
-            sw="Rudi kuingia"
-            style={[styles.linkText, { color: theme.colors.primary }]}
-          />
+          <Txt en="Back to login" sw="Rudi kuingia" style={styles.linkText} />
         </TouchableOpacity>
       </View>
     </AuthLayout>
   );
 }
-
-const localStyles = {
-  iconWrap: {
-    alignSelf: "center",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: theme.spacing.md,
-    backgroundColor: theme.colors.primarySoft,
-  },
-};

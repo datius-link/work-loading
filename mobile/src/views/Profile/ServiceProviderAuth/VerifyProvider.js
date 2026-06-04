@@ -7,16 +7,19 @@ import {
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import AuthLayout from "./AuthLayout";
 import AuthBackButton from "../../../AuthBackButton";
+import AuthBrand from "./AuthBrand";
 import Txt from "../../../Txt";
-import { styles } from "./styles";
-import { theme } from "../../../theme";
+import { createAuthStyles } from "./auth.js";
+import { useAppTheme } from "../../../theme";
 import { api } from "../../../api/api";
 import AppIcon from "../../../icons/AppIcon";
 
 export default function VerifyProvider({ navigation, route }) {
+  const { theme } = useAppTheme();
+  const styles = createAuthStyles(theme);
+
   const purpose = route?.params?.purpose || "provider-signup";
   const isPasswordReset = purpose === "reset-password";
 
@@ -27,43 +30,30 @@ export default function VerifyProvider({ navigation, route }) {
 
   useEffect(() => {
     if (isPasswordReset) return;
-
     const loadEmail = async () => {
       try {
         const verifyToken = await AsyncStorage.getItem("verifyToken");
         if (!verifyToken) return;
-
         const res = await api.get("/auth/verification-info", {
           headers: { Authorization: `Bearer ${verifyToken}` },
         });
-
         setEmail(res.data.email);
       } catch {
-        Alert.alert(
-          "Error",
-          "Failed to load verification details.\n\nImeshindikana kupakua taarifa za uthibitisho."
-        );
+        Alert.alert("Error", "Failed to load verification details.");
       }
     };
-
     loadEmail();
   }, [isPasswordReset]);
 
   const handleVerifyProvider = async () => {
     const verifyToken = await AsyncStorage.getItem("verifyToken");
-
     const res = await api.post("/auth/verify-provider", {
       verifyToken,
       code: otp.trim(),
     });
-
     await AsyncStorage.setItem("token", res.data.token);
     await AsyncStorage.multiRemove(["verifyToken", "pendingUuid"]);
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "EditProvider" }],
-    });
+    navigation.reset({ index: 0, routes: [{ name: "EditProvider" }] });
   };
 
   const handleVerifyPasswordReset = async () => {
@@ -71,23 +61,15 @@ export default function VerifyProvider({ navigation, route }) {
       email: email.trim().toLowerCase(),
       code: otp.trim(),
     });
-
     await AsyncStorage.setItem("resetPasswordToken", res.data.resetToken);
-
-    navigation.replace("ResetPassword", {
-      email: email.trim().toLowerCase(),
-    });
+    navigation.replace("ResetPassword", { email: email.trim().toLowerCase() });
   };
 
   const handleVerify = async () => {
     if (!otp.trim()) {
-      Alert.alert(
-        "Error",
-        "Please enter the verification code.\n\nTafadhali ingiza namba ya uthibitisho."
-      );
+      Alert.alert("Error", "Please enter the verification code.");
       return;
     }
-
     try {
       setLoading(true);
       if (isPasswordReset) {
@@ -98,8 +80,7 @@ export default function VerifyProvider({ navigation, route }) {
     } catch (err) {
       Alert.alert(
         "Verification failed",
-        err.response?.data?.message ||
-          "Invalid or expired code.\n\nNamba si sahihi au muda umeisha."
+        err.response?.data?.message || "Invalid or expired code."
       );
     } finally {
       setLoading(false);
@@ -108,33 +89,22 @@ export default function VerifyProvider({ navigation, route }) {
 
   const handleSaveEmail = async () => {
     if (!email.trim()) {
-      Alert.alert("Error", "Email is required.\n\nBarua pepe inahitajika.");
+      Alert.alert("Error", "Email is required.");
       return;
     }
-
     try {
       setLoading(true);
       const verifyToken = await AsyncStorage.getItem("verifyToken");
-
       await api.post(
         "/auth/update-email",
         { email: email.trim().toLowerCase() },
         { headers: { Authorization: `Bearer ${verifyToken}` } }
       );
-
-      Alert.alert(
-        "Code sent",
-        "Verification code has been sent to your new email.\n\nNamba ya uthibitisho imetumwa kwenye barua pepe mpya."
-      );
-
+      Alert.alert("Code sent", "Verification code sent to your new email.");
       setEditingEmail(false);
       setOtp("");
     } catch (err) {
-      Alert.alert(
-        "Error",
-        err.response?.data?.message ||
-          "Failed to resend code.\n\nImeshindikana kutuma namba mpya."
-      );
+      Alert.alert("Error", err.response?.data?.message || "Failed to resend code.");
     } finally {
       setLoading(false);
     }
@@ -143,26 +113,15 @@ export default function VerifyProvider({ navigation, route }) {
   const handleRequestCode = async () => {
     try {
       setLoading(true);
-
       if (isPasswordReset) {
-        await api.post("/auth/password/forgot", {
-          email: email.trim().toLowerCase(),
-        });
+        await api.post("/auth/password/forgot", { email: email.trim().toLowerCase() });
       } else {
         const verifyToken = await AsyncStorage.getItem("verifyToken");
         await api.post("/auth/request-code", { verifyToken });
       }
-
-      Alert.alert(
-        "Code sent",
-        "A new verification code has been sent.\n\nNamba mpya ya uthibitisho imetumwa."
-      );
+      Alert.alert("Code sent", "A new verification code has been sent.");
     } catch (err) {
-      Alert.alert(
-        "Error",
-        err.response?.data?.message ||
-          "Failed to send verification code.\n\nImeshindikana kutuma namba ya uthibitisho."
-      );
+      Alert.alert("Error", err.response?.data?.message || "Failed to send code.");
     } finally {
       setLoading(false);
     }
@@ -173,48 +132,52 @@ export default function VerifyProvider({ navigation, route }) {
       <AuthBackButton />
 
       <View style={styles.card}>
-        <View style={localStyles.iconWrap}>
-          <AppIcon
-            name={isPasswordReset ? "lock" : "mail"}
-            size={26}
-            color={theme.colors.primary}
-          />
-        </View>
+        <AuthBrand />
 
         <Txt
-          en={isPasswordReset ? "Verify reset code" : "Verify your email"}
-          sw={isPasswordReset ? "Thibitisha namba ya reset" : "Thibitisha barua pepe"}
+          en={isPasswordReset ? "Verify code" : "Verify email"}
+          sw={isPasswordReset ? "Thibitisha namba" : "Thibitisha barua pepe"}
           style={styles.title}
         />
-
         <Txt
           en={
             isPasswordReset
-              ? "Enter the code from the backend terminal, then create a new password."
-              : "Enter the verification code sent to your email."
+              ? "Enter the code from the backend terminal."
+              : "Enter the code sent to your email."
           }
           sw={
             isPasswordReset
-              ? "Weka namba iliyopo kwenye backend terminal, kisha weka nenosiri jipya."
-              : "Weka namba ya uthibitisho iliyotumwa kwenye barua pepe yako."
+              ? "Weka namba iliyopo kwenye backend terminal."
+              : "Weka namba iliyotumwa kwenye barua pepe yako."
           }
           style={styles.subtitle}
         />
 
-        <TextInput
-          value={email}
-          editable={!isPasswordReset && editingEmail}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
+        {/* Email row — editable only when editing */}
+        <View
           style={[
-            styles.input,
+            styles.inputRow,
             { opacity: !isPasswordReset && editingEmail ? 1 : 0.65 },
           ]}
-        />
+        >
+          <View style={styles.inputIcon}>
+            <AppIcon name="mail" size={19} color={theme.colors.primary} />
+          </View>
+          <TextInput
+            value={email}
+            editable={!isPasswordReset && editingEmail}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            style={styles.input}
+          />
+        </View>
 
         {!isPasswordReset && !editingEmail && (
-          <TouchableOpacity style={localStyles.inlineLink} onPress={() => setEditingEmail(true)}>
+          <TouchableOpacity
+            style={{ marginBottom: 12, alignSelf: "flex-start" }}
+            onPress={() => setEditingEmail(true)}
+          >
             <Txt
               en="Edit email"
               sw="Badilisha barua pepe"
@@ -228,36 +191,43 @@ export default function VerifyProvider({ navigation, route }) {
             style={[styles.button, loading && styles.disabled]}
             onPress={handleSaveEmail}
             disabled={loading}
+            activeOpacity={0.88}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={theme.colors.onPrimary} />
             ) : (
               <Txt en="Save & send code" sw="Hifadhi na tuma namba" style={styles.buttonText} />
             )}
           </TouchableOpacity>
         ) : (
           <>
-            <TextInput
-              placeholder="Verification code"
-              placeholderTextColor={theme.colors.textVeryMuted}
-              value={otp}
-              onChangeText={setOtp}
-              keyboardType="numeric"
-              maxLength={6}
-              style={styles.otpInput}
-            />
+            <View style={styles.inputRow}>
+              <View style={styles.inputIcon}>
+                <AppIcon name="shield" size={19} color={theme.colors.primary} />
+              </View>
+              <TextInput
+                placeholder="Verification code"
+                placeholderTextColor={theme.colors.textVeryMuted}
+                value={otp}
+                onChangeText={setOtp}
+                keyboardType="numeric"
+                maxLength={6}
+                style={styles.input}
+              />
+            </View>
 
             <TouchableOpacity
               style={[styles.button, loading && styles.disabled]}
               onPress={handleVerify}
               disabled={loading}
+              activeOpacity={0.88}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.onPrimary} />
               ) : (
                 <Txt
-                  en={isPasswordReset ? "Verify code" : "Verify & continue"}
-                  sw={isPasswordReset ? "Thibitisha namba" : "Thibitisha na endelea"}
+                  en={isPasswordReset ? "Verify" : "Verify & continue"}
+                  sw={isPasswordReset ? "Thibitisha" : "Thibitisha na endelea"}
                   style={styles.buttonText}
                 />
               )}
@@ -265,7 +235,11 @@ export default function VerifyProvider({ navigation, route }) {
           </>
         )}
 
-        <TouchableOpacity style={styles.link} onPress={handleRequestCode} disabled={loading}>
+        <TouchableOpacity
+          style={styles.link}
+          onPress={handleRequestCode}
+          disabled={loading}
+        >
           <Txt
             en="Request new code"
             sw="Omba namba mpya"
@@ -276,19 +250,3 @@ export default function VerifyProvider({ navigation, route }) {
     </AuthLayout>
   );
 }
-
-const localStyles = {
-  iconWrap: {
-    alignSelf: "center",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: theme.spacing.md,
-    backgroundColor: theme.colors.primarySoft,
-  },
-  inlineLink: {
-    marginBottom: theme.spacing.md,
-  },
-};

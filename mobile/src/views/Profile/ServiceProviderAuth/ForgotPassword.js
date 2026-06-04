@@ -8,19 +8,21 @@ import {
 } from "react-native";
 import AuthLayout from "./AuthLayout";
 import AuthBackButton from "../../../AuthBackButton";
+import AuthBrand from "./AuthBrand";
 import Txt from "../../../Txt";
-import { styles } from "./styles";
-import { theme } from "../../../theme";
+import { createAuthStyles } from "./auth.js";
+import { useAppTheme } from "../../../theme";
 import { api } from "../../../api/api";
 import AppIcon from "../../../icons/AppIcon";
 
 export default function ForgotPassword({ navigation }) {
+  const { theme } = useAppTheme();
+  const styles = createAuthStyles(theme);
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSendCode = async () => {
     const cleanEmail = email.trim().toLowerCase();
-
     if (!cleanEmail) {
       Alert.alert("Error", "Email is required");
       return;
@@ -29,21 +31,13 @@ export default function ForgotPassword({ navigation }) {
     setLoading(true);
     try {
       await api.post("/auth/password/forgot", { email: cleanEmail });
-
-      Alert.alert(
-        "Success",
-        "A verification code has been sent. In development, check the backend terminal."
-      );
-
+      Alert.alert("Code sent", "Check the backend terminal for your verification code.");
       navigation.replace("VerifyProvider", {
         purpose: "reset-password",
         email: cleanEmail,
       });
     } catch (err) {
-      Alert.alert(
-        "Error",
-        err.response?.data?.message || "Failed to send reset code"
-      );
+      Alert.alert("Error", err.response?.data?.message || "Failed to send reset code");
     } finally {
       setLoading(false);
     }
@@ -54,45 +48,40 @@ export default function ForgotPassword({ navigation }) {
       <AuthBackButton />
 
       <View style={styles.card}>
-        <View style={localStyles.iconWrap}>
-          <AppIcon name="key" size={26} color={theme.colors.primary} />
-        </View>
+        <AuthBrand />
 
+        <Txt en="Reset password" sw="Weka upya nenosiri" style={styles.title} />
         <Txt
-          en="Forgot your password?"
-          sw="Umesahau nenosiri?"
-          style={styles.title}
-        />
-
-        <Txt
-          en="Enter your email and we will send a verification code before you create a new password."
-          sw="Weka barua pepe yako tutakutumia namba ya uthibitisho kabla hujaweka nenosiri jipya."
+          en="Enter your email and we'll send you a code."
+          sw="Weka barua pepe yako, tutakutumia namba."
           style={styles.subtitle}
         />
 
-        <TextInput
-          placeholder="Email"
-          placeholderTextColor={theme.colors.textVeryMuted}
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
+        <View style={styles.inputRow}>
+          <View style={styles.inputIcon}>
+            <AppIcon name="mail" size={19} color={theme.colors.primary} />
+          </View>
+          <TextInput
+            placeholder="Email"
+            placeholderTextColor={theme.colors.textVeryMuted}
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+        </View>
 
         <TouchableOpacity
           style={[styles.button, loading && styles.disabled]}
           onPress={handleSendCode}
           disabled={loading}
+          activeOpacity={0.88}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={theme.colors.onPrimary} />
           ) : (
-            <Txt
-              en="Send verification code"
-              sw="Tuma namba ya uthibitisho"
-              style={styles.buttonText}
-            />
+            <Txt en="Send code" sw="Tuma namba" style={styles.buttonText} />
           )}
         </TouchableOpacity>
 
@@ -100,26 +89,9 @@ export default function ForgotPassword({ navigation }) {
           style={styles.link}
           onPress={() => navigation.replace("ServiceProviderLogin")}
         >
-          <Txt
-            en="Back to login"
-            sw="Rudi kuingia"
-            style={[styles.linkText, { color: theme.colors.primary }]}
-          />
+          <Txt en="Back to login" sw="Rudi kuingia" style={styles.linkText} />
         </TouchableOpacity>
       </View>
     </AuthLayout>
   );
 }
-
-const localStyles = {
-  iconWrap: {
-    alignSelf: "center",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: theme.spacing.md,
-    backgroundColor: theme.colors.primarySoft,
-  },
-};
