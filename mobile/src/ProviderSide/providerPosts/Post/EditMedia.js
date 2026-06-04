@@ -13,17 +13,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEventListener } from "expo";
 import Icon from "../../../icons/MaterialIcon";
+import { useAppTheme } from "../../../theme";
 
 const { width } = Dimensions.get("window");
 const PREVIEW_SIZE = width;
 
 function EditMediaContent({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
   const { mediaList = [], postType = "moment" } = route.params || {};
 
   const [index, setIndex] = useState(0);
   const [muted, setMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [fitById, setFitById] = useState({});
 
   if (!mediaList.length) {
     return (
@@ -36,6 +40,15 @@ function EditMediaContent({ route, navigation }) {
   const current = mediaList[index];
   const isVideo = current.type === "video";
   const totalMedia = mediaList.length;
+  const currentKey = current.id || current.uri || String(index);
+  const currentFit = fitById[currentKey] || current.fit || "cover";
+  const mediaWithFit = mediaList.map((item, itemIndex) => {
+    const key = item.id || item.uri || String(itemIndex);
+    return {
+      ...item,
+      fit: fitById[key] || item.fit || "cover",
+    };
+  });
 
   const player = useVideoPlayer(null, (p) => {
     p.loop = true;
@@ -78,7 +91,7 @@ function EditMediaContent({ route, navigation }) {
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="chevron-left" size={30} color="#fff" />
+          <Icon name="chevron-left" size={30} color={theme.colors.text} />
         </TouchableOpacity>
 
         <Text style={styles.title}>Preview</Text>
@@ -86,7 +99,7 @@ function EditMediaContent({ route, navigation }) {
         <TouchableOpacity
           onPress={() =>
             navigation.navigate("PostDetails", {
-              mediaList,
+              mediaList: mediaWithFit,
               postType,
               muted,
             })
@@ -104,7 +117,7 @@ function EditMediaContent({ route, navigation }) {
               <VideoView
                 style={styles.media}
                 player={player}
-                contentFit="contain"
+                contentFit={currentFit}
                 nativeControls={false}
               />
               <TouchableOpacity
@@ -119,25 +132,43 @@ function EditMediaContent({ route, navigation }) {
               </TouchableOpacity>
             </View>
           ) : (
-            <Image source={{ uri: current.uri }} style={styles.media} />
+            <Image source={{ uri: current.uri }} style={styles.media} resizeMode={currentFit} />
           )}
         </View>
 
-        {/* Mute Button - Only for video */}
-        {isVideo && (
-          <View style={styles.actions}>
+        <View style={styles.actions}>
+          <TouchableOpacity
+            onPress={() =>
+              setFitById((prev) => ({
+                ...prev,
+                [currentKey]: currentFit === "cover" ? "contain" : "cover",
+              }))
+            }
+            style={styles.actionButton}
+          >
+            <Icon
+              name={currentFit === "cover" ? "collections" : "photo-library"}
+              size={26}
+              color={theme.colors.onPrimary}
+            />
+            <Text style={styles.actionText}>
+              {currentFit === "cover" ? "Fill" : "Fit"}
+            </Text>
+          </TouchableOpacity>
+
+          {isVideo && (
             <TouchableOpacity onPress={() => setMuted(!muted)}>
               <Icon
                 name={muted ? "volume-off" : "volume-up"}
                 size={28}
-                color="#fff"
+                color={theme.colors.onPrimary}
               />
               <Text style={styles.actionText}>
                 {muted ? "Muted" : "Sound"}
               </Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </View>
       </View>
 
       {/* THUMBNAILS + COUNTER */}
@@ -191,9 +222,9 @@ export default function EditMedia(props) {
   return <EditMediaContent {...props} />;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#343e3eff" },
-  emptyText: { color: "#fff", textAlign: "center", marginTop: 40 },
+const createStyles = (theme) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.colors.bg },
+  emptyText: { color: theme.colors.text, textAlign: "center", marginTop: 40 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -201,13 +232,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  title: { color: "#fff", fontSize: 18, fontWeight: "700" },
-  next: { color: "#0095f6", fontWeight: "700", fontSize: 16 },
+  title: { color: theme.colors.text, fontSize: 18, fontWeight: "700" },
+  next: { color: theme.colors.primary, fontWeight: "700", fontSize: 16 },
   previewContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   preview: {
     width: PREVIEW_SIZE,
     height: PREVIEW_SIZE,
-    backgroundColor: "#000",
+    backgroundColor: theme.colors.media,
     borderRadius: 12,
     overflow: "hidden",
   },
@@ -217,8 +248,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  actions: { alignItems: "center", paddingVertical: 24 },
-  actionText: { color: "#fff", fontSize: 13, marginTop: 6 },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 28,
+    paddingVertical: 24,
+  },
+  actionButton: { alignItems: "center" },
+  actionText: { color: theme.colors.text, fontSize: 13, marginTop: 6, fontWeight: "700" },
 
   // Bottom section with counter + thumbnails
   bottomSection: {
@@ -227,7 +265,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   counter: {
-    color: "#fff",
+    color: theme.colors.text,
     fontSize: 15,
     fontWeight: "600",
     textAlign: "center",
@@ -246,13 +284,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 6,
     borderRadius: 10,
     overflow: "hidden",
-    backgroundColor: "#222",
+    backgroundColor: theme.colors.surfaceSoft,
     justifyContent: "center",
     alignItems: "center",
   },
   thumbActive: {
     borderWidth: 3,
-    borderColor: "#0095f6",
+    borderColor: theme.colors.primary,
   },
   thumbImg: {
     width: "100%",
