@@ -10,8 +10,11 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import BackIcon from "../../../icons/huge/back-navigation.svg";
+import { useAppTheme } from "../../../theme";
 
 export default function EngagementSummary({ navigation }) {
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
   const [summary, setSummary] = useState(null);
 
   useEffect(() => {
@@ -21,7 +24,7 @@ export default function EngagementSummary({ navigation }) {
   const loadSummary = async () => {
     const token = await AsyncStorage.getItem("token");
 
-    // MOCKED – future backend ready
+    // Mocked until backend data is ready.
     const mocked = {
       accountReached: 391,
       profileVisits: 61,
@@ -46,17 +49,17 @@ export default function EngagementSummary({ navigation }) {
   };
 
   if (!summary) {
-    return <ActivityIndicator style={{ marginTop: 80 }} />;
+    return <ActivityIndicator style={{ marginTop: 80 }} color={theme.colors.primary} />;
   }
 
   const handleShare = async () => {
-    // TEMP – text (image comes next step)
+    // Text share for now; image share can come later.
     await Share.share({
-      message: `My professional reach on e-kazi 🚀
+      message: `My professional reach on e-kazi
 
-• Account reached: ${summary.accountReached}
-• Profile visits: ${summary.profileVisits}
-• Picked me: ${summary.pickedMe}
+- Account reached: ${summary.accountReached}
+- Profile visits: ${summary.profileVisits}
+- Picked me: ${summary.pickedMe}
 
 Available for work on e-kazi.`,
     });
@@ -74,7 +77,7 @@ Available for work on e-kazi.`,
           }
           style={styles.backBtn}
         >
-          <BackIcon width={22} height={22} />
+          <BackIcon width={22} height={22} stroke={theme.colors.primary} />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>Professional insights</Text>
@@ -89,53 +92,62 @@ Available for work on e-kazi.`,
 
         {/* HERO METRICS */}
         <View style={styles.metrics}>
-          <Metric value={summary.accountReached} label="Account reached" />
-          <Metric value={summary.profileVisits} label="Profile visits" />
-          <Metric value={summary.interactions} label="Interactions" />
-          <Metric value={summary.pickedMe} label="Picked me" />
+          <Metric value={summary.accountReached} label="Account reached" styles={styles} />
+          <Metric value={summary.profileVisits} label="Profile visits" styles={styles} />
+          <Metric value={summary.interactions} label="Interactions" styles={styles} />
+          <Metric value={summary.pickedMe} label="Picked me" styles={styles} />
         </View>
 
         {/* DISCOVERY */}
-        <Card title="How people found you">
-          <Row label="Search" value={`${summary.discovery.search}%`} />
-          <Row label="Discover" value={`${summary.discovery.discover}%`} />
-          <Row label="Referrals / picks" value={`${summary.discovery.referrals}%`} />
+        <Card title="How people found you" styles={styles}>
+          <Row label="Search" value={`${summary.discovery.search}%`} styles={styles} />
+          <Row label="Discover" value={`${summary.discovery.discover}%`} styles={styles} />
+          <Row label="Referrals / picks" value={`${summary.discovery.referrals}%`} styles={styles} />
         </Card>
 
         {/* GROWTH */}
-        <Card title="Growth (last 7 days)">
+        <Card title="Growth (last 7 days)" styles={styles}>
           <Row
             label="Profile visits"
             value={`+${summary.growth7d.profileVisits}`}
             positive
+            theme={theme}
+            styles={styles}
           />
           <Row
             label="Picked me"
             value={`+${summary.growth7d.pickedMe}`}
             positive
+            theme={theme}
+            styles={styles}
           />
           <Row
             label="Interactions"
             value={`+${summary.growth7d.interactions}`}
             positive
+            theme={theme}
+            styles={styles}
           />
         </Card>
 
-        {/* INSIGHTS – NUMBERED */}
+        {/* Numbered insights */}
         <View style={styles.insightsBox}>
           <Text style={styles.cardTitle}>Insights</Text>
 
           <Insight
             number={1}
             text="Post consistently. Short videos, full videos, and images of your work keep your profile active and visible."
+            styles={styles}
           />
           <Insight
             number={2}
             text="Add more real work examples. Profiles with proof of work get picked more."
+            styles={styles}
           />
           <Insight
             number={3}
             text="Use @mentions and #hashtags. They help your posts appear in search and discover."
+            styles={styles}
           />
         </View>
 
@@ -150,7 +162,7 @@ Available for work on e-kazi.`,
 
 /* ---------- COMPONENTS ---------- */
 
-function Metric({ value, label }) {
+function Metric({ value, label, styles }) {
   return (
     <View style={styles.metric}>
       <Text style={styles.metricValue}>{value}</Text>
@@ -159,7 +171,7 @@ function Metric({ value, label }) {
   );
 }
 
-function Card({ title, children }) {
+function Card({ title, children, styles }) {
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>{title}</Text>
@@ -168,14 +180,14 @@ function Card({ title, children }) {
   );
 }
 
-function Row({ label, value, positive }) {
+function Row({ label, value, positive, theme, styles }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Text
         style={[
           styles.rowValue,
-          positive && { color: "#1A7F37", fontWeight: "700" },
+          positive && { color: theme?.colors?.success || "#1A7F37", fontWeight: "700" },
         ]}
       >
         {value}
@@ -184,7 +196,7 @@ function Row({ label, value, positive }) {
   );
 }
 
-function Insight({ number, text }) {
+function Insight({ number, text, styles }) {
   return (
     <View style={styles.insightRow}>
       <Text style={styles.insightNumber}>{number}</Text>
@@ -195,10 +207,10 @@ function Insight({ number, text }) {
 
 /* ---------- STYLES ---------- */
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#F5F7FB",
+    backgroundColor: theme.colors.bg,
   },
 
   /* Header */
@@ -207,9 +219,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "#EEE",
+    borderBottomColor: theme.colors.border,
   },
   backBtn: {
     marginRight: 12,
@@ -218,6 +230,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: "800",
+    color: theme.colors.text,
   },
 
   /* Content */
@@ -227,7 +240,7 @@ const styles = StyleSheet.create({
   },
   subTitle: {
     fontSize: 13,
-    color: "#666",
+    color: theme.colors.textMuted,
     marginBottom: 16,
   },
 
@@ -247,19 +260,22 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     fontSize: 12,
-    color: "#666",
+    color: theme.colors.textMuted,
   },
 
   /* Cards */
   card: {
     marginTop: 16,
     padding: 14,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.colors.surface,
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   cardTitle: {
     fontWeight: "800",
     marginBottom: 10,
+    color: theme.colors.text,
   },
   row: {
     flexDirection: "row",
@@ -268,18 +284,18 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 13,
-    color: "#444",
+    color: theme.colors.textSecondary,
   },
   rowValue: {
     fontSize: 13,
-    color: "#444",
+    color: theme.colors.textSecondary,
   },
 
   /* Insights */
   insightsBox: {
     marginTop: 16,
     padding: 16,
-    backgroundColor: "#EEF2FF",
+    backgroundColor: theme.colors.accentSoft,
     borderRadius: 16,
   },
   insightRow: {
@@ -290,8 +306,8 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#111",
-    color: "#FFF",
+    backgroundColor: theme.colors.primary,
+    color: theme.colors.onPrimary,
     textAlign: "center",
     lineHeight: 24,
     fontWeight: "800",
@@ -300,19 +316,19 @@ const styles = StyleSheet.create({
   insightText: {
     flex: 1,
     fontSize: 13,
-    color: "#333",
+    color: theme.colors.textSecondary,
   },
 
   /* Share */
   shareBtn: {
     marginTop: 28,
     paddingVertical: 14,
-    backgroundColor: "#111",
+    backgroundColor: theme.colors.primary,
     borderRadius: 14,
     alignItems: "center",
   },
   shareText: {
-    color: "#FFF",
+    color: theme.colors.onPrimary,
     fontWeight: "800",
   },
 });
