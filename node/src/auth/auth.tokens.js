@@ -26,3 +26,16 @@ export function generateAuthToken(uuid) {
     { expiresIn: "7d" }
   );
 }
+
+export function generateViewerToken(uuid) {
+  return jwt.sign(
+    {
+      uuid,
+      role: "viewer",
+    },
+    AUTH_SECRET,
+    {
+      expiresIn: "90d",
+    }
+  );
+}
