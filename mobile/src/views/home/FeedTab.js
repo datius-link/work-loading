@@ -1,12 +1,12 @@
-import { View, Text } from "react-native";
+import React from "react";
 
-export default function FeedTab() {
+import ExploreTab from "./ExploreTab";
+
+export default function FeedTab(props) {
   return (
-    <View style={{ padding: 20 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700" }}>Feed</Text>
-      <Text style={{ marginTop: 6, color: "#666" }}>
-        Provider posts, works & highlights will appear here.
-      </Text>
-    </View>
+    <ExploreTab
+      {...props}
+      feedType="following"
+    />
   );
 }

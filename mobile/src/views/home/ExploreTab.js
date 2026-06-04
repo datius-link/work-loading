@@ -1,291 +1,268 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  StyleSheet,
+  FlatList,
+  Dimensions,
+  ActivityIndicator,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { api } from "../../api/api";
-import LightLoginModal from "../LightUsers/LightLoginModal";
-import Txt from "../../Txt";
-import { theme } from "../../theme";
-import AppIcon from "../../icons/AppIcon";
+import { useAppTheme } from "../../theme";
 
-const fallbackPosts = [
-  {
-    id: "sample-1",
-    username: "e-kaziProvider_482910",
-    full_name: "Asha Plumbing",
-    caption: "Bathroom repair, pipe installation, and emergency plumbing around town.",
-    location: "Dar es Salaam",
-    media: [],
-  },
-  {
-    id: "sample-2",
-    username: "e-kaziProvider_194625",
-    full_name: "Musa Electrical",
-    caption: "Wiring, sockets, lighting, and quick electrical diagnostics.",
-    location: "Kampala",
-    media: [],
-  },
-];
+import PostCard from "../postCard/PostCard";
 
-export default function ExploreTab() {
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+function shufflePosts(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+export default function ExploreTab({ navigation, searchQuery = "" }) {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
+
   const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [hireTarget, setHireTarget] = useState(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
-  const loadPosts = useCallback(async () => {
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const search = searchQuery;
+
+  const [activePostId, setActivePostId] = useState(null);
+  const [layoutHeight, setLayoutHeight] = useState(0);
+
+  const flatListRef = useRef(null);
+
+  const POST_HEIGHT = useMemo(() => {
+    if (layoutHeight > 0) return layoutHeight;
+    return SCREEN_HEIGHT - tabBarHeight - insets.top - 71;
+  }, [layoutHeight, tabBarHeight, insets.top]);
+
+  const fetchPosts = async (pageNumber = 1, append = false, options = {}) => {
     try {
-      const res = await api.get("/posts/public");
-      setPosts(res.data.posts || []);
-    } catch (err) {
-      console.log("Explore posts fallback:", err.response?.data || err.message);
-      setPosts(fallbackPosts);
+      if (append && loadingMore) return;
+      if (!append && loading) return;
+      if (append && !hasMore && !options.cycle) return;
+
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setHasMore(true);
+      }
+
+      console.log(`[Explore] Fetching posts - Page: ${pageNumber}, Search: "${search}"`);
+
+      const res = await api.get("/posts/public", {
+        params: {
+          page: pageNumber,
+          q: search?.trim() || undefined,
+        },
+      });
+
+      const fetchedPosts = search?.trim()
+        ? res?.data?.posts || []
+        : shufflePosts(res?.data?.posts || []);
+      const paginationHasMore = res?.data?.pagination?.hasMore;
+
+      console.log(`[Explore] Received ${fetchedPosts.length} posts (hasMore: ${paginationHasMore})`);
+
+      if (append) {
+        setPosts((prev) => {
+          const merged = [...prev, ...fetchedPosts];
+          if (options.cycle) return merged;
+          const unique = merged.filter(
+            (item, index, self) =>
+              index === self.findIndex((p) => p.id === item.id)
+          );
+          return unique;
+        });
+      } else {
+        setPosts(fetchedPosts);
+
+        if (fetchedPosts.length > 0) {
+          setActivePostId(fetchedPosts[0].id);
+        }
+      }
+
+      setHasMore(options.cycle ? true : paginationHasMore !== false);
+
+      if (!append) {
+        setPage(1);
+      }
+    } catch (error) {
+      console.error("Explore fetch error:", error?.response?.data || error?.message);
+
+      if (!append) {
+        // Keep previous posts on error to avoid blank flashes
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
+  };
+
+  // Initial fetch
+  useEffect(() => {
+    fetchPosts(1, false);
   }, []);
 
+  // Debounced search
   useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+    const timeout = setTimeout(() => {
+      fetchPosts(1, false);
+    }, 500);
 
-  const handleHire = async (contact) => {
-    if (!hireTarget) return;
+    return () => clearTimeout(timeout);
+  }, [search]);
 
-    await AsyncStorage.setItem(
-      "lightUser",
-      JSON.stringify({
-        type: "email",
-        contact: contact.email,
-        createdAt: new Date().toISOString(),
-      })
-    );
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchPosts(1, false);
+  };
 
-    console.log("[DEV MOCK] Light hire request", {
-      provider: hireTarget.username,
-      postId: hireTarget.id,
-      contactEmail: contact.email,
-    });
+  const handleLoadMore = () => {
+    if (loadingMore || loading) return;
 
-    Alert.alert(
-      "Request saved",
-      "For development, the hire request is logged in the mobile console."
+    if (!hasMore && !search?.trim()) {
+      setPage(1);
+      fetchPosts(1, true, { cycle: true });
+      return;
+    }
+
+    if (!hasMore) return;
+
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchPosts(nextPage, true);
+  };
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems?.length > 0) {
+      const firstVisible = viewableItems[0]?.item;
+
+      if (firstVisible?.id) {
+        setActivePostId(firstVisible.id);
+      }
+    }
+  }).current;
+
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 80,
+  };
+
+  const renderItem = ({ item }) => {
+    return (
+      <PostCard
+        post={item}
+        height={POST_HEIGHT}
+        active={activePostId === item.id}
+        navigation={navigation}
+      />
     );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={theme.colors.primary} />
-      </View>
-    );
-  }
-
   return (
-    <>
-      <FlatList
-        data={posts}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              loadPosts();
-            }}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <AppIcon name="posts" size={32} color={theme.colors.textVeryMuted} />
-            <Txt
-              en="Provider posts will appear here."
-              sw="Posts za watoa huduma zitaonekana hapa."
-              style={styles.emptyText}
-            />
-          </View>
-        }
-        renderItem={({ item }) => (
-          <ProviderPost post={item} onHire={() => setHireTarget(item)} />
-        )}
-      />
-
-      <LightLoginModal
-        visible={!!hireTarget}
-        onClose={() => setHireTarget(null)}
-        onSuccess={handleHire}
-      />
-    </>
-  );
-}
-
-function ProviderPost({ post, onHire }) {
-  const media = Array.isArray(post.media) ? post.media.slice(0, 10) : [];
-  const primaryMedia = media[0];
-  const displayName = post.full_name || post.username || "Service Provider";
-  const avatarName = encodeURIComponent(displayName);
-  const avatarUrl =
-    post.profile_pic ||
-    post.profilePic ||
-    `https://ui-avatars.com/api/?name=${avatarName}&background=0B6B63&color=fff`;
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.postHeader}>
-        <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-        <View style={styles.providerMeta}>
-          <Text style={styles.providerName} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <Text style={styles.username} numberOfLines={1}>
-            @{post.username || "provider"}
-          </Text>
+    <View
+      style={styles.container}
+      onLayout={(event) => setLayoutHeight(event.nativeEvent.layout.height)}
+    >
+      {/* FEED */}
+      {loading && posts.length === 0 ? (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
-
-        <TouchableOpacity style={styles.hireBtn} onPress={onHire}>
-          <Txt en="Hire me" sw="Niajiri" style={styles.hireText} />
-        </TouchableOpacity>
-      </View>
-
-      {primaryMedia?.url ? (
-        <Image source={{ uri: primaryMedia.url }} style={styles.media} />
       ) : (
-        <View style={styles.mediaPlaceholder}>
-          <AppIcon name="image" size={34} color={theme.colors.textVeryMuted} />
-        </View>
+        <FlatList
+          ref={flatListRef}
+          data={posts}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
+          pagingEnabled
+          snapToAlignment="start"
+          decelerationRate="fast"
+          snapToInterval={POST_HEIGHT}
+          getItemLayout={(_, index) => ({
+            length: POST_HEIGHT,
+            offset: POST_HEIGHT * index,
+            index,
+          })}
+          showsVerticalScrollIndicator={false}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews
+          windowSize={5}
+          maxToRenderPerBatch={5}
+          initialNumToRender={3}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 20 }}>
+                <ActivityIndicator color={theme.colors.primary} />
+              </View>
+            ) : null
+          }
+        />
       )}
-
-      {media.length > 1 ? (
-        <Text style={styles.mediaCount}>1 / {media.length}</Text>
-      ) : null}
-
-      <Text style={styles.caption}>{post.caption}</Text>
-
-      {post.location ? (
-        <Text style={styles.location}>{post.location}</Text>
-      ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  list: {
-    width: "100%",
-    maxWidth: 760,
-    alignSelf: "center",
-    padding: 16,
-    paddingBottom: 28,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  empty: {
-    alignItems: "center",
-    paddingVertical: 42,
-  },
-  emptyText: {
-    marginTop: 10,
-    color: theme.colors.textMuted,
-    fontWeight: "600",
-  },
-  card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: 14,
-    overflow: "hidden",
-    ...theme.shadow.soft,
-  },
-  postHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: theme.colors.surfaceSoft,
-  },
-  providerMeta: {
-    flex: 1,
-    minWidth: 0,
-  },
-  providerName: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: theme.colors.text,
-  },
-  username: {
-    marginTop: 2,
-    fontSize: 12,
-    color: theme.colors.textMuted,
-  },
-  hireBtn: {
-    minHeight: 38,
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: theme.colors.primary,
-  },
-  hireText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  media: {
-    width: "100%",
-    aspectRatio: 1.1,
-    backgroundColor: theme.colors.surfaceSoft,
-  },
-  mediaPlaceholder: {
-    width: "100%",
-    aspectRatio: 1.1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.surfaceSoft,
-  },
-  mediaCount: {
-    position: "absolute",
-    right: 12,
-    top: 66,
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "800",
-    backgroundColor: "rgba(15, 23, 42, 0.72)",
-  },
-  caption: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    fontSize: 14,
-    lineHeight: 20,
-    color: theme.colors.text,
-  },
-  location: {
-    paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 12,
-    fontSize: 12,
-    color: theme.colors.textMuted,
-    fontWeight: "700",
-  },
-});
+
+const createStyles = (theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.bg,
+    },
+
+    searchWrapper: {
+      backgroundColor: theme.colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+
+    searchBar: {
+      height: 50,
+      backgroundColor: theme.colors.surfaceSoft,
+      borderRadius: 18,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+
+    searchInput: {
+      flex: 1,
+      fontSize: 15,
+      color: theme.colors.text,
+      fontWeight: "500",
+    },
+
+    loader: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+  });
