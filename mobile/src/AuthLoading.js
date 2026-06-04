@@ -9,7 +9,7 @@ export default function AuthLoading({ navigation }) {
       try {
         const token = await AsyncStorage.getItem("token");
 
-        // 1️⃣ No token → public user
+        // No token: public user
         if (!token) {
           navigation.reset({
             index: 0,
@@ -18,10 +18,10 @@ export default function AuthLoading({ navigation }) {
           return;
         }
 
-        // 2️⃣ Validate token + profile from backend
+        // Validate token and profile from backend
         const res = await api.get("/service-provider/me");
 
-        // 3️⃣ Profile exists → provider app
+        // Profile exists: provider app
         if (res?.data?.provider) {
           navigation.reset({
             index: 0,
@@ -30,12 +30,12 @@ export default function AuthLoading({ navigation }) {
           return;
         }
 
-        // 4️⃣ Fallback (shouldn't happen)
+        // Fallback
         throw new Error("Profile missing");
       } catch (err) {
         const status = err?.response?.status;
 
-        // 🔥 AUTH TOKEN INVALID / EXPIRED
+        // Auth token invalid or expired
         if (status === 401) {
           await AsyncStorage.multiRemove([
             "token",
@@ -50,7 +50,7 @@ export default function AuthLoading({ navigation }) {
           return;
         }
 
-        // 🧱 PROFILE NOT CREATED YET
+        // Profile not created yet
         if (status === 404) {
           navigation.reset({
             index: 0,
@@ -59,7 +59,7 @@ export default function AuthLoading({ navigation }) {
           return;
         }
 
-        // 🚨 Unexpected error
+        // Unexpected error
         console.error("Auth bootstrap error:", err);
         Alert.alert(
           "Error",

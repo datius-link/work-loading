@@ -1,17 +1,16 @@
-// 🚨 MUST BE FIRST LINE
 import "react-native-gesture-handler";
 
-// FIX: Ondoa hii line - usi-enableScreens() kwa sasa
-// import { enableScreens } from 'react-native-screens';
-// enableScreens();
+import { ConvexReactClient } from "convex/react";
+import { ConvexProvider } from "convex/react";
 
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LanguageProvider, useLanguage } from "./src/LanguageContext";
+import { ThemeProvider, useAppTheme } from "./src/theme";
 import AppIcon from "./src/icons/AppIcon";
 
 /* ---------------------------
@@ -37,22 +36,28 @@ import ResetPassword from "./src/views/Profile/ServiceProviderAuth/ResetPassword
 --------------------------- */
 import ProviderTabs from "./src/ProviderSide/ProviderTabs";
 import EditProvider from "./src/ProviderSide/Profile/EditProvider";
+import ProviderProfile from "./src/ProviderSide/Profile/ProviderProfile";
 import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
 
-import PicksScreen from "./src/ProviderSide/providerPosts/picks/PicksScreen";
+import ConnectionsScreen from "./src/ProviderSide/providerPosts/following-system/ConnectionsScreen";
 import EngagementSummary from "./src/ProviderSide/providerPosts/engagement/engagementSummary";
 import CreatePost from "./src/ProviderSide/providerPosts/Post/createPost";
 import EditMedia from "./src/ProviderSide/providerPosts/Post/EditMedia";
 import PostDetails from "./src/ProviderSide/providerPosts/Post/PostDetails";
+import PostFeedView from "./src/ProviderSide/providerPosts/PostFeedView";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+
+const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL); 
 
 /* =====================================================
    MAIN USER TABS
 ===================================================== */
 function MainTabs() {
   const { language } = useLanguage();
+  const { theme } = useAppTheme(); 
+  const insets = useSafeAreaInsets();
   const labels = {
     Home: language === "sw" ? "Gundua" : "Explore",
     Activities: language === "sw" ? "Shughuli" : "Activities",
@@ -64,18 +69,30 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: "#0B6B63",
-        tabBarInactiveTintColor: "#64748B",
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarLabel: labels[route.name] || route.name,
         tabBarStyle: {
-          borderTopColor: "#E2E8F0",
-          height: 64,
-          paddingBottom: 8,
+          height: 64 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 8),
           paddingTop: 8,
+          borderTopWidth: 0,
+          backgroundColor: theme.colors.surface,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          shadowColor: "#000",
+          shadowOpacity: 0.08,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
         },
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: "700",
+        },
+        tabBarItemStyle: {
+          borderRadius: 18,
+          marginHorizontal: 4,
         },
         tabBarIcon: ({ color, size }) => {
           let icon = "home";
@@ -100,54 +117,56 @@ function MainTabs() {
 ===================================================== */
 export default function App() {
   return (
-    <LanguageProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <NavigationContainer>
-            <Stack.Navigator 
-              screenOptions={{ 
-                headerShown: false,
-                // FIX: Usitumie detachPreviousScreen globally
-                // presentation: 'modal', // ONDOA HII
-              }}
-            >
+    <ConvexProvider client={convex}>
+      <LanguageProvider>
+        <ThemeProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaProvider>
+              <NavigationContainer>
+                <Stack.Navigator 
+                  screenOptions={{ 
+                    headerShown: false,
+                  }}
+                >
+                  {/* -------- AUTH CHECK -------- */}
+                  <Stack.Screen name="AuthLoading" component={AuthLoading} />
 
-              {/* -------- AUTH CHECK -------- */}
-              <Stack.Screen name="AuthLoading" component={AuthLoading} />
+                  {/* -------- MAIN USER -------- */}
+                  <Stack.Screen name="MainTabs" component={MainTabs} />
 
-              {/* -------- MAIN USER -------- */}
-              <Stack.Screen name="MainTabs" component={MainTabs} />
+                  {/* -------- PROVIDER AUTH -------- */}
+                  <Stack.Screen name="ServiceProviderLogin" component={ServiceProviderLogin} />
+                  <Stack.Screen name="ServiceProviderSignUp" component={ServiceProviderSignUp} />
+                  <Stack.Screen name="VerifyProvider" component={VerifyProvider} />
+                  <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+                  <Stack.Screen name="ResetPassword" component={ResetPassword} />
 
-              {/* -------- PROVIDER AUTH -------- */}
-              <Stack.Screen name="ServiceProviderLogin" component={ServiceProviderLogin} />
-              <Stack.Screen name="ServiceProviderSignUp" component={ServiceProviderSignUp} />
-              <Stack.Screen name="VerifyProvider" component={VerifyProvider} />
-              <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
-              <Stack.Screen name="ResetPassword" component={ResetPassword} />
+                  {/* -------- PROVIDER APP -------- */}
+                  <Stack.Screen name="ProviderTabs" component={ProviderTabs} />
+                  <Stack.Screen name="EditProvider" component={EditProvider} />
+                  <Stack.Screen name="ProviderSettings" component={ProviderSettings} />
+                  <Stack.Screen name="ProviderProfile" component={ProviderProfile} />
+                  <Stack.Screen name="PostFeedView" component={PostFeedView} />
 
-              {/* -------- PROVIDER APP -------- */}
-              <Stack.Screen name="ProviderTabs" component={ProviderTabs} />
-              <Stack.Screen name="EditProvider" component={EditProvider} />
-              <Stack.Screen name="ProviderSettings" component={ProviderSettings} />
-
-              {/* -------- POSTS -------- */}
-              <Stack.Screen name="PicksScreen" component={PicksScreen} />
-              <Stack.Screen name="EngagementSummary" component={EngagementSummary} />
-              <Stack.Screen name="CreatePost" component={CreatePost} />
-              <Stack.Screen name="EditMedia" component={EditMedia} />
-              
-              {/* -------- POST DETAILS WITH MINIMAL FIXES -------- */}
-              <Stack.Screen 
-                name="PostDetails" 
-                component={PostDetails}
-                options={{
-                }}
-              />
-
-            </Stack.Navigator>
-          </NavigationContainer>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </LanguageProvider>
+                  {/* -------- POSTS -------- */}
+                  <Stack.Screen name="PicksScreen" component={ConnectionsScreen} />
+                  <Stack.Screen name="ConnectionsScreen" component={ConnectionsScreen} />
+                  <Stack.Screen name="EngagementSummary" component={EngagementSummary} />
+                  <Stack.Screen name="CreatePost" component={CreatePost} />
+                  <Stack.Screen name="EditMedia" component={EditMedia} />
+                  
+                  {/* -------- POST DETAILS WITH MINIMAL FIXES -------- */}
+                  <Stack.Screen 
+                    name="PostDetails" 
+                    component={PostDetails}
+                    options={{}}
+                  />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </SafeAreaProvider>
+          </GestureHandlerRootView>
+        </ThemeProvider>
+      </LanguageProvider>
+    </ConvexProvider>
   );
 }

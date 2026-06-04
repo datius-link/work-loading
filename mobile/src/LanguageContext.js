@@ -13,6 +13,12 @@ export function LanguageProvider({ children }) {
     });
   }, []);
 
+  const setAppLanguage = (next) => {
+    if (next !== "en" && next !== "sw") return;
+    setLanguage(next);
+    AsyncStorage.setItem(STORAGE_KEY, next);
+  };
+
   const toggleLanguage = () => {
     setLanguage((prev) => {
       const next = prev === "en" ? "sw" : "en";
@@ -22,7 +28,7 @@ export function LanguageProvider({ children }) {
   };
 
   return (
-    <LanguageContext.Provider value={{ language, toggleLanguage }}>
+    <LanguageContext.Provider value={{ language, setLanguage: setAppLanguage, toggleLanguage }}>
       {children}
     </LanguageContext.Provider>
   );

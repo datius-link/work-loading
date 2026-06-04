@@ -2,10 +2,12 @@ import React from "react";
 import { TouchableOpacity, StyleSheet, View } from "react-native";
 import Txt from "./Txt";
 import { useLanguage } from "./LanguageContext";
-import { theme } from "./theme";
+import { useAppTheme } from "./theme";
 
 export default function LanguageSwitch() {
   const { language, toggleLanguage } = useLanguage();
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
 
   return (
     <TouchableOpacity style={styles.wrap} onPress={toggleLanguage}>
@@ -19,32 +21,33 @@ export default function LanguageSwitch() {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: "row",
-    alignSelf: "flex-end",
-    backgroundColor: theme.colors.surfaceSoft,
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 3,
-  },
-  segment: {
-    minWidth: 42,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: theme.radius.pill,
-    alignItems: "center",
-  },
-  active: {
-    backgroundColor: theme.colors.primary,
-  },
-  text: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: theme.colors.textMuted,
-  },
-  activeText: {
-    color: "#fff",
-  },
-});
+const createStyles = (theme) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: "row",
+      alignSelf: "flex-end",
+      backgroundColor: theme.colors.surfaceSoft,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      padding: 3,
+    },
+    segment: {
+      minWidth: 42,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: theme.radius.pill,
+      alignItems: "center",
+    },
+    active: {
+      backgroundColor: theme.colors.primary,
+    },
+    text: {
+      fontSize: 12,
+      fontWeight: "800",
+      color: theme.colors.textMuted,
+    },
+    activeText: {
+      color: theme.colors.onPrimary,
+    },
+  });
