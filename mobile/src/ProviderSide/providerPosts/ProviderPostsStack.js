@@ -1,16 +1,23 @@
 import React from "react";
 import { createStackNavigator } from "@react-navigation/stack";
 
-import PostsScreen from "./PostsScreen";
+import ProviderPostsScreen from "./PostsScreen";
+import PostFeedView from "./PostFeedView";
 
 const Stack = createStackNavigator();
 
 export default function ProviderPostsStack() {
   return (
-
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="PostsHome" component={PostsScreen} />
-    </Stack.Navigator>
+      <Stack.Screen
+        name="ProviderPostsScreen"
+        component={ProviderPostsScreen}
+      />
 
+      <Stack.Screen
+        name="PostFeedView"
+        component={PostFeedView}
+      />
+    </Stack.Navigator>
   );
 }
