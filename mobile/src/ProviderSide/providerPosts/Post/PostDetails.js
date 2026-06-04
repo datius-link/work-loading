@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 import Icon from "../../../icons/MaterialIcon";
 import VideoPlayer from "./VideoPlayer";
-import { theme } from "../../../theme";
+import { useAppTheme } from "../../../theme";
 import { api } from "../../../api/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { UploadManager } from "../../../utils/UploadManager";
@@ -35,6 +35,8 @@ const UPLOAD_STATUS = {
 };
 
 export default function PostDetails({ route, navigation }) {
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const { mediaList = [], postType = "moment" } = route.params || {};
@@ -147,7 +149,7 @@ export default function PostDetails({ route, navigation }) {
     }
   };
 
-  // ── Upload logic ─────────────────────────────────────────────────────────────
+  // Upload logic
   const startUpload = () => {
     setUploadStatus(UPLOAD_STATUS.UPLOADING);
     setUploadProgress(0);
@@ -172,11 +174,11 @@ export default function PostDetails({ route, navigation }) {
 
     // FIX 2: Replace empty catch with real error logging
     UploadManager.startUpload(mediaList, postType).catch((err) => {
-      console.log("START UPLOAD ERROR:", JSON.stringify(err, null, 2));
+      console.error("START UPLOAD ERROR:", err);
     });
   };
 
-  // ── Share ────────────────────────────────────────────────────────────────────
+  // Share
   const handleShare = async () => {
     if (uploadStatus !== UPLOAD_STATUS.DONE) {
       Alert.alert("Please wait", "Media still uploading.");
@@ -212,6 +214,7 @@ export default function PostDetails({ route, navigation }) {
         media: uploadedMedia.map((m) => ({
           url: m.url,
           type: m.type,
+          fit: m.fit || "cover",
         })),
 
         created_at: new Date().toISOString(),
@@ -258,7 +261,7 @@ export default function PostDetails({ route, navigation }) {
     }
   };
 
-  // ── Mention / Hashtag logic ───────────────────────────────────────────────
+  // Mention and hashtag logic
   const insertSuggestion = (value) => {
     const words = caption.split(/\s/);
     words.pop(); // remove last (trigger + partial)
@@ -367,7 +370,7 @@ export default function PostDetails({ route, navigation }) {
     </TouchableOpacity>
   );
 
-  // ── Media render ─────────────────────────────────────────────────────────────
+  // Media render
   const renderMediaItem = ({ item, index }) => {
     const isVideo = isVideoItem(item);
     const shouldPlayVideo =
@@ -385,18 +388,23 @@ export default function PostDetails({ route, navigation }) {
             isActive={index === activeIndex}
             onRegisterPlayer={registerVideoPlayer}
             paused={uploadStatus === UPLOAD_STATUS.UPLOADING}
+            contentFit={item.fit === "contain" ? "contain" : "cover"}
           />
         ) : isVideo ? (
           <View style={styles.videoPlaceholder}>
             <Icon name="play-circle-outline" size={64} color="#ffffff66" />
           </View>
         ) : (
-          <Image source={{ uri: item.uri }} style={styles.mediaImage} resizeMode="cover" />
+          <Image
+            source={{ uri: item.uri }}
+            style={styles.mediaImage}
+            resizeMode={item.fit === "contain" ? "contain" : "cover"}
+          />
         )}
 
         {uploadStatus === UPLOAD_STATUS.UPLOADING && index === activeIndex && (
           <View style={styles.uploadingOverlay}>
-            <ActivityIndicator size="large" color="#fff" />
+            <ActivityIndicator size="large" color={theme.colors.onPrimary} />
             <Text style={styles.uploadingText}>
               Uploading {isVideo ? "video" : "photo"}... {Math.round(uploadProgress)}%
             </Text>
@@ -413,12 +421,12 @@ export default function PostDetails({ route, navigation }) {
       [UPLOAD_STATUS.UPLOADING]: {
         icon: "cloud-upload",
         color: theme.colors.primary,
-        text: `Uploading… ${Math.round(uploadProgress)}%`,
+        text: `Uploading... ${Math.round(uploadProgress)}%`,
       },
       [UPLOAD_STATUS.DONE]: {
         icon: "check-circle",
         color: theme.colors.success,
-        text: "Upload complete — ready to share",
+        text: "Upload complete - ready to share",
       },
       [UPLOAD_STATUS.ERROR]: {
         icon: "error",
@@ -449,7 +457,7 @@ export default function PostDetails({ route, navigation }) {
     return Math.min(300, availableHeight);
   };
 
-  // ── Main render ──────────────────────────────────────────────────────────────
+  // Main render
   return (
     <KeyboardAvoidingView
       style={styles.keyboardAvoid}
@@ -480,7 +488,7 @@ export default function PostDetails({ route, navigation }) {
           onPress={handleShare}
         >
           {uploadStatus === UPLOAD_STATUS.UPLOADING ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <ActivityIndicator color={theme.colors.onPrimary} size="small" />
           ) : (
             <Text style={styles.shareText}>Share</Text>
           )}
@@ -531,7 +539,7 @@ export default function PostDetails({ route, navigation }) {
         >
           <Text style={styles.sectionTitle}>Caption</Text>
           <Text style={styles.sectionHint}>
-            Share what's on your mind • @mention • #hashtags
+            Share what's on your mind - @mention - #hashtags
           </Text>
 
           <View style={styles.captionContainer}>
@@ -672,8 +680,8 @@ export default function PostDetails({ route, navigation }) {
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+// Styles
+const createStyles = (theme) => StyleSheet.create({
   keyboardAvoid: { 
     flex: 1, 
     backgroundColor: theme.colors.bg 
@@ -720,7 +728,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.textMuted 
   },
   shareText: { 
-    color: "#fff", 
+    color: theme.colors.onPrimary,
     fontWeight: "700", 
     fontSize: 16 
   },
@@ -796,7 +804,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   uploadingText: { 
-    color: "#fff", 
+    color: theme.colors.onPrimary,
     marginTop: 16, 
     fontSize: 15,
     fontWeight: "600",
@@ -811,7 +819,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   counterText: { 
-    color: "#fff", 
+    color: theme.colors.onPrimary,
     fontWeight: "700", 
     fontSize: 13 
   },
@@ -853,7 +861,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.borderLight,
+    borderTopColor: theme.colors.border,
   },
   quickActionBtn: {
     flexDirection: "row",
