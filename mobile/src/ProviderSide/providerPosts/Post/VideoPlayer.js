@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 
-export default function VideoPlayer({ index, uri, isActive, onRegisterPlayer }) {
+export default function VideoPlayer({ index, uri, isActive, onRegisterPlayer, contentFit = "cover" }) {
   const videoRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const isMountedRef = useRef(true);
@@ -79,7 +79,7 @@ export default function VideoPlayer({ index, uri, isActive, onRegisterPlayer }) 
         ref={videoRef}
         source={{ uri }}
         style={styles.video}
-        resizeMode={ResizeMode.COVER}
+        resizeMode={contentFit === "contain" ? ResizeMode.CONTAIN : ResizeMode.COVER}
         shouldPlay={false}
         isLooping
         isMuted={false}
