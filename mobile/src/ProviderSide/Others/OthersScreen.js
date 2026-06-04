@@ -7,9 +7,12 @@ import {
   View,
 } from "react-native";
 import AppIcon from "../../icons/AppIcon";
-import { theme } from "../../theme";
+import { useAppTheme } from "../../theme";
 
 export default function OthersScreen({ navigation }) {
+  const { theme } = useAppTheme();
+  const styles = createStyles(theme);
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
@@ -45,7 +48,7 @@ export default function OthersScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: theme.colors.bg,
