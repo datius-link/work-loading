@@ -19,17 +19,20 @@ import {
   ScrollView,
 } from "react-native";
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { api, viewerRequest } from "../../api/api";
+import { api, socialRequest, viewerRequest } from "../../api/api";
 import { useAppTheme } from "../../theme";
 import { MentionText } from "./commentUtils";
 import AppIcon from "../../icons/AppIcon";
 
 import CommentsSheet from "./CommentsSheet";
-import LightLoginModal from "../LightUsers/LightLoginModal";
+import LoginModal from "../Auth/LoginModal";
+import CreateJobModal from "../Jobs/MyJobs/CreateJobModal";
+import HiringNoticeModal from "../Jobs/HiringNoticeModal";
+import { UploadManager } from "../../utils/UploadManager";
+import { getUserSession } from "../../utils/userSession";
 
 const { width } = Dimensions.get("window");
 const CAPTION_PREVIEW = 120;
@@ -51,7 +54,144 @@ const PlayIcon = ({ size = 48 }) => (
   <AppIcon name="play" size={size} color="#fff" filled />
 );
 
-export default function PostCard({ post, active, navigation, height }) {
+function MediaItem({ item, active: isActive, muted: isMuted, onToggleMute, onLike, mediaHeight, paused, onTogglePause, onZoomImage, styles, theme }) {
+  const isVideo = item?.type === "video";
+  const contentFit = item?.fit === "contain" ? "contain" : "cover";
+  const lastTap = useRef(null);
+
+  const player = useVideoPlayer(isVideo ? item?.url : null, (instance) => {
+    if (instance) instance.loop = true;
+  });
+
+  useEffect(() => {
+    if (!player || !isVideo) return;
+    player.muted = isMuted;
+    if (isActive && !paused) player.play();
+    else player.pause();
+  }, [isActive, paused, isMuted, player, isVideo]);
+
+  const handleTap = () => {
+    const now = Date.now();
+    if (lastTap.current && now - lastTap.current < 280) {
+      onLike?.();
+      return;
+    }
+    lastTap.current = now;
+    setTimeout(() => {
+      if (Date.now() - lastTap.current >= 280) {
+        if (isVideo) onTogglePause?.();
+      }
+    }, 280);
+  };
+
+  return (
+    <Pressable onPress={handleTap} style={[styles.mediaSlide, { height: mediaHeight }]}>
+      {isVideo ? (
+        <VideoView player={player} style={styles.media} contentFit={contentFit} nativeControls={false} />
+      ) : (
+        <Pressable onPress={() => onZoomImage?.(item?.url)} style={styles.media}>
+          <Image source={{ uri: item?.url }} style={styles.media} resizeMode={contentFit} />
+        </Pressable>
+      )}
+
+      {isVideo && paused && (
+        <View style={styles.pauseOverlay}>
+          <View style={styles.pauseCircle}>
+            <PlayIcon size={40} />
+          </View>
+        </View>
+      )}
+
+      {isVideo && (
+        <TouchableOpacity
+          style={styles.muteBtn}
+          onPress={onToggleMute}
+          activeOpacity={0.85}
+          hitSlop={8}
+        >
+          <AppIcon
+            name={isMuted ? "volumeOff" : "volumeUp"}
+            size={22}
+            color={theme.colors.primary}
+          />
+        </TouchableOpacity>
+      )}
+    </Pressable>
+  );
+}
+
+function PostCaption({ caption, username, mentions, onMentionPress, onUsernamePress, styles, theme }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = (caption?.length || 0) > CAPTION_PREVIEW || caption?.includes("\n");
+
+  if (!caption) return null;
+
+  return (
+    <View style={styles.captionWrap}>
+      <View style={styles.captionLine}>
+        <Text style={styles.captionName} onPress={onUsernamePress}>
+          {username}
+        </Text>
+        <View style={styles.captionTextWrap}>
+          <MentionText
+            text={caption}
+            mentions={mentions}
+            onMentionPress={onMentionPress}
+            style={styles.captionInline}
+            mentionStyle={styles.captionMention}
+            numberOfLines={2}
+            ellipsizeMode="tail"
+          />
+        </View>
+        {isLong && (
+          <TouchableOpacity
+            onPress={() => setExpanded(true)}
+            style={styles.captionMoreBtn}
+            hitSlop={8}
+          >
+            <AppIcon name="dots" size={21} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <Modal visible={expanded} animationType="slide" transparent onRequestClose={() => setExpanded(false)}>
+        <View style={styles.captionModalRoot}>
+          <View style={styles.captionSheet}>
+            <View style={styles.captionSheetHeader}>
+              <Text style={styles.captionSheetTitle}>Caption</Text>
+              <TouchableOpacity onPress={() => setExpanded(false)} style={styles.captionSheetClose}>
+                <AppIcon name="close" size={22} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.captionSheetScroll}>
+              <Text style={styles.captionName} onPress={onUsernamePress}>
+                {username}
+              </Text>
+              <MentionText
+                text={caption}
+                mentions={mentions}
+                onMentionPress={onMentionPress}
+                style={styles.captionSheetBody}
+                mentionStyle={styles.captionMention}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+export default function PostCard({
+  post,
+  active,
+  navigation,
+  height,
+  showHireButton = true,
+  showFollowButton = true,
+  preferredAuthActor,
+  onPostStateChange,
+}) {
   const { theme: liveTheme } = useAppTheme();
   const styles = useMemo(() => createStyles(liveTheme), [liveTheme]);
 
@@ -60,158 +200,27 @@ export default function PostCard({ post, active, navigation, height }) {
   const flatListRef = useRef(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [showComments, setShowComments] = useState(false);
-  const [showLightLogin, setShowLightLogin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showHireModal, setShowHireModal] = useState(false);
+  const [hireNotice, setHireNotice] = useState(null);
+  const [hireSubmitting, setHireSubmitting] = useState(false);
   const [videoPaused, setVideoPaused] = useState(false);
+  const [zoomImage, setZoomImage] = useState(null);
 
   const [liked, setLiked] = useState(!!post?.is_liked);
   const [likesCount, setLikesCount] = useState(Number(post?.likes_count) || 0);
   const [commentsCount, setCommentsCount] = useState(Number(post?.comments_count) || 0);
   const [following, setFollowing] = useState(!!post?.is_following);
+  const [likeSubmitting, setLikeSubmitting] = useState(false);
+  const [followSubmitting, setFollowSubmitting] = useState(false);
   const [muted, setMuted] = useState(true);
   const [captionMentions, setCaptionMentions] = useState([]);
 
   const CARD_HEIGHT = height ?? 640;
   const MEDIA_HEIGHT = Math.max(260, CARD_HEIGHT - BOTTOM_PANEL_HEIGHT);
   const displayUsername = post?.username || post?.full_name || "user";
-  const providerUuid = post?.provider_uuid || post?.provider_id;
-
-  // ------------------------------------------------------------
-  // MediaItem component (inside PostCard to access styles)
-  // ------------------------------------------------------------
-  const MediaItem = useCallback(
-    ({ item, active: isActive, muted: isMuted, onToggleMute, onLike, mediaHeight, paused, onTogglePause }) => {
-      const isVideo = item?.type === "video";
-      const contentFit = item?.fit === "contain" ? "contain" : "cover";
-      const lastTap = useRef(null);
-
-      const player = useVideoPlayer(isVideo ? item?.url : null, (instance) => {
-        if (instance) instance.loop = true;
-      });
-
-      useEffect(() => {
-        if (!player || !isVideo) return;
-        player.muted = isMuted;
-        if (isActive && !paused) player.play();
-        else player.pause();
-      }, [isActive, paused, isMuted, player, isVideo]);
-
-      const handleTap = () => {
-        const now = Date.now();
-        if (lastTap.current && now - lastTap.current < 280) {
-          onLike?.();
-          return;
-        }
-        lastTap.current = now;
-        setTimeout(() => {
-          if (Date.now() - lastTap.current >= 280) {
-            if (isVideo) onTogglePause?.();
-          }
-        }, 280);
-      };
-
-      return (
-        <Pressable onPress={handleTap} style={[styles.mediaSlide, { height: mediaHeight }]}>
-          {isVideo ? (
-            <VideoView player={player} style={styles.media} contentFit={contentFit} nativeControls={false} />
-          ) : (
-            <Image source={{ uri: item?.url }} style={styles.media} resizeMode={contentFit} />
-          )}
-
-          {isVideo && paused && (
-            <View style={styles.pauseOverlay}>
-              <View style={styles.pauseCircle}>
-                <PlayIcon size={40} />
-              </View>
-            </View>
-          )}
-
-          {isVideo && (
-            <TouchableOpacity
-              style={styles.muteBtn}
-              onPress={onToggleMute}
-              activeOpacity={0.85}
-              hitSlop={8}
-            >
-              <AppIcon
-                name={isMuted ? "volumeOff" : "volumeUp"}
-                size={22}
-                color={liveTheme.colors.primary}
-              />
-            </TouchableOpacity>
-          )}
-        </Pressable>
-      );
-    },
-    [styles]
-  );
-
-  // ------------------------------------------------------------
-  // PostCaption component (inside PostCard to access styles)
-  // ------------------------------------------------------------
-  const PostCaption = useCallback(
-    ({ caption, username, mentions, onMentionPress, onUsernamePress }) => {
-      const [expanded, setExpanded] = useState(false);
-      const isLong = (caption?.length || 0) > CAPTION_PREVIEW || caption?.includes("\n");
-
-      if (!caption) return null;
-
-      return (
-        <View style={styles.captionWrap}>
-          <View style={styles.captionLine}>
-            <Text style={styles.captionName} onPress={onUsernamePress}>
-              {username}
-            </Text>
-            <View style={styles.captionTextWrap}>
-              <MentionText
-                text={caption}
-                mentions={mentions}
-                onMentionPress={onMentionPress}
-                style={styles.captionInline}
-                mentionStyle={styles.captionMention}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              />
-            </View>
-            {isLong && (
-              <TouchableOpacity
-                onPress={() => setExpanded(true)}
-                style={styles.captionMoreBtn}
-                hitSlop={8}
-              >
-                <AppIcon name="dots" size={21} color={liveTheme.colors.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <Modal visible={expanded} animationType="slide" transparent onRequestClose={() => setExpanded(false)}>
-            <View style={styles.captionModalRoot}>
-              <View style={styles.captionSheet}>
-                <View style={styles.captionSheetHeader}>
-                  <Text style={styles.captionSheetTitle}>Caption</Text>
-                  <TouchableOpacity onPress={() => setExpanded(false)} style={styles.captionSheetClose}>
-                    <AppIcon name="close" size={22} color={liveTheme.colors.textMuted} />
-                  </TouchableOpacity>
-                </View>
-                <ScrollView contentContainerStyle={styles.captionSheetScroll}>
-                  <Text style={styles.captionName} onPress={onUsernamePress}>
-                    {username}
-                  </Text>
-                  <MentionText
-                    text={caption}
-                    mentions={mentions}
-                    onMentionPress={onMentionPress}
-                    style={styles.captionSheetBody}
-                    mentionStyle={styles.captionMention}
-                  />
-                </ScrollView>
-              </View>
-            </View>
-          </Modal>
-        </View>
-      );
-    },
-    [styles]
-  );
+  const providerUuid = post?.profile_uuid || post?.uuid || post?.provider_uuid || post?.provider_id;
+  const socialAuthActor = preferredAuthActor || (showHireButton ? "viewer" : "provider");
 
   // ------------------------------------------------------------
   // Effects and handlers
@@ -253,59 +262,117 @@ export default function PostCard({ post, active, navigation, height }) {
     loadMentions();
   }, [post?.caption]);
 
-  const requireViewerLogin = async () => {
-    const token = await AsyncStorage.getItem("viewer_token");
-    if (!token) {
-      setShowLightLogin(true);
-      return false;
-    }
-    return true;
-  };
-
   const handleLike = async () => {
+    if (likeSubmitting) return;
+    const previousLiked = liked;
+    const previousCount = Number(likesCount) || 0;
+    const optimisticLiked = !previousLiked;
+    const optimisticCount = optimisticLiked ? previousCount + 1 : Math.max(0, previousCount - 1);
+    setLiked(optimisticLiked);
+    setLikesCount(optimisticCount);
+    onPostStateChange?.(post.id, { is_liked: optimisticLiked, likes_count: optimisticCount });
+    setLikeSubmitting(true);
     try {
-      const loggedIn = await requireViewerLogin();
-      if (!loggedIn) return;
-
-      const res = await viewerRequest("post", `/posts/${post.id}/like`);
+      const res = await socialRequest("post", `/posts/${post.id}/like`, undefined, {
+        preferredAuthActor: socialAuthActor,
+      });
       const likedNow = !!res.data.liked;
+      const nextCount = likedNow === optimisticLiked
+        ? optimisticCount
+        : likedNow
+          ? previousCount + 1
+          : Math.max(0, previousCount - 1);
 
       setLiked(likedNow);
-      setLikesCount((prev) => {
-        const base = Number(prev) || 0;
-        if (likedNow) return base + 1;
-        return Math.max(0, base - 1);
-      });
+      setLikesCount(nextCount);
+      onPostStateChange?.(post.id, { is_liked: likedNow, likes_count: nextCount });
     } catch (err) {
-      if (err.response?.status === 401) setShowLightLogin(true);
+      setLiked(previousLiked);
+      setLikesCount(previousCount);
+      onPostStateChange?.(post.id, { is_liked: previousLiked, likes_count: previousCount });
+      if (err.response?.status === 401 && err.config?.authActor !== "provider") {
+        setShowLogin(true);
+      }
+    } finally {
+      setLikeSubmitting(false);
     }
   };
 
   const handleFollow = async () => {
+    if (followSubmitting || !providerUuid) return;
+    setFollowSubmitting(true);
     try {
-      const loggedIn = await requireViewerLogin();
-      if (!loggedIn) return;
-
-      const res = await viewerRequest("post", `/posts/follow/${providerUuid}`);
+      const res = await socialRequest("post", `/posts/follow/${providerUuid}`, undefined, {
+        preferredAuthActor: socialAuthActor,
+      });
       setFollowing(!!res.data.following);
     } catch (err) {
-      if (err.response?.status === 401) setShowLightLogin(true);
+      if (err.response?.status === 401 && err.config?.authActor !== "provider") {
+        setShowLogin(true);
+      }
+    } finally {
+      setFollowSubmitting(false);
     }
   };
 
-  const openProviderProfile = (uuid) => {
+  const openUserProfile = (uuid) => {
     if (!uuid) return;
-    navigation?.navigate("ProviderProfile", { providerId: uuid });
+    navigation?.navigate("UserProfile", {
+      providerId: uuid,
+      preferredAuthActor: socialAuthActor,
+    });
+  };
+
+  const openHireModal = async () => {
+    if (!providerUuid) {
+      setHireNotice({ type: "error", title: "Provider missing", body: "This post is missing provider information." });
+      return;
+    }
+
+    const session = await getUserSession();
+    if (!session.isLoggedIn) {
+      setShowLogin(true);
+      return;
+    }
+
+    setShowHireModal(true);
+  };
+
+  const submitHireRequest = async (payload) => {
+    setHireSubmitting(true);
+    try {
+      const media = payload.images?.length
+        ? await UploadManager.startUpload(payload.images, "jobs")
+        : [];
+      await viewerRequest("post", "/hiring/direct-hire", {
+        target_provider_uuid: providerUuid,
+        title: payload.title,
+        description: payload.description,
+        service_type: payload.service_type || post?.service_type || "Direct Hire",
+        location: payload.location || "Direct hire",
+        availability_required: payload.availability_required,
+        scheduled_for: payload.scheduled_for || null,
+        availability_notes: payload.availability_notes || null,
+        media,
+      });
+
+      setShowHireModal(false);
+      setHireNotice({ type: "success", title: "Request sent", body: `${displayUsername} will see this in Requests.` });
+    } catch (err) {
+      setHireNotice({ type: "error", title: "Could not send request", body: err?.response?.data?.message || "Please try again." });
+    } finally {
+      setHireSubmitting(false);
+    }
   };
 
   const handleMentionPress = async (username, mention) => {
-    if (mention?.provider_uuid) {
-      openProviderProfile(mention.provider_uuid);
+    if (mention?.uuid) {
+      openUserProfile(mention.uuid);
       return;
     }
     try {
       const res = await api.get(`/posts/mentions/provider/${username}`);
-      openProviderProfile(res?.data?.provider?.provider_uuid);
+      openUserProfile(res?.data?.provider?.uuid);
     } catch {
       // ignore
     }
@@ -320,7 +387,10 @@ export default function PostCard({ post, active, navigation, height }) {
       onTogglePause={() => setVideoPaused((p) => !p)}
       onToggleMute={() => setMuted((prev) => !prev)}
       onLike={handleLike}
+      onZoomImage={setZoomImage}
       mediaHeight={MEDIA_HEIGHT}
+      styles={styles}
+      theme={liveTheme}
     />
   );
 
@@ -361,7 +431,7 @@ export default function PostCard({ post, active, navigation, height }) {
           style={styles.topOverlay}
         >
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => openProviderProfile(providerUuid)} style={styles.userInfo}>
+            <TouchableOpacity onPress={() => openUserProfile(providerUuid)} style={styles.userInfo}>
               <Image
                 source={{
                   uri:
@@ -376,9 +446,6 @@ export default function PostCard({ post, active, navigation, height }) {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.hireBtn} onPress={() => openProviderProfile(providerUuid)}>
-              <Text style={styles.hireBtnText}>Hire Me</Text>
-            </TouchableOpacity>
           </View>
         </LinearGradient>
       </View>
@@ -386,7 +453,7 @@ export default function PostCard({ post, active, navigation, height }) {
       <View style={styles.bottomPanel}>
         <View style={styles.actionsRow}>
           <View style={styles.actionGroup}>
-            <TouchableOpacity onPress={handleLike} style={styles.actionBtn}>
+            <TouchableOpacity onPress={handleLike} style={styles.actionBtn} disabled={likeSubmitting}>
               <AppIcon
                 name="heart"
                 filled={liked}
@@ -404,22 +471,35 @@ export default function PostCard({ post, active, navigation, height }) {
             <Text style={styles.actionCount}>{commentsCount}</Text>
           </View>
 
-          <TouchableOpacity
-            style={[styles.followBtn, following && styles.followingBtn]}
-            onPress={handleFollow}
-          >
-            <Text style={[styles.followBtnText, following && styles.followingBtnText]}>
-              {following ? "Following" : "Follow"}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          {showFollowButton ? (
+            <TouchableOpacity
+              style={[styles.followBtn, following && styles.followingBtn]}
+              onPress={handleFollow}
+              disabled={followSubmitting}
+            >
+              <Text style={[styles.followBtnText, following && styles.followingBtnText]}>
+                {following ? "Following" : "Follow"}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.actionSpacer} />
+          )}
+
+            {showHireButton ? (
+              <TouchableOpacity style={styles.hireBtn} onPress={openHireModal}>
+                <Text style={styles.hireBtnText}>Hire Me</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
 
         <PostCaption
           caption={post?.caption}
           username={displayUsername}
           mentions={captionMentions}
           onMentionPress={handleMentionPress}
-          onUsernamePress={() => openProviderProfile(providerUuid)}
+          onUsernamePress={() => openUserProfile(providerUuid)}
+          styles={styles}
+          theme={liveTheme}
         />
       </View>
 
@@ -435,19 +515,56 @@ export default function PostCard({ post, active, navigation, height }) {
         onCommentDeleted={(count) =>
           setCommentsCount((prev) => Math.max(0, (Number(prev) || 0) - count))
         }
-        onRequireLogin={() => setShowLightLogin(true)}
+        onRequireLogin={() => setShowLogin(true)}
+        preferredAuthActor={socialAuthActor}
       />
 
-      <LightLoginModal
-        visible={showLightLogin}
-        onClose={() => setShowLightLogin(false)}
-        onSuccess={async ({ token, viewer }) => {
-          await AsyncStorage.setItem("viewer_token", token);
-          if (viewer) {
-            await AsyncStorage.setItem("viewer_user", JSON.stringify(viewer));
-          }
+      <LoginModal
+        visible={showLogin}
+        onClose={() => setShowLogin(false)}
+        onSuccess={async ({ session }) => {
+          console.log("[POST CARD] user session after login", {
+            uuid: session?.profile?.uuid || session?.user?.uuid || null,
+            email: session?.email || null,
+            hasToken: !!session?.token,
+          });
+          setShowLogin(false);
         }}
       />
+
+      <CreateJobModal
+        visible={showHireModal}
+        onClose={() => setShowHireModal(false)}
+        mode="direct"
+        provider={{ uuid: providerUuid, username: displayUsername }}
+        onSubmit={submitHireRequest}
+        submitting={hireSubmitting}
+      />
+      <HiringNoticeModal
+        visible={!!hireNotice}
+        type={hireNotice?.type}
+        title={hireNotice?.title}
+        body={hireNotice?.body}
+        onPrimary={() => setHireNotice(null)}
+        onClose={() => setHireNotice(null)}
+      />
+
+      <Modal visible={!!zoomImage} transparent animationType="fade" onRequestClose={() => setZoomImage(null)}>
+        <View style={styles.zoomRoot}>
+          <TouchableOpacity style={styles.zoomClose} onPress={() => setZoomImage(null)}>
+            <AppIcon name="close" size={22} color="#fff" />
+          </TouchableOpacity>
+          <ScrollView
+            style={styles.zoomScroll}
+            contentContainerStyle={styles.zoomContent}
+            maximumZoomScale={4}
+            minimumZoomScale={1}
+            centerContent
+          >
+            {zoomImage ? <Image source={{ uri: zoomImage }} style={styles.zoomImage} resizeMode="contain" /> : null}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -524,6 +641,23 @@ const createStyles = (theme) =>
     },
     hireBtnText: { color: theme.colors.onPrimary, fontWeight: "700", fontSize: 13 },
 
+    zoomRoot: { flex: 1, backgroundColor: "rgba(0,0,0,0.95)" },
+    zoomScroll: { flex: 1 },
+    zoomContent: { flexGrow: 1, alignItems: "center", justifyContent: "center" },
+    zoomImage: { width, height: "100%" },
+    zoomClose: {
+      position: "absolute",
+      top: 44,
+      right: 18,
+      zIndex: 2,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: "rgba(255,255,255,0.16)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
     bottomPanel: {
       minHeight: BOTTOM_PANEL_HEIGHT,
       backgroundColor: theme.colors.surface,
@@ -554,6 +688,7 @@ const createStyles = (theme) =>
     followingBtn: { backgroundColor: theme.colors.text, borderColor: theme.colors.text },
     followBtnText: { color: theme.colors.text, fontWeight: "800", fontSize: 13 },
     followingBtnText: { color: theme.colors.bg },
+    actionSpacer: { marginLeft: "auto" },
 
     captionWrap: { marginTop: 4, minHeight: 44 },
     captionLine: {

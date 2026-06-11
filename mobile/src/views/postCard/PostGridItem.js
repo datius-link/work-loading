@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Image, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { useVideoPlayer, VideoView } from "expo-video";
 import AppIcon from "../../icons/AppIcon";
 import { useAppTheme } from "../../theme";
 import { getGridMediaUri } from "./commentUtils";
@@ -15,7 +16,8 @@ export default function PostGridItem({ post, size, onPress }) {
   const isVideo = firstMedia?.type === "video";
   const hasMultipleMedia = (post?.media?.length || 0) > 1;
   const imageUri = getGridMediaUri(firstMedia);
-  const showVideoPlaceholder = isVideo && !firstMedia?.thumbnail && !firstMedia?.poster;
+  const videoUri = isVideo ? firstMedia?.url : null;
+  const imageCoverUri = isVideo ? firstMedia?.thumbnail || firstMedia?.poster || null : imageUri;
 
   return (
     <TouchableOpacity
@@ -23,8 +25,10 @@ export default function PostGridItem({ post, size, onPress }) {
       style={[styles.container, size ? styles.sized : null, size ? { width: size, height: size } : null]}
       onPress={onPress}
     >
-      {imageUri && !showVideoPlaceholder ? (
-        <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+      {imageCoverUri ? (
+        <Image source={{ uri: imageCoverUri }} style={styles.image} resizeMode="cover" />
+      ) : isVideo && videoUri ? (
+        <VideoCover uri={videoUri} styles={styles} />
       ) : (
         <View style={styles.placeholder}>
           {isVideo ? (
@@ -37,7 +41,7 @@ export default function PostGridItem({ post, size, onPress }) {
         </View>
       )}
 
-      {isVideo && imageUri && !showVideoPlaceholder && (
+      {isVideo && (imageCoverUri || videoUri) && (
         <View style={styles.videoOverlay}>
           <View style={styles.playCircleSmall}>
             <PlayIcon size={16} />
@@ -51,6 +55,36 @@ export default function PostGridItem({ post, size, onPress }) {
         </View>
       )}
     </TouchableOpacity>
+  );
+}
+
+function VideoCover({ uri, styles }) {
+  const [ready, setReady] = useState(false);
+  const player = useVideoPlayer(uri, (instance) => {
+    instance.loop = false;
+    instance.muted = true;
+  });
+
+  useEffect(() => {
+    try {
+      player.pause();
+    } catch (error) {
+      console.log("video cover pause error:", error?.message);
+    }
+  }, [player]);
+
+  return (
+    <View style={styles.videoCover}>
+      <VideoView
+        player={player}
+        style={styles.image}
+        contentFit="cover"
+        nativeControls={false}
+        fullscreenOptions={{ enable: false }}
+        onFirstFrameRender={() => setReady(true)}
+      />
+      {!ready ? <View style={styles.placeholder} /> : null}
+    </View>
   );
 }
 
@@ -69,6 +103,7 @@ const createStyles = (theme) =>
       aspectRatio: undefined,
     },
     image: { width: "100%", height: "100%", backgroundColor: theme.colors.surfaceSoft },
+    videoCover: { width: "100%", height: "100%", backgroundColor: theme.colors.surfaceSoft },
     placeholder: {
       flex: 1,
       justifyContent: "center",

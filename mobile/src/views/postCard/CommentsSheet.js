@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -19,10 +19,11 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, viewerRequest } from "../../api/api";
+import { api, socialRequest } from "../../api/api";
 import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
 import { CommentBody } from "./commentUtils";
+import { getUserSession } from "../../utils/userSession";
 
 function avatarFor(username, profilePic) {
   if (profilePic) return profilePic;
@@ -43,11 +44,17 @@ function CommentRow({
   currentProviderUuid,
   currentViewerUuid,
 }) {
+  const isProviderAuthor =
+    comment.author_type === "provider" ||
+    comment.author_type === "service_provider";
+  const isViewerAuthor =
+    comment.author_type === "viewer" ||
+    comment.author_type === "light_user";
   const canDelete =
-    (comment.author_type === "provider" &&
+    (isProviderAuthor &&
       currentProviderUuid &&
       comment.author_id === currentProviderUuid) ||
-    (comment.author_type === "viewer" &&
+    (isViewerAuthor &&
       currentViewerUuid &&
       comment.author_id === currentViewerUuid);
 
@@ -87,7 +94,7 @@ function CommentRow({
                 onPress={() =>
                   onMentionPress(comment.reply_to_username, {
                     username: comment.reply_to_username,
-                    provider_uuid: comment.reply_to_provider_uuid,
+                    provider_uuid: comment.reply_to_provider_uuid || comment.reply_to_profile_uuid,
                   })
                 }
               >
@@ -141,6 +148,7 @@ export default function CommentsSheet({
   postProviderUuid,
   postUsername,
   postProfilePic,
+  preferredAuthActor = "viewer",
 }) {
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
@@ -152,6 +160,7 @@ export default function CommentsSheet({
   const [error, setError] = useState("");
   const [comment, setComment] = useState("");
   const [replyingTo, setReplyingTo] = useState(null);
+  const draftPostIdRef = useRef(postId);
   const [sending, setSending] = useState(false);
 
   const [currentProviderUuid, setCurrentProviderUuid] = useState(null);
@@ -161,30 +170,48 @@ export default function CommentsSheet({
 
   const loadCurrentUser = useCallback(async () => {
     try {
-      const savedViewer = await AsyncStorage.getItem("viewer_user");
-      if (savedViewer) {
-        const viewer = JSON.parse(savedViewer);
+      const loadProvider = async () => {
+        try {
+          const token = await AsyncStorage.getItem("token");
+          if (!token) return false;
+          const res = await api.get("/service-provider/me");
+          const provider = res?.data?.provider;
+          if (provider) {
+            setCurrentProviderUuid(provider.provider_uuid || provider.uuid || null);
+            setCurrentViewerUuid(null);
+            setCurrentUsername(provider.username || provider.full_name || "Me");
+            setCurrentProfilePic(provider.profilePic || provider.profile_pic || "");
+            return true;
+          }
+        } catch {
+          return false;
+        }
+        return false;
+      };
+
+      const loadViewer = async () => {
+        const session = await getUserSession();
+        if (!session.isLoggedIn || (!session.user && !session.profile)) return false;
+        const viewer = session.user || session.profile;
+        setCurrentProviderUuid(null);
         setCurrentViewerUuid(viewer?.uuid || null);
         setCurrentUsername(viewer?.username || viewer?.email || "Me");
         setCurrentProfilePic(viewer?.profile_pic || viewer?.profilePic || "");
-        return;
+        return true;
+      };
+
+      if (preferredAuthActor === "provider") {
+        if (await loadProvider()) return;
+        await loadViewer();
+      } else {
+        if (await loadViewer()) return;
+        await loadProvider();
       }
-
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-
-      const res = await api.get("/service-provider/me");
-      const provider = res?.data?.provider;
-      if (!provider) return;
-
-      setCurrentProviderUuid(provider.provider_uuid || null);
-      setCurrentUsername(provider.username || "");
-      setCurrentProfilePic(provider.profilePic || provider.profile_pic || "");
     } catch {
       setCurrentUsername("Me");
       setCurrentProfilePic("");
     }
-  }, []);
+  }, [preferredAuthActor]);
 
   const fetchComments = useCallback(async () => {
     if (!postId) return;
@@ -206,10 +233,14 @@ export default function CommentsSheet({
     }
   }, [postId]);
 
+  if (postId !== draftPostIdRef.current) {
+    draftPostIdRef.current = postId;
+    setReplyingTo(null);
+    setComment("");
+  }
+
   useEffect(() => {
     if (visible && postId) {
-      setReplyingTo(null);
-      setComment("");
       loadCurrentUser();
       fetchComments();
     }
@@ -223,19 +254,16 @@ export default function CommentsSheet({
       const payload = { text: comment.trim() };
       if (replyingTo?.id) payload.parent_id = replyingTo.id;
 
-      const providerToken = await AsyncStorage.getItem("token");
-      if (providerToken) {
-        await api.post(`/posts/${postId}/comments`, payload);
-      } else {
-        await viewerRequest("post", `/posts/${postId}/comments`, payload);
-      }
+      await socialRequest("post", `/posts/${postId}/comments`, payload, {
+        preferredAuthActor,
+      });
 
       await fetchComments();
       setComment("");
       setReplyingTo(null);
       onCommentAdded?.();
     } catch (err) {
-      if (err.response?.status === 401) {
+      if (err.response?.status === 401 && err.config?.authActor !== "provider") {
         onRequireLogin?.();
         return;
       }
@@ -255,20 +283,16 @@ export default function CommentsSheet({
         style: "destructive",
         onPress: async () => {
           try {
-            const providerToken = await AsyncStorage.getItem("token");
-            if (providerToken) {
-              const res = await api.delete(`/posts/${postId}/comments/${item.id}`);
-              onCommentDeleted?.(Number(res?.data?.deleted_count) || 1);
-            } else {
-              const res = await viewerRequest(
-                "delete",
-                `/posts/${postId}/comments/${item.id}`
-              );
-              onCommentDeleted?.(Number(res?.data?.deleted_count) || 1);
-            }
+            const res = await socialRequest(
+              "delete",
+              `/posts/${postId}/comments/${item.id}`,
+              undefined,
+              { preferredAuthActor }
+            );
+            onCommentDeleted?.(Number(res?.data?.deleted_count) || 1);
             await fetchComments();
           } catch (err) {
-            if (err.response?.status === 401) {
+            if (err.response?.status === 401 && err.config?.authActor !== "provider") {
               onRequireLogin?.();
               return;
             }
@@ -282,11 +306,14 @@ export default function CommentsSheet({
     ]);
   };
 
-  const openProviderProfile = async (providerUuid, username) => {
+  const openUserProfile = async (providerUuid, username) => {
     onClose?.();
 
     if (providerUuid) {
-      navigation?.navigate("ProviderProfile", { providerId: providerUuid });
+      navigation?.navigate("UserProfile", {
+        providerId: providerUuid,
+        preferredAuthActor,
+      });
       return;
     }
 
@@ -294,21 +321,37 @@ export default function CommentsSheet({
 
     try {
       const res = await api.get(`/posts/mentions/provider/${username}`);
-      const uuid = res?.data?.provider?.provider_uuid;
-      if (uuid) navigation?.navigate("ProviderProfile", { providerId: uuid });
+      const uuid = res?.data?.provider?.provider_uuid || res?.data?.provider?.uuid;
+      if (uuid) {
+        navigation?.navigate("UserProfile", {
+          providerId: uuid,
+          preferredAuthActor,
+        });
+      }
     } catch {
-      console.log("Provider profile not found for", username);
+      console.log("Professional profile not found for", username);
     }
   };
 
   const handleAuthorPress = (item) => {
-    const providerUuid = item.author_type === "provider" ? item.author_id : null;
-    openProviderProfile(providerUuid, item.username);
+    const isProviderAuthor =
+      item.author_type === "provider" ||
+      item.author_type === "service_provider";
+
+    if (isProviderAuthor) {
+      openUserProfile(item.author_id, item.username);
+      return;
+    }
+
+    if (item.author_id) {
+      onClose?.();
+      navigation?.navigate("UserProfile", { uuid: item.author_id });
+    }
   };
 
   const handleMentionPress = async (username, mention) => {
     if (!username) return;
-    await openProviderProfile(mention?.provider_uuid, username);
+    await openUserProfile(mention?.provider_uuid || mention?.uuid, username);
   };
 
   const inputAvatar = avatarFor(currentUsername || "Me", currentProfilePic);
