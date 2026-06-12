@@ -9,21 +9,13 @@ export default function AuthBackButton() {
   const navigation = useNavigation();
   const { theme } = useAppTheme(); 
 
-  const exitToYou = () => {
+  const exitToSettings = () => {
     navigation.reset({
       index: 0,
       routes: [
         {
           name: "MainTabs",
-          state: {
-            index: 3,
-            routes: [
-              { name: "Home" },
-              { name: "Activities" },
-              { name: "MyJobs" },
-              { name: "You" },
-            ],
-          },
+          state: { index: 4, routes: [{ name: "Home" }, { name: "Alerts" }, { name: "Jobs" }, { name: "Profile" }, { name: "Settings" }] },
         },
       ],
     });
@@ -31,7 +23,7 @@ export default function AuthBackButton() {
   };
 
   useEffect(() => {
-    const sub = BackHandler.addEventListener("hardwareBackPress", exitToYou);
+    const sub = BackHandler.addEventListener("hardwareBackPress", exitToSettings);
     return () => sub.remove();
   }, []);
 
@@ -60,7 +52,7 @@ export default function AuthBackButton() {
   });
 
   return (
-    <TouchableOpacity style={styles.btn} onPress={exitToYou}>
+    <TouchableOpacity style={styles.btn} onPress={exitToSettings}>
       <View style={styles.iconWrap}>
         <AppIcon name="arrowLeft" size={18} color={theme.colors.primary} />
       </View>
