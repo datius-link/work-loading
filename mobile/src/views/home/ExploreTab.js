@@ -8,9 +8,10 @@ import {
 } from "react-native";
 
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api } from "../../api/api";
+import { api, getViewerAuthHeaders } from "../../api/api";
 import { useAppTheme } from "../../theme";
 
 import PostCard from "../postCard/PostCard";
@@ -28,6 +29,7 @@ function shufflePosts(items) {
 
 export default function ExploreTab({ navigation, searchQuery = "" }) {
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useAppTheme();
   const styles = createStyles(theme);
@@ -47,6 +49,7 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
   const [layoutHeight, setLayoutHeight] = useState(0);
 
   const flatListRef = useRef(null);
+  const didRunInitialSearch = useRef(false);
 
   const POST_HEIGHT = useMemo(() => {
     if (layoutHeight > 0) return layoutHeight;
@@ -68,11 +71,13 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
 
       console.log(`[Explore] Fetching posts - Page: ${pageNumber}, Search: "${search}"`);
 
+      const viewerHeaders = await getViewerAuthHeaders();
       const res = await api.get("/posts/public", {
         params: {
           page: pageNumber,
           q: search?.trim() || undefined,
         },
+        headers: viewerHeaders || undefined,
       });
 
       const fetchedPosts = search?.trim()
@@ -126,11 +131,19 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
   // Debounced search
   useEffect(() => {
     const timeout = setTimeout(() => {
+      if (!didRunInitialSearch.current) {
+        didRunInitialSearch.current = true;
+        return;
+      }
       fetchPosts(1, false);
     }, 500);
 
     return () => clearTimeout(timeout);
   }, [search]);
+
+  useEffect(() => {
+    if (!isFocused) setActivePostId(null);
+  }, [isFocused]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -153,6 +166,12 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
     fetchPosts(nextPage, true);
   };
 
+  const updatePostState = useCallback((postId, patch) => {
+    setPosts((prev) =>
+      prev.map((item) => (item.id === postId ? { ...item, ...patch } : item))
+    );
+  }, []);
+
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems?.length > 0) {
       const firstVisible = viewableItems[0]?.item;
@@ -172,8 +191,10 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
       <PostCard
         post={item}
         height={POST_HEIGHT}
-        active={activePostId === item.id}
+        active={isFocused && activePostId === item.id}
         navigation={navigation}
+        preferredAuthActor="viewer"
+        onPostStateChange={updatePostState}
       />
     );
   };
