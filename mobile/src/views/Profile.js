@@ -38,7 +38,8 @@ const T = {
     followers: "Followers",
     following: "Following",
     media: "Media",
-    jobs: "Jobs",
+    jobsDone: "Jobs Done",
+    jobsPosted: "Jobs Posted",
     mediaPosts: "Media Posts",
     jobPosts: "Job Posts",
     createTitle: "What do you want to create?",
@@ -57,7 +58,8 @@ const T = {
     vsLastMonth: "vs last month",
     totalVisits: "Total visits",
     recommendations: "Recommendations",
-    worksDone: "Jobs",
+    worksDone: "Jobs Done",
+    noJobsDone: "No completed jobs yet",
   },
   sw: {
     title: "Profaili",
@@ -73,7 +75,8 @@ const T = {
     followers: "Followers",
     following: "Following",
     media: "Media",
-    jobs: "Jobs",
+    jobsDone: "Kazi zilizofanyika",
+    jobsPosted: "Kazi ulizopost",
     mediaPosts: "Media Posts",
     jobPosts: "Job Posts",
     createTitle: "Unataka kutengeneza nini?",
@@ -92,7 +95,8 @@ const T = {
     vsLastMonth: "ikilinganishwa na mwezi uliopita",
     totalVisits: "Jumla ya waliotembelea",
     recommendations: "Mapendekezo",
-    worksDone: "Kazi",
+    worksDone: "Kazi zilizokamilika",
+    noJobsDone: "Hakuna kazi zilizokamilika bado",
   },
 };
 
@@ -184,6 +188,7 @@ export default function Profile() {
   const views = Number(profile?.views_count || profile?.views || 0);
   const jobsHires = Number(profile?.jobs_hires_count || profile?.jobs_hires || jobs.length || 0);
   const completedJobs = Array.isArray(profileSummary?.completed_jobs) ? profileSummary.completed_jobs : [];
+  const postedJobsCount = Number(profileSummary?.posted_jobs_count || profile?.posted_jobs_count || jobs.length || 0);
   const recommendationsCount = Number(profileSummary?.recommendations_count || profile?.recommendations_count || profile?.ratings_count || 0);
   const worksDoneCount = Number(profileSummary?.completed_jobs_count || profileSummary?.jobs_attained_count || completedJobs.length || 0);
 
@@ -326,8 +331,8 @@ export default function Profile() {
         {/* Tabs */}
         <View style={styles.tabs}>
           <TabButton label={t.media} active={activeTab === "media"} onPress={() => setActiveTab("media")} styles={styles} />
-          <TabButton label={t.jobs} active={activeTab === "jobs"} onPress={() => setActiveTab("jobs")} styles={styles} />
-          <TabButton label={t.worksDone} active={activeTab === "works"} onPress={() => setActiveTab("works")} styles={styles} />
+          <TabButton label={t.jobsDone} active={activeTab === "jobsDone"} onPress={() => setActiveTab("jobsDone")} styles={styles} />
+          <TabButton label={t.jobsPosted} active={activeTab === "jobsPosted"} onPress={() => setActiveTab("jobsPosted")} styles={styles} />
         </View>
 
         {/* Tab Content */}
@@ -343,19 +348,8 @@ export default function Profile() {
               ))}
             </View>
           ) : <EmptyState text={t.noMedia} styles={styles} />
-        ) : activeTab === "jobs" ? (
-          jobs.length ? (
-          <View style={styles.jobsList}>
-            {jobs.map((job, index) => (
-              <TouchableOpacity key={job.id || job.job_code || index} style={styles.jobRow} activeOpacity={0.85}>
-                <View style={styles.jobIcon}><AppIcon name="briefcase" size={17} color={theme.colors.primary} /></View>
-                <View style={styles.jobBody}><Text style={styles.jobTitle}>{job.title}</Text><Text style={styles.jobMeta}>{job.location}</Text></View>
-                <Text style={styles.jobStatus}>{job.status}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          ) : <EmptyState text={t.noJobs} styles={styles} />
-        ) : completedJobs.length ? (
+        ) : activeTab === "jobsDone" ? (
+          completedJobs.length ? (
           <View style={styles.jobsList}>
             {completedJobs.map((job, index) => (
               <TouchableOpacity
@@ -373,7 +367,26 @@ export default function Profile() {
               </TouchableOpacity>
             ))}
           </View>
-        ) : <EmptyState text="No completed jobs yet" styles={styles} />}
+          ) : <EmptyState text={t.noJobsDone} styles={styles} />
+        ) : jobs.length ? (
+          <View style={styles.jobsList}>
+            {jobs.map((job, index) => (
+              <TouchableOpacity
+                key={job.id || job.job_code || index}
+                style={styles.jobRow}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate("JobDetails", { jobId: job.id })}
+              >
+                <View style={styles.jobIcon}><AppIcon name="briefcase" size={17} color={theme.colors.primary} /></View>
+                <View style={styles.jobBody}>
+                  <Text style={styles.jobTitle} numberOfLines={1}>{job.title || "Posted job"}</Text>
+                  <Text style={styles.jobMeta}>{job.location || job.job_code || "Posted"}</Text>
+                </View>
+                <Text style={styles.jobStatus}>{job.status}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : <EmptyState text={postedJobsCount ? `${postedJobsCount.toLocaleString()} ${t.jobPosts}` : t.noJobs} styles={styles} />}
       </ScrollView>
 
       <CreateModal visible={showCreate} onClose={() => setShowCreate(false)} onCreateMedia={() => { setShowCreate(false); navigation.navigate("CreatePost"); }} onCreateJob={() => { setShowCreate(false); navigation.navigate("MainTabs", { screen: "Jobs", params: { initialTab: "myJobs" } }); }} t={t} styles={styles} theme={theme} />
@@ -462,15 +475,15 @@ const createStyles = (theme) => StyleSheet.create({
   guestBody: { color: theme.colors.textMuted, fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 8 },
   primaryBtn: { marginTop: 18, minHeight: 48, borderRadius: 24, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: theme.colors.primary },
   primaryText: { color: theme.colors.onPrimary, fontWeight: "900" },
-  hero: { flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 12 },
-  avatar: { width: 94, height: 94, borderRadius: 47, backgroundColor: theme.colors.surfaceSoft },
+  hero: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 8 },
+  avatar: { width: 86, height: 86, borderRadius: 43, backgroundColor: theme.colors.surfaceSoft },
   heroInfo: { flex: 1 },
   username: { color: theme.colors.text, fontSize: 23, fontWeight: "900" },
   fullName: { color: theme.colors.textSecondary, fontSize: 14, fontWeight: "800", marginTop: 4 },
-  statsLine: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 16 },
+  statsLine: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 10 },
   statValue: { color: theme.colors.text, fontSize: 17, fontWeight: "900", textAlign: "center" },
   statLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "700", textAlign: "center" },
-  bioText: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: 24 },
+  bioText: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: 14 },
   sectionTitle: { color: theme.colors.text, fontSize: 16, fontWeight: "900", marginBottom: 10 },
   insightsButton: {
     flexDirection: "row",
@@ -482,7 +495,7 @@ const createStyles = (theme) => StyleSheet.create({
     borderColor: theme.colors.border,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   insightsIcon: {
     width: 42,
@@ -496,8 +509,8 @@ const createStyles = (theme) => StyleSheet.create({
   insightsTitle: { color: theme.colors.text, fontSize: 15, fontWeight: "900" },
   insightsSub: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "700", marginTop: 3 },
   insightsSection: { marginBottom: 20 },
-  communityActions: { gap: 8, marginBottom: 18 },
-  communityButton: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingVertical: 8 },
+  communityActions: { gap: 4, marginBottom: 12 },
+  communityButton: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingVertical: 6 },
   communityIcon: { width: 38, height: 38, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primarySoft },
   communityCopy: { flex: 1, minWidth: 0 },
   communityCount: { color: theme.colors.text, fontSize: 18, fontWeight: "900" },
@@ -509,21 +522,21 @@ const createStyles = (theme) => StyleSheet.create({
   changeRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 6 },
   changeText: { fontSize: 10, fontWeight: "800" },
   vsText: { fontSize: 9, color: theme.colors.textMuted, marginTop: 3 },
-  editBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: theme.colors.surfaceSoft, borderRadius: 30, paddingVertical: 12, marginBottom: 20 },
+  editBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: theme.colors.surfaceSoft, borderRadius: 8, paddingVertical: 11, marginBottom: 14 },
   editBtnText: { color: theme.colors.primary, fontSize: 15, fontWeight: "800" },
   contactRow: { flexDirection: "row", justifyContent: "space-between", backgroundColor: theme.colors.surfaceSoft, borderRadius: 16, padding: 14, marginBottom: 20, gap: 12 },
   contactItem: { flex: 1, alignItems: "center", gap: 4 },
   contactLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
   contactValue: { color: theme.colors.text, fontSize: 12, fontWeight: "700", textAlign: "center" },
-  servicesSection: { marginBottom: 20 },
+  servicesSection: { marginBottom: 14 },
   chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.colors.surfaceSoft },
   chipText: { color: theme.colors.text, fontSize: 13, fontWeight: "800" },
-  socialsSection: { marginBottom: 20 },
+  socialsSection: { marginBottom: 14 },
   socialIconsRow: { flexDirection: "row", flexWrap: "wrap", gap: 18, alignItems: "center" },
   socialIconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.colors.surfaceSoft, alignItems: "center", justifyContent: "center" },
   placeholderText: { color: theme.colors.textMuted, fontSize: 13 },
-  tabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: theme.colors.border, marginTop: 8 },
+  tabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: theme.colors.border, marginTop: 2 },
   tabBtn: { flex: 1, alignItems: "center", paddingVertical: 12 },
   tabText: { color: theme.colors.textMuted, fontSize: 14, fontWeight: "900" },
   tabTextActive: { color: theme.colors.text },
