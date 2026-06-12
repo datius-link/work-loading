@@ -1,19 +1,16 @@
 import express from "express";
 
-import { requireAuth } from "../auth/auth.middleware.js";
-
 import {
-  requireViewerAuth,
-  optionalViewerAuth,
-} from "../auth/viewerAuth.middleware.js";
-
-import { requireViewerOrProviderAuth } from "../auth/viewerOrProviderAuth.middleware.js";
+  requireViewerOrProviderAuth,
+  optionalViewerOrProviderAuth,
+} from "../auth/viewerOrProviderAuth.middleware.js";
 
 import {
   createPost,
   listPublicPosts,
   listMyPosts,
   listProviderPosts,
+  getEngagementSummary,
   searchUsers,
   searchServices,
   toggleLike,
@@ -44,7 +41,7 @@ const router = express.Router();
  */
 router.get(
   "/public",
-  optionalViewerAuth,
+  optionalViewerOrProviderAuth,
   listPublicPosts
 );
 
@@ -60,7 +57,21 @@ router.get(
  *       200:
  *         description: My posts loaded
  */
-router.get("/me", requireAuth, listMyPosts);
+router.get("/me", requireViewerOrProviderAuth, listMyPosts);
+
+/**
+ * @swagger
+ * /api/posts/engagement/summary:
+ *   get:
+ *     summary: Get real engagement summary for the signed-in provider
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Engagement summary loaded
+ */
+router.get("/engagement/summary", requireViewerOrProviderAuth, getEngagementSummary);
 
 /**
  * @swagger
@@ -100,7 +111,7 @@ router.get("/me", requireAuth, listMyPosts);
  *       201:
  *         description: Post created
  */
-router.post("/", requireAuth, createPost);
+router.post("/", requireViewerOrProviderAuth, createPost);
 
 /**
  * @swagger
@@ -120,7 +131,7 @@ router.post("/", requireAuth, createPost);
  */
 router.get(
   "/provider/:providerUuid",
-  optionalViewerAuth,
+  optionalViewerOrProviderAuth,
   listProviderPosts
 );
 
@@ -159,7 +170,7 @@ router.get(
  */
 router.get(
   "/mentions/users",
-  requireAuth,
+  requireViewerOrProviderAuth,
   searchUsers
 );
 
@@ -177,7 +188,7 @@ router.get(
  */
 router.get(
   "/mentions/services",
-  requireAuth,
+  requireViewerOrProviderAuth,
   searchServices
 );
 
@@ -199,7 +210,7 @@ router.get(
  */
 router.post(
   "/:postId/like",
-  requireViewerAuth,
+  requireViewerOrProviderAuth,
   toggleLike
 );
 
@@ -291,7 +302,7 @@ router.delete(
  */
 router.post(
   "/follow/:providerUuid",
-  requireViewerAuth,
+  requireViewerOrProviderAuth,
   toggleFollow
 );
 

@@ -1,21 +1,19 @@
 import db from "../db/index.js";
 
-/* ---------------- USERS (@) ---------------- */
 export async function findUsersByUsername(query) {
-  return db("provider_profiles")
-    .select("username", "profile_pic")
+  return db("profiles")
+    .select("uuid", "username", "profile_pic")
+    .whereNotNull("username")
     .whereILike("username", `${query}%`)
     .limit(10);
 }
 
-/* ---------------- SERVICES (#) ---------------- */
 export async function findServices(query) {
-  const rows = await db("provider_profiles")
+  const rows = await db("profiles")
     .select(db.raw("jsonb_array_elements_text(services) as service"));
 
-  const unique = [...new Set(rows.map(r => r.service))];
-
+  const unique = [...new Set(rows.map((row) => row.service))];
   return unique
-    .filter(s => s.toLowerCase().startsWith(query.toLowerCase()))
+    .filter((service) => service.toLowerCase().startsWith(query.toLowerCase()))
     .slice(0, 10);
 }
