@@ -1,7 +1,6 @@
 import React, { useEffect } from "react";
 import { View, ActivityIndicator, Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { api } from "./api/api";
 
 export default function AuthLoading({ navigation }) {
   useEffect(() => {
@@ -18,20 +17,10 @@ export default function AuthLoading({ navigation }) {
           return;
         }
 
-        // Validate token and profile from backend
-        const res = await api.get("/service-provider/me");
-
-        // Profile exists: provider app
-        if (res?.data?.provider) {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: "ProviderTabs" }],
-          });
-          return;
-        }
-
-        // Fallback
-        throw new Error("Profile missing");
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "MainTabs" }],
+        });
       } catch (err) {
         const status = err?.response?.status;
 
@@ -46,15 +35,6 @@ export default function AuthLoading({ navigation }) {
           navigation.reset({
             index: 0,
             routes: [{ name: "MainTabs" }],
-          });
-          return;
-        }
-
-        // Profile not created yet
-        if (status === 404) {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: "EditProvider" }],
           });
           return;
         }
