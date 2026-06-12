@@ -32,7 +32,29 @@ const router = express.Router();
  *         description: Profile loaded
  */
 router.get("/me", requireAuth, getMyProviderProfile);
+/**
+ * @swagger
+ * /api/service-provider/me/connections:
+ *   get:
+ *     summary: Get my provider followers or following
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Connections loaded
+ */
 router.get("/me/connections", requireAuth, getMyProviderConnections);
+/**
+ * @swagger
+ * /api/service-provider/search:
+ *   get:
+ *     summary: Search provider profiles
+ *     tags: [Provider]
+ *     responses:
+ *       200:
+ *         description: Providers loaded
+ */
 router.get("/search", searchProviderProfiles);
 
 /**
@@ -54,6 +76,12 @@ router.get("/search", searchProviderProfiles);
  *                 type: string
  *               username:
  *                 type: string
+ *               field:
+ *                 type: string
+ *                 example: Plumber
+ *               location:
+ *                 type: string
+ *                 example: Dar es Salaam
  *               bio:
  *                 type: string
  *               profilePic:
@@ -89,6 +117,22 @@ router.put(
  *     responses:
  *       200:
  *         description: Public profile loaded
+ */
+/**
+ * @swagger
+ * /api/service-provider/{uuid}/connections:
+ *   get:
+ *     summary: Get public provider followers or following
+ *     tags: [Provider]
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Connections loaded
  */
 router.get("/:uuid/connections", getProviderConnections);
 router.get("/:uuid", getProviderProfile);
