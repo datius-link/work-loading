@@ -1,6 +1,17 @@
 import jwt from "jsonwebtoken";
+import db from "../db/index.js";
 
-export function requireViewerAuth(req, res, next) {
+async function verifiedLightUser(uuid) {
+  if (!uuid) return null;
+  return db("profiles")
+    .select("uuid", "role", "is_verified")
+    .where({ uuid })
+    .where({ role: "light_user" })
+    .where({ is_verified: true })
+    .first();
+}
+
+export async function requireViewerAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
 
@@ -17,7 +28,16 @@ export function requireViewerAuth(req, res, next) {
       process.env.AUTH_TOKEN_SECRET
     );
 
-    req.viewer = payload;
+    if (payload.role !== "light_user" && payload.role !== "viewer") {
+      return res.status(403).json({ message: "User token required" });
+    }
+
+    const profile = await verifiedLightUser(payload.uuid);
+    if (!profile) {
+      return res.status(403).json({ message: "Email verification required" });
+    }
+
+    req.viewer = { ...payload, role: "light_user" };
 
     next();
   } catch (err) {
@@ -27,7 +47,7 @@ export function requireViewerAuth(req, res, next) {
   }
 }
 
-export function optionalViewerAuth(req, res, next) {
+export async function optionalViewerAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
 
@@ -43,7 +63,12 @@ export function optionalViewerAuth(req, res, next) {
       process.env.AUTH_TOKEN_SECRET
     );
 
-    req.viewer = payload;
+    if (payload.role === "light_user" || payload.role === "viewer") {
+      const profile = await verifiedLightUser(payload.uuid);
+      req.viewer = profile ? { ...payload, role: "light_user" } : null;
+    } else {
+      req.viewer = null;
+    }
     next();
   } catch (err) {
     // Token invalid, but continue without viewer

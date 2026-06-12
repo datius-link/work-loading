@@ -4,16 +4,17 @@ import { generateVerifyToken, generateAuthToken } from "./auth.tokens.js";
 import { v4 as uuidv4 } from "uuid";
 
 export async function registerUser(email, password) {
-  const exists = await db("provider_users").where({ email }).first();
+  const exists = await db("profiles").where({ email }).first();
   if (exists) throw new Error("EMAIL_EXISTS");
 
   const uuid = uuidv4();
   const hashed = await hashPassword(password);
 
-  await db("provider_users").insert({
+  await db("profiles").insert({
     uuid,
     email,
     password: hashed,
+    role: "service_provider",
     is_verified: false,
   });
 
@@ -23,9 +24,13 @@ export async function registerUser(email, password) {
   };
 }
 
-export async function loginUser(email, password) {
-  const user = await db("provider_users").where({ email }).first();
-  if (!user) throw new Error("INVALID_CREDENTIALS");
+export async function loginUser(identifier, password) {
+  const value = String(identifier || "").trim().toLowerCase();
+  const query = db("profiles").where({ role: "service_provider" });
+  if (value.includes("@")) query.where({ email: value });
+  else query.whereRaw("LOWER(username) = ?", [value.replace(/^@/, "")]);
+  const user = await query.first();
+  if (!user?.password) throw new Error("INVALID_CREDENTIALS");
 
   const match = await comparePassword(password, user.password);
   if (!match) throw new Error("INVALID_CREDENTIALS");
@@ -39,6 +44,6 @@ export async function loginUser(email, password) {
   }
 
   return {
-    token: generateAuthToken(user.uuid),
+    token: generateAuthToken(user.uuid, user.role),
   };
 }

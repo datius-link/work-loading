@@ -12,6 +12,7 @@ import {
   resetPassword,
   requestViewerCode,
   verifyViewerCode,
+  completeViewerSignup,
 } from "./auth.controller.js";
 
 import { requireAnyToken } from "./auth.anyToken.middleware.js";
@@ -251,9 +252,9 @@ router.post("/password/reset", resetPassword);
  *           schema:
  *             type: object
  *             properties:
- *               phone:
+ *               email:
  *                 type: string
- *                 example: "255712345678"
+ *                 example: lightuser@gmail.com
  *     responses:
  *       200:
  *         description: Viewer code sent
@@ -276,7 +277,7 @@ router.post(
  *           schema:
  *             type: object
  *             properties:
- *               phone:
+ *               email:
  *                 type: string
  *               code:
  *                 type: string
@@ -285,5 +286,17 @@ router.post(
  *         description: Viewer verified
  */
 router.post("/viewer/verify", verifyViewerCode);
+
+/**
+ * @swagger
+ * /api/auth/viewer/complete-signup:
+ *   post:
+ *     summary: Complete user email OTP signup with password
+ *     tags: [Viewer]
+ *     responses:
+ *       200:
+ *         description: Viewer signup completed
+ */
+router.post("/viewer/complete-signup", completeViewerSignup);
 
 export default router;

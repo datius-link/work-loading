@@ -17,6 +17,10 @@ export function requireAuth(req, res, next) {
       process.env.AUTH_TOKEN_SECRET
     );
 
+    if (payload.role !== "service_provider" && payload.role !== "provider") {
+      return res.status(403).json({ message: "Service provider token required" });
+    }
+
     req.user = payload; // { uuid, role }
 
     next();

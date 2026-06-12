@@ -10,8 +10,8 @@ export function validateRegister(body) {
 }
 
 export function validateLogin(body) {
-  if (!body.email || !body.password)
-    return "Email and password are required";
+  if (!(body.identifier || body.email) || !body.password)
+    return "Email or username and password are required";
 
   return null;
 }

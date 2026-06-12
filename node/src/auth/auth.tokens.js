@@ -1,12 +1,15 @@
 import jwt from "jsonwebtoken";
 
-const VERIFY_SECRET = process.env.VERIFY_TOKEN_SECRET;
-const AUTH_SECRET = process.env.AUTH_TOKEN_SECRET;
+function requiredSecret(name) {
+  const secret = process.env[name];
+  if (!secret) throw new Error(`${name}_MISSING`);
+  return secret;
+}
 
 export function generateVerifyToken(uuid) {
   return jwt.sign(
     { uuid, type: "verify" },
-    VERIFY_SECRET,
+    requiredSecret("VERIFY_TOKEN_SECRET"),
     { expiresIn: "15m" }
   );
 }
@@ -14,15 +17,15 @@ export function generateVerifyToken(uuid) {
 export function generatePasswordResetToken(uuid) {
   return jwt.sign(
     { uuid, type: "password-reset" },
-    VERIFY_SECRET,
+    requiredSecret("VERIFY_TOKEN_SECRET"),
     { expiresIn: "15m" }
   );
 }
 
-export function generateAuthToken(uuid) {
+export function generateAuthToken(uuid, role = "service_provider") {
   return jwt.sign(
-    { uuid, role: "provider" },
-    AUTH_SECRET,
+    { uuid, role },
+    requiredSecret("AUTH_TOKEN_SECRET"),
     { expiresIn: "7d" }
   );
 }
@@ -31,9 +34,9 @@ export function generateViewerToken(uuid) {
   return jwt.sign(
     {
       uuid,
-      role: "viewer",
+      role: "light_user",
     },
-    AUTH_SECRET,
+    requiredSecret("AUTH_TOKEN_SECRET"),
     {
       expiresIn: "90d",
     }
