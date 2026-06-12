@@ -3,7 +3,8 @@ import "react-native-gesture-handler";
 import { ConvexReactClient } from "convex/react";
 import { ConvexProvider } from "convex/react";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { StatusBar, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -17,34 +18,38 @@ import AppIcon from "./src/icons/AppIcon";
    MAIN USER SCREENS
 --------------------------- */
 import Home from "./src/views/Home";
-import Activities from "./src/views/Activities";
-import MyJobs from "./src/views/MyJobs";
-import You from "./src/views/You";
+import Alerts from "./src/views/Alert";
+import Jobs from "./src/views/Jobs";
+import Profile from "./src/views/Profile";
+import Settings from "./src/views/Settings";
+import JobDetails from "./src/views/Jobs/MyRequests/JobDetails";
+import JobApplicantDetails from "./src/views/Jobs/MyRequests/JobApplicantDetails";
+import UserProfile from "./src/views/Profile/UserProfile";
+import ProfileFutureList from "./src/views/Profile/ProfileFutureList";
+import RecommendationsScreen from "./src/views/Profile/RecommendationsScreen";
+import EditProfile from "./src/views/Profile/editProfile/EditProfile";
 
 /* ---------------------------
-   AUTH SCREENS (PROVIDER)
+   AUTH CHECK
 --------------------------- */
 import AuthLoading from "./src/AuthLoading";
-import ServiceProviderLogin from "./src/views/Profile/ServiceProviderAuth/ServiceProviderLogin";
-import ServiceProviderSignUp from "./src/views/Profile/ServiceProviderAuth/ServiceProviderSignUp";
-import VerifyProvider from "./src/views/Profile/ServiceProviderAuth/VerifyProvider";
-import ForgotPassword from "./src/views/Profile/ServiceProviderAuth/ForgotPassword";
-import ResetPassword from "./src/views/Profile/ServiceProviderAuth/ResetPassword";
+import Login from "./src/views/Auth/Login";
+import Register from "./src/views/Auth/Register";
+import ForgotPassword from "./src/views/Auth/ForgotPassword";
+import ResetPassword from "./src/views/Auth/ResetPassword";
+import VerifyEmail from "./src/views/Auth/VerifyEmail";
 
 /* ---------------------------
-   PROVIDER SIDE
+   USER WORKFLOW SCREENS
 --------------------------- */
-import ProviderTabs from "./src/ProviderSide/ProviderTabs";
-import EditProvider from "./src/ProviderSide/Profile/EditProvider";
-import ProviderProfile from "./src/ProviderSide/Profile/ProviderProfile";
-import ProviderSettings from "./src/ProviderSide/Settings/ProviderSettings";
-
-import ConnectionsScreen from "./src/ProviderSide/providerPosts/following-system/ConnectionsScreen";
-import EngagementSummary from "./src/ProviderSide/providerPosts/engagement/engagementSummary";
-import CreatePost from "./src/ProviderSide/providerPosts/Post/createPost";
-import EditMedia from "./src/ProviderSide/providerPosts/Post/EditMedia";
-import PostDetails from "./src/ProviderSide/providerPosts/Post/PostDetails";
-import PostFeedView from "./src/ProviderSide/providerPosts/PostFeedView";
+import ConnectionsScreen from "./src/views/Profile/connections/ConnectionsScreen";
+import Insights from "./src/views/Profile/editProfile/Insights";
+import CreatePost from "./src/views/Profile/posting/CreatePost";
+import EditMedia from "./src/views/Profile/posting/EditMedia";
+import PostDetails from "./src/views/Profile/posting/PostDetails";
+import PostFeedView from "./src/views/postCard/PostFeedView";
+import RequestDetails from "./src/views/Jobs/MyJobs/RequestDetails";
+import JobApplication from "./src/views/Jobs/MyRequests/JobApplication";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -60,9 +65,10 @@ function MainTabs() {
   const insets = useSafeAreaInsets();
   const labels = {
     Home: language === "sw" ? "Gundua" : "Explore",
-    Activities: language === "sw" ? "Shughuli" : "Activities",
-    MyJobs: language === "sw" ? "Kazi Zangu" : "My Jobs",
-    You: language === "sw" ? "Wewe" : "You",
+    Alerts: language === "sw" ? "Taarifa" : "Alerts",
+    Jobs: language === "sw" ? "Kazi" : "Jobs",
+    Profile: language === "sw" ? "Profaili" : "Profile",
+    Settings: language === "sw" ? "Mipangilio" : "Settings",
   };
 
   return (
@@ -96,18 +102,20 @@ function MainTabs() {
         },
         tabBarIcon: ({ color, size }) => {
           let icon = "home";
-          if (route.name === "Activities") icon = "activity";
-          if (route.name === "MyJobs") icon = "briefcase";
-          if (route.name === "You") icon = "user";
+          if (route.name === "Alerts") icon = "activity";
+          if (route.name === "Jobs") icon = "briefcase";
+          if (route.name === "Profile") icon = "user";
+          if (route.name === "Settings") icon = "settings";
 
           return <AppIcon name={icon} size={size} color={color} />;
         },
       })}
     >
       <Tab.Screen name="Home" component={Home} />
-      <Tab.Screen name="Activities" component={Activities} />
-      <Tab.Screen name="MyJobs" component={MyJobs} />
-      <Tab.Screen name="You" component={You} />
+      <Tab.Screen name="Alerts" component={Alerts} />
+      <Tab.Screen name="Jobs" component={Jobs} />
+      <Tab.Screen name="Profile" component={Profile} />
+      <Tab.Screen name="Settings" component={Settings} />
     </Tab.Navigator>
   );
 }
@@ -122,47 +130,7 @@ export default function App() {
         <ThemeProvider>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaProvider>
-              <NavigationContainer>
-                <Stack.Navigator 
-                  screenOptions={{ 
-                    headerShown: false,
-                  }}
-                >
-                  {/* -------- AUTH CHECK -------- */}
-                  <Stack.Screen name="AuthLoading" component={AuthLoading} />
-
-                  {/* -------- MAIN USER -------- */}
-                  <Stack.Screen name="MainTabs" component={MainTabs} />
-
-                  {/* -------- PROVIDER AUTH -------- */}
-                  <Stack.Screen name="ServiceProviderLogin" component={ServiceProviderLogin} />
-                  <Stack.Screen name="ServiceProviderSignUp" component={ServiceProviderSignUp} />
-                  <Stack.Screen name="VerifyProvider" component={VerifyProvider} />
-                  <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
-                  <Stack.Screen name="ResetPassword" component={ResetPassword} />
-
-                  {/* -------- PROVIDER APP -------- */}
-                  <Stack.Screen name="ProviderTabs" component={ProviderTabs} />
-                  <Stack.Screen name="EditProvider" component={EditProvider} />
-                  <Stack.Screen name="ProviderSettings" component={ProviderSettings} />
-                  <Stack.Screen name="ProviderProfile" component={ProviderProfile} />
-                  <Stack.Screen name="PostFeedView" component={PostFeedView} />
-
-                  {/* -------- POSTS -------- */}
-                  <Stack.Screen name="PicksScreen" component={ConnectionsScreen} />
-                  <Stack.Screen name="ConnectionsScreen" component={ConnectionsScreen} />
-                  <Stack.Screen name="EngagementSummary" component={EngagementSummary} />
-                  <Stack.Screen name="CreatePost" component={CreatePost} />
-                  <Stack.Screen name="EditMedia" component={EditMedia} />
-                  
-                  {/* -------- POST DETAILS WITH MINIMAL FIXES -------- */}
-                  <Stack.Screen 
-                    name="PostDetails" 
-                    component={PostDetails}
-                    options={{}}
-                  />
-                </Stack.Navigator>
-              </NavigationContainer>
+              <AppShell />
             </SafeAreaProvider>
           </GestureHandlerRootView>
         </ThemeProvider>
@@ -170,3 +138,121 @@ export default function App() {
     </ConvexProvider>
   );
 }
+
+function AppShell() {
+  const { theme, mode } = useAppTheme();
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setShowSplash(false), 900);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  return (
+    <View style={[rootStyles.app, { backgroundColor: theme.colors.bg }]}>
+      <StatusBar
+        barStyle={mode === "dark" ? "light-content" : "dark-content"}
+        backgroundColor={theme.colors.bg}
+        translucent={false}
+      />
+      {showSplash ? <SplashScreen /> : <RootNavigator />}
+    </View>
+  );
+}
+
+function SplashScreen() {
+  const { theme } = useAppTheme();
+
+  return (
+    <View style={[rootStyles.splash, { backgroundColor: theme.colors.bg }]}>
+      <View style={[rootStyles.logoMark, { backgroundColor: theme.colors.primarySoft }]}>
+        <AppIcon name="logo" size={52} color={theme.colors.primary} />
+      </View>
+      <Text style={[rootStyles.splashTitle, { color: theme.colors.text }]}>e-kazi</Text>
+      <Text style={[rootStyles.splashSub, { color: theme.colors.textMuted }]}>
+        Work. Service. Trust.
+      </Text>
+    </View>
+  );
+}
+
+function RootNavigator() {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        {/* -------- AUTH CHECK -------- */}
+        <Stack.Screen name="AuthLoading" component={AuthLoading} />
+
+        {/* -------- MAIN USER -------- */}
+        <Stack.Screen name="MainTabs" component={MainTabs} />
+
+        {/* -------- AUTH -------- */}
+        <Stack.Screen name="Login" component={Login} />
+        <Stack.Screen name="Register" component={Register} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+        <Stack.Screen name="ResetPassword" component={ResetPassword} />
+        <Stack.Screen name="VerifyEmail" component={VerifyEmail} />
+
+        {/* -------- USER WORKFLOWS -------- */}
+        <Stack.Screen name="UserProfile" component={UserProfile} />
+        <Stack.Screen name="ProfileRecommendations" component={RecommendationsScreen} />
+        <Stack.Screen name="ProfileWorksDone" component={ProfileFutureList} />
+        <Stack.Screen name="PostFeedView" component={PostFeedView} />
+        <Stack.Screen name="JobDetails" component={JobDetails} />
+        <Stack.Screen name="JobApplicantDetails" component={JobApplicantDetails} />
+        <Stack.Screen name="EditProfile" component={EditProfile} />
+        <Stack.Screen name="RequestDetails" component={RequestDetails} />
+        <Stack.Screen name="JobApplication" component={JobApplication} />
+
+        {/* -------- POSTS -------- */}
+        <Stack.Screen name="PicksScreen" component={ConnectionsScreen} />
+        <Stack.Screen name="ConnectionsScreen" component={ConnectionsScreen} />
+        <Stack.Screen name="Insights" component={Insights} />
+        <Stack.Screen name="CreatePost" component={CreatePost} />
+        <Stack.Screen name="EditMedia" component={EditMedia} />
+
+        {/* -------- POST DETAILS WITH MINIMAL FIXES -------- */}
+        <Stack.Screen
+          name="PostDetails"
+          component={PostDetails}
+          options={{}}
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+const rootStyles = StyleSheet.create({
+  app: {
+    flex: 1,
+  },
+  splash: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  logoMark: {
+    width: 92,
+    height: 92,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+  splashTitle: {
+    fontSize: 34,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  splashSub: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+});
