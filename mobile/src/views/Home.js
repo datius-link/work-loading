@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   Image,
   StyleSheet,
@@ -24,54 +23,20 @@ function avatarFor(username, profilePic) {
   )}&background=0B6B63&color=fff`;
 }
 
-function normalizeSearchResults(data) {
-  const providers = data?.providers || data?.users || [];
-  return providers.map((item) => ({
-    ...item,
-    resultType: "profile",
-  }));
-}
-
 export default function Home() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
   const styles = createStyles(theme);
-
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Search results state
   const [userResults, setUserResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const searchRef = useRef(null);
 
-  // Animated width for search bar expand/collapse
-  const searchAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
-
-  const openSearch = () => {
-    setSearchOpen(true);
-    Animated.spring(searchAnim, {
-      toValue: 1,
-      useNativeDriver: false,
-      tension: 80,
-      friction: 10,
-    }).start(() => {
-      searchRef.current?.focus();
-    });
-  };
-
-  const closeSearch = () => {
-    Animated.spring(searchAnim, {
-      toValue: 0,
-      useNativeDriver: false,
-      tension: 80,
-      friction: 10,
-    }).start(() => {
-      setSearchOpen(false);
-    });
-    setSearchQuery("");
-    setUserResults([]);
-  };
-
+  // Fetch users matching query
   const fetchUsers = useCallback(async (q) => {
     if (!q || q.trim().length < 1) {
       setUserResults([]);
@@ -82,7 +47,7 @@ export default function Home() {
       const res = await api.get("/service-provider/search", {
         params: { q: q.trim(), limit: 10 },
       });
-      setUserResults(normalizeSearchResults(res?.data));
+      setUserResults(res?.data?.providers || res?.data?.users || []);
     } catch {
       setUserResults([]);
     } finally {
@@ -90,32 +55,29 @@ export default function Home() {
     }
   }, []);
 
+  // Debounce user search
   useEffect(() => {
-    const timeout = setTimeout(() => fetchUsers(searchQuery), 400);
+    const timeout = setTimeout(() => {
+      fetchUsers(searchQuery);
+    }, 400);
     return () => clearTimeout(timeout);
   }, [searchQuery, fetchUsers]);
 
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setUserResults([]);
+  };
+
   const openProfile = (provider) => {
     closeSearch();
-    navigation.navigate("ProviderProfile", {
-      providerId: provider.provider_uuid || provider.uuid,
+    navigation.navigate("UserProfile", {
+      providerUuid: provider.provider_uuid || provider.uuid,
       username: provider.username,
     });
   };
 
   const showDropdown = searchOpen && searchQuery.trim().length > 0;
-
-  // Animated styles
-  const searchBarWidth = searchAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0%", "100%"],
-  });
-
-  const logoOpacity = searchAnim.interpolate({
-    inputRange: [0, 0.3],
-    outputRange: [1, 0],
-    extrapolate: "clamp",
-  });
 
   const renderUserItem = ({ item }) => (
     <TouchableOpacity
@@ -133,38 +95,36 @@ export default function Home() {
           <Text style={styles.resultFullName}>{item.full_name}</Text>
         )}
       </View>
-      <AppIcon name="arrowRight" size={16} color={theme.colors.textMuted} />
+      <AppIcon name="chevron-right" size={16} color={theme.colors.textMuted} />
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        {/* Brand — fades out as search expands */}
-        <Animated.View style={[styles.brandRow, { opacity: logoOpacity }]}>
-          <AppIcon name="logo" size={28} color={theme.colors.primary} />
-          <Text style={styles.brandName}>e-kazi</Text>
-        </Animated.View>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={[styles.brandRow, searchOpen && styles.brandCompact]}>
+          <AppIcon name="logo" size={34} color={theme.colors.primary} />
+          {!searchOpen && <Text style={styles.logo}>e-kazi</Text>}
+        </View>
 
-        {/* Search bar — expands to fill remaining space */}
-        <Animated.View
-          style={[
-            styles.searchWrap,
-            searchOpen && { width: searchBarWidth, flex: 1 },
-          ]}
-        >
+        <View style={[styles.searchWrap, searchOpen && styles.searchWrapOpen]}>
           <TouchableOpacity
             style={styles.searchIconBtn}
-            onPress={searchOpen ? closeSearch : openSearch}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => {
+              if (searchOpen) {
+                closeSearch();
+              } else {
+                setSearchOpen(true);
+                setTimeout(() => searchRef.current?.focus(), 100);
+              }
+            }}
           >
             <AppIcon
               name={searchOpen ? "close" : "search"}
-              size={17}
+              size={18}
               color={theme.colors.primary}
             />
           </TouchableOpacity>
-
           {searchOpen && (
             <TextInput
               ref={searchRef}
@@ -174,15 +134,16 @@ export default function Home() {
               placeholderTextColor={theme.colors.textMuted}
               style={styles.searchInput}
               autoCapitalize="none"
+              autoFocus
               returnKeyType="search"
             />
           )}
-        </Animated.View>
+        </View>
       </View>
 
       {/* Search Dropdown */}
       {showDropdown && (
-        <View style={[styles.searchDropdown, { top: insets.top + 56 }]}>
+        <View style={styles.searchDropdown}>
           {searching ? (
             <View style={styles.searchLoading}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -190,7 +151,7 @@ export default function Home() {
             </View>
           ) : userResults.length === 0 ? (
             <View style={styles.noResults}>
-              <Text style={styles.noResultsText}>No results for "{searchQuery}"</Text>
+              <Text style={styles.noResultsText}>No users found for "{searchQuery}"</Text>
             </View>
           ) : (
             <FlatList
@@ -212,6 +173,7 @@ export default function Home() {
   );
 }
 
+
 const createStyles = (theme) =>
   StyleSheet.create({
     container: {
@@ -221,60 +183,63 @@ const createStyles = (theme) =>
     header: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 14,
-      paddingBottom: 8,
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingBottom: 10,
       backgroundColor: theme.colors.surface,
       borderBottomWidth: 1,
       borderColor: theme.colors.border,
       zIndex: 10,
-      gap: 10,
     },
     brandRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 7,
+      gap: 8,
     },
-    brandName: {
+    brandCompact: {
+      width: 38,
+    },
+    logo: {
+      fontSize: 22,
+      fontWeight: "800",
       color: theme.colors.primary,
-      fontSize: 18,
-      fontWeight: "900",
-      letterSpacing: -0.3,
     },
-
-    // Search bar — collapsed it's just a small pill, open it fills the row
     searchWrap: {
       flexDirection: "row",
       alignItems: "center",
-      borderRadius: 20,
-      borderWidth: 1.5,
+      borderRadius: 18,
+      borderWidth: 1,
       borderColor: theme.colors.primary,
       backgroundColor: theme.colors.primarySoft,
-      height: 38,
-      width: 38,
+      minHeight: 38,
       marginLeft: "auto",
-      overflow: "hidden",
+    },
+    searchWrapOpen: {
+      flex: 1,
+      marginHorizontal: 10,
+      maxWidth: undefined,
     },
     searchIconBtn: {
-      width: 36,
+      width: 38,
       height: 38,
       alignItems: "center",
       justifyContent: "center",
-      flexShrink: 0,
     },
     searchInput: {
       flex: 1,
       paddingRight: 12,
-      fontSize: 14,
-      fontWeight: "600",
-      color: theme.colors.text,
-      height: 38,
+      fontSize: 13,
+      fontWeight: "700",
+      color: theme.colors.primary,
     },
 
-    // Dropdown
+    // Search dropdown
     searchDropdown: {
       position: "absolute",
+      top: 0,
       left: 0,
       right: 0,
+      marginTop: 70,
       zIndex: 999,
       backgroundColor: theme.colors.surface,
       borderBottomLeftRadius: 16,
@@ -322,9 +287,9 @@ const createStyles = (theme) =>
       gap: 12,
     },
     resultAvatar: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: theme.colors.primarySoft,
     },
     resultMeta: {
