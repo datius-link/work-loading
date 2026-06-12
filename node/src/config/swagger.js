@@ -1,5 +1,12 @@
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const srcDir = path.resolve(__dirname, "..");
+const swaggerGlob = (...parts) => path.join(...parts).replace(/\\/g, "/");
 
 const options = {
   definition: {
@@ -51,6 +58,18 @@ const options = {
       {
         name: "Posts",
         description: "Posts endpoints",
+      },
+      {
+        name: "Profiles",
+        description: "Shared user and service provider profiles",
+      },
+      {
+        name: "Hiring",
+        description: "Jobs, direct hires, and applications",
+      },
+      {
+        name: "Notifications",
+        description: "Notification inbox endpoints",
       },
     ],
 
@@ -142,6 +161,99 @@ const options = {
             },
           },
         },
+        ErrorResponse: {
+          type: "object",
+          properties: {
+            message: {
+              type: "string",
+              example: "Request failed",
+            },
+          },
+        },
+        MediaItem: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              example: "https://cdn.ekazi.app/work.jpg",
+            },
+            type: {
+              type: "string",
+              example: "image",
+            },
+          },
+        },
+        Job: {
+          type: "object",
+          properties: {
+            id: { type: "integer", example: 12 },
+            uuid: { type: "string", example: "7bb6a6f1-9d64-44da-9a57-fd8777460201" },
+            job_code: { type: "string", example: "EKZ-2026-0012" },
+            title: { type: "string", example: "Fridge repair" },
+            description: { type: "string", example: "Freezer is not cooling." },
+            location: { type: "string", example: "Mbezi Beach, Dar es Salaam" },
+            service_type: { type: "string", example: "Fridge Repair" },
+            status: { type: "string", example: "open" },
+            hire_type: { type: "string", example: "indirect" },
+            tender_closes_at: { type: "string", nullable: true, example: "2026-06-22" },
+          },
+        },
+        CreateJobPayload: {
+          type: "object",
+          required: ["title", "description", "location", "service_type"],
+          properties: {
+            title: { type: "string", example: "Fridge repair" },
+            description: { type: "string", example: "Freezer is not cooling." },
+            location: { type: "string", example: "Mbezi Beach, Dar es Salaam" },
+            service_type: { type: "string", example: "Fridge Repair" },
+            tender_closes_at: { type: "string", nullable: true, example: "2026-06-22" },
+            media: {
+              type: "array",
+              items: { $ref: "#/components/schemas/MediaItem" },
+            },
+          },
+        },
+        DirectHirePayload: {
+          type: "object",
+          required: ["requested_provider_uuid", "title", "description"],
+          properties: {
+            requested_provider_uuid: { type: "string", example: "2c5e74bb-3cef-4f4b-92c1-95356cf92df0" },
+            title: { type: "string", example: "Fix my sink" },
+            description: { type: "string", example: "Kitchen sink is leaking." },
+            location: { type: "string", example: "Direct hire" },
+            service_type: { type: "string", example: "Plumbing" },
+            scheduled_for: { type: "string", nullable: true, example: "2026-06-12 09:00" },
+            availability_notes: { type: "string", nullable: true, example: "Morning is best." },
+            media: {
+              type: "array",
+              items: { $ref: "#/components/schemas/MediaItem" },
+            },
+          },
+        },
+        ApplicationPayload: {
+          type: "object",
+          required: ["message"],
+          properties: {
+            message: { type: "string", example: "I can inspect and repair this today." },
+            budget: { type: "string", example: "TZS 45,000" },
+            duration: { type: "string", example: "2 hours" },
+            availableFrom: { type: "string", example: "2026-06-12" },
+            experience: { type: "string", example: "7 years" },
+            notes: { type: "string", example: "I will bring replacement parts." },
+            media: {
+              type: "array",
+              items: { $ref: "#/components/schemas/MediaItem" },
+            },
+          },
+        },
+        AssignProviderPayload: {
+          type: "object",
+          required: ["application_id"],
+          properties: {
+            application_id: { type: "integer", example: 34 },
+            provider_uuid: { type: "string", example: "2c5e74bb-3cef-4f4b-92c1-95356cf92df0" },
+          },
+        },
       },
     },
 
@@ -150,18 +262,51 @@ const options = {
         bearerAuth: [],
       },
     ],
+    paths: {
+      "/health": {
+        get: {
+          summary: "Health check",
+          tags: ["System"],
+          security: [],
+          responses: {
+            200: {
+              description: "API is running",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      status: { type: "string", example: "ok" },
+                      service: { type: "string", example: "e-kazi-api" },
+                      timestamp: { type: "string", example: "2026-06-08T09:00:00.000Z" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 
   apis: [
-    "./src/auth/*.js",
-    "./src/posts/*.js",
-    "./src/providerProfile/*.js",
+    swaggerGlob(srcDir, "auth", "*.js"),
+    swaggerGlob(srcDir, "posts", "*.js"),
+    swaggerGlob(srcDir, "providerProfile", "*.js"),
+    swaggerGlob(srcDir, "profiles", "*.js"),
+    swaggerGlob(srcDir, "hiring", "*.js"),
+    swaggerGlob(srcDir, "notifications", "*.js"),
   ],
 };
 
-const swaggerSpec = swaggerJsdoc(options);
+export const swaggerSpec = swaggerJsdoc(options);
 
 export function setupSwagger(app) {
+  app.get("/api-docs.json", (_req, res) => {
+    res.json(swaggerSpec);
+  });
+
   app.use(
     "/api-docs",
 
