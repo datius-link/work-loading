@@ -12,7 +12,7 @@ export const UploadManager = {
     onError: null,
   },
 
-  async startUpload(mediaList = []) {
+  async startUpload(mediaList = [], folder = "posts") {
     try {
       const uploadedMedia = [];
 
@@ -66,6 +66,11 @@ export const UploadManager = {
           storageId,
           type: media.type,
           fit: media.fit || "cover",
+          folder: media.folder || folder,
+          name: media.fileName || media.name || null,
+          mimeType:
+            media.mimeType ||
+            (media.type === "video" ? "video/mp4" : "image/jpeg"),
         });
       }
 
