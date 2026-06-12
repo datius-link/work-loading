@@ -5,6 +5,10 @@ import dotenv from "dotenv";
 import authRoutes from "./auth/auth.routes.js";
 import providerProfileRoutes from "./providerProfile/providerProfile.routes.js";
 import postsRoutes from "./posts/posts.routes.js";
+import hiringRoutes from "./hiring/hiring.routes.js";
+import notificationsRoutes from "./notifications/notifications.routes.js";
+import profilesRoutes from "./profiles/profiles.routes.js";
+import recommendationsRoutes from "./recommendations/recommendations.routes.js";
 
 import { setupSwagger } from "./config/swagger.js";
 
@@ -34,6 +38,10 @@ app.use(
 );
 
 app.use("/api/posts", postsRoutes);
+app.use("/api/hiring", hiringRoutes);
+app.use("/api/notifications", notificationsRoutes);
+app.use("/api/profiles", profilesRoutes);
+app.use("/api/recommendations", recommendationsRoutes);
 
 app.get("/health", (_req, res) => {
   return res.status(200).json({
@@ -51,9 +59,10 @@ app.use((_req, res) => {
 
 app.use((err, _req, res, _next) => {
   console.error("🔥 Server error:", err);
+  const status = err.status || err.statusCode || 500;
 
-  return res.status(500).json({
-    message: "Internal server error",
+  return res.status(status).json({
+    message: err.expose ? err.message : "Internal server error",
   });
 });
 
