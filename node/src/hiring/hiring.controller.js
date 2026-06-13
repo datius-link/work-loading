@@ -3,7 +3,7 @@ import db from "../db/index.js";
 
 const ACTIVE_STATUSES = ["open", "applied"];
 const DIRECT_HIRE_STATUSES = ["pending"];
-const CONTACT_VISIBLE_STATUSES = ["closed", "filled", "active"];
+const CONTACT_VISIBLE_STATUSES = ["closed", "filled", "completed", "active", "start_pending", "started", "working", "submitted", "completion_pending"];
 let jobsColumnSet = null;
 
 async function jobsColumns() {
@@ -68,6 +68,7 @@ function serializeJob(row) {
     location: row.location,
     service_type: row.service_type,
     status: row.status,
+    direct_status: row.direct_status || null,
     created_by: row.created_by,
     assigned_provider_uuid: row.assigned_provider_uuid,
     target_provider_uuid: row.target_provider_uuid,
@@ -79,6 +80,25 @@ function serializeJob(row) {
     budget_min: row.budget_min,
     budget_max: row.budget_max,
     media: Array.isArray(row.media) ? row.media : [],
+    started_at: row.started_at || null,
+    started_by_uuid: row.started_by_uuid || null,
+    provider_suggested_start_at: row.provider_suggested_start_at || null,
+    provider_start_note: row.provider_start_note || "",
+    provider_start_date: row.provider_start_date || null,
+    estimated_duration_value: row.estimated_duration_value || null,
+    estimated_duration_unit: row.estimated_duration_unit || "",
+    started_requested_at: row.started_requested_at || null,
+    started_confirmed_at: row.started_confirmed_at || null,
+    completion_requested_at: row.completion_requested_at || null,
+    start_confirmed_by_boss_at: row.start_confirmed_by_boss_at || null,
+    completed_at: row.completed_at || null,
+    completed_by_uuid: row.completed_by_uuid || null,
+    provider_suggested_completed_at: row.provider_suggested_completed_at || null,
+    provider_completion_note: row.provider_completion_note || "",
+    completion_confirmed_by_boss_at: row.completion_confirmed_by_boss_at || null,
+    disputed_by_uuid: row.disputed_by_uuid || null,
+    dispute_reason: row.dispute_reason || "",
+    dispute_created_at: row.dispute_created_at || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     poster: row.poster_uuid
@@ -95,6 +115,14 @@ function serializeJob(row) {
           username: row.assigned_username || "",
           full_name: row.assigned_full_name || "",
           profile_pic: row.assigned_profile_pic || "",
+        }
+      : null,
+    target_provider: row.target_uuid
+      ? {
+          uuid: row.target_uuid,
+          username: row.target_username || "",
+          full_name: row.target_full_name || "",
+          profile_pic: row.target_profile_pic || "",
         }
       : null,
     applicant_count: Number(row.applicant_count || 0),
@@ -168,10 +196,11 @@ function baseJobsQuery() {
   return db("jobs as j")
     .leftJoin("profiles as poster", "poster.uuid", "j.created_by")
     .leftJoin("profiles as assigned", "assigned.uuid", "j.assigned_provider_uuid")
+    .leftJoin("profiles as target", "target.uuid", "j.target_provider_uuid")
     .leftJoin("job_applications as active_apps", function joinApps() {
       this.on("active_apps.job_id", "j.id").andOnNull("active_apps.withdrawn_at");
     })
-    .groupBy("j.id", "poster.uuid", "assigned.uuid")
+    .groupBy("j.id", "poster.uuid", "assigned.uuid", "target.uuid")
     .select(
       "j.*",
       "poster.uuid as poster_uuid",
@@ -181,7 +210,11 @@ function baseJobsQuery() {
       "assigned.uuid as assigned_uuid",
       "assigned.username as assigned_username",
       "assigned.full_name as assigned_full_name",
-      "assigned.profile_pic as assigned_profile_pic"
+      "assigned.profile_pic as assigned_profile_pic",
+      "target.uuid as target_uuid",
+      "target.username as target_username",
+      "target.full_name as target_full_name",
+      "target.profile_pic as target_profile_pic"
     )
     .count("active_apps.id as applicant_count");
 }
@@ -189,6 +222,8 @@ function baseJobsQuery() {
 async function addNotification(trx, profile_uuid, type, body, job, meta = {}, system = "hiring", title = null) {
   await trx("notifications").insert({
     profile_uuid,
+    actor_uuid: meta.actor_uuid || meta.profile_uuid || null,
+    job_code: job?.job_code || null,
     system,
     type,
     title: title || (job?.job_code ? `Job ${job.job_code}` : "e-kazi"),
@@ -196,6 +231,11 @@ async function addNotification(trx, profile_uuid, type, body, job, meta = {}, sy
     job_id: job?.id || null,
     meta: db.raw("?::jsonb", [JSON.stringify(meta)]),
   });
+}
+
+function durationUnit(value) {
+  const unit = String(value || "").toLowerCase().trim();
+  return ["hours", "days", "weeks", "months"].includes(unit) ? unit : null;
 }
 
 export async function createJob(req, res) {
@@ -321,6 +361,7 @@ export async function createDirectHire(req, res) {
           created_by: me.uuid,
           target_provider_uuid: targetProviderUuid,
           hire_type: "direct",
+          direct_status: "pending",
           status: "pending",
           media: db.raw("?::jsonb", [JSON.stringify(media)]),
         };
@@ -495,6 +536,287 @@ export async function getJob(req, res) {
   }
 }
 
+async function workspaceJob(jobIdOrCode, me) {
+  const raw = String(jobIdOrCode || "").trim();
+
+  if (!raw || raw === "undefined" || raw === "null") {
+    return { error: { status: 400, message: "Valid job id or job code is required" } };
+  }
+
+  const query = baseJobsQuery();
+
+  if (/^\d+$/.test(raw)) {
+    query.where("j.id", Number(raw));
+  } else {
+    query.whereRaw("LOWER(j.job_code) = LOWER(?)", [raw]);
+  }
+
+  const row = await query.first();
+  if (!row) return { error: { status: 404, message: "Job not found" } };
+
+  const isHirer = me?.uuid && row.created_by === me.uuid;
+  const isProvider =
+    me?.uuid &&
+    (row.assigned_provider_uuid === me.uuid || row.target_provider_uuid === me.uuid);
+
+  if (!isHirer && !isProvider) {
+    return {
+      error: {
+        status: 403,
+        message: "Only the hirer and hired provider can access this workspace",
+      },
+    };
+  }
+
+  row.contact_details = await assignedJobContactDetails(row, me);
+  return { row, job: serializeJob(row), role: isHirer ? "hirer" : "provider" };
+}
+
+function routeJobId(req) {
+  return req.params.jobId || req.params.id;
+}
+
+async function listMessagesForJob(jobId) {
+  const hasMessagesTable = await db.schema.hasTable("job_messages");
+  if (!hasMessagesTable) return [];
+
+  const safeJobId = Number(jobId);
+  if (!Number.isInteger(safeJobId) || safeJobId < 1) return [];
+
+  const rows = await db("job_messages as jm")
+    .leftJoin("profiles as sender", "sender.uuid", "jm.sender_uuid")
+    .where("jm.job_id", safeJobId)
+    .orderBy("jm.created_at", "asc")
+    .select(
+      "jm.id",
+      "jm.job_id",
+      "jm.sender_uuid",
+      "jm.message",
+      "jm.created_at",
+      "sender.username as sender_username",
+      "sender.full_name as sender_full_name",
+      "sender.profile_pic as sender_profile_pic"
+    );
+
+  return rows.map((row) => ({
+    id: row.id,
+    job_id: row.job_id,
+    sender_uuid: row.sender_uuid,
+    message: row.message || "",
+    created_at: row.created_at,
+    sender: {
+      uuid: row.sender_uuid,
+      username: row.sender_username || "",
+      full_name: row.sender_full_name || "",
+      profile_pic: row.sender_profile_pic || "",
+    },
+  }));
+}
+
+function parseDateInput(value) {
+  if (!value) return new Date();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function closeoutNote(req, key) {
+  return String(req.body?.[key] || req.body?.note || req.body?.reason || "").trim();
+}
+
+export async function getJobWorkspace(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    const messages = await listMessagesForJob(result.row.id);
+    return res.json({ job: result.job, role: result.role, messages });
+  } catch (err) {
+    console.error("getJobWorkspace error:", err);
+    return res.status(500).json({ message: "Failed to load workspace" });
+  }
+}
+
+export async function listJobMessages(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    const messages = await listMessagesForJob(result.row.id);
+    return res.json({ messages });
+  } catch (err) {
+    console.error("listJobMessages error:", err);
+    return res.status(500).json({ message: "Failed to load messages" });
+  }
+}
+
+export async function sendJobMessage(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    const message = String(req.body?.message || "").trim();
+    if (message.length < 1) return res.status(400).json({ message: "Message is required" });
+    if (message.length > 1000) return res.status(400).json({ message: "Message is too long" });
+
+    const [created] = await db("job_messages")
+      .insert({ job_id: result.row.id, sender_uuid: me.uuid, message })
+      .returning("*");
+
+    const recipientUuid = result.role === "hirer" ? result.row.assigned_provider_uuid : result.row.created_by;
+    if (recipientUuid) {
+      await db.transaction(async (trx) => {
+        await addNotification(trx, recipientUuid, "job_message", `New message on job ${result.row.job_code}.`, result.row, { actor_uuid: me.uuid, message_id: created.id, action: "open_workspace" });
+      });
+    }
+
+    const [serialized] = await listMessagesForJob(result.row.id).then((items) => items.filter((item) => item.id === created.id));
+    return res.status(201).json({ success: true, message: serialized || created });
+  } catch (err) {
+    console.error("sendJobMessage error:", err);
+    return res.status(500).json({ message: "Failed to send message" });
+  }
+}
+
+export async function suggestJobStart(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "provider") return res.status(403).json({ message: "Only the hired provider can suggest start time" });
+    if (!["active"].includes(String(result.row.status))) return res.status(409).json({ message: "This job is not ready to start" });
+    const suggestedAt = parseDateInput(req.body?.started_at || req.body?.start_at || req.body?.date);
+    if (!suggestedAt) return res.status(400).json({ message: "Valid start date/time required" });
+    const [updated] = await db("jobs").where({ id: result.row.id }).update({
+      status: "start_pending",
+      provider_suggested_start_at: suggestedAt,
+      provider_start_note: closeoutNote(req, "provider_start_note"),
+      started_requested_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    }).returning("*");
+    updated.contact_details = await assignedJobContactDetails(updated, me);
+    await db.transaction(async (trx) => {
+      await addNotification(trx, result.row.created_by, "job_start_requested", `Start time was submitted for job ${result.row.job_code}. Confirm it to mark the job as working.`, updated, { actor_uuid: me.uuid, action: "confirm_start" });
+    });
+    return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    console.error("suggestJobStart error:", err);
+    return res.status(500).json({ message: "Failed to suggest start time" });
+  }
+}
+
+export async function confirmJobStart(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "hirer") return res.status(403).json({ message: "Only the hirer can confirm start time" });
+    if (!["active", "start_pending"].includes(String(result.row.status))) return res.status(409).json({ message: "This job cannot be started from this state" });
+    const officialAt = parseDateInput(req.body?.started_at || req.body?.start_at || req.body?.date || result.row.provider_suggested_start_at);
+    if (!officialAt) return res.status(400).json({ message: "Valid start date/time required" });
+    const [updated] = await db("jobs").where({ id: result.row.id }).update({
+      status: "working",
+      started_at: officialAt,
+      started_by_uuid: me.uuid,
+      started_confirmed_at: db.fn.now(),
+      start_confirmed_by_boss_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    }).returning("*");
+    updated.contact_details = await assignedJobContactDetails(updated, me);
+    await db.transaction(async (trx) => {
+      await addNotification(trx, result.row.assigned_provider_uuid, "job_start_confirmed", `Job ${result.row.job_code} is now marked as working.`, updated, { actor_uuid: me.uuid, action: "open_workspace" });
+    });
+    return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    console.error("confirmJobStart error:", err);
+    return res.status(500).json({ message: "Failed to confirm start time" });
+  }
+}
+
+export async function suggestJobCompletion(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "provider") return res.status(403).json({ message: "Only the hired provider can submit completion" });
+    if (!["working"].includes(String(result.row.status))) return res.status(409).json({ message: "This job cannot be submitted from this state" });
+    const suggestedAt = parseDateInput(req.body?.completed_at || req.body?.completion_at || req.body?.date);
+    if (!suggestedAt) return res.status(400).json({ message: "Valid completion date/time required" });
+    const [updated] = await db("jobs").where({ id: result.row.id }).update({
+      status: "completion_pending",
+      provider_suggested_completed_at: suggestedAt,
+      provider_completion_note: closeoutNote(req, "provider_completion_note"),
+      completion_requested_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    }).returning("*");
+    updated.contact_details = await assignedJobContactDetails(updated, me);
+    await db.transaction(async (trx) => {
+      await addNotification(trx, result.row.created_by, "job_completion_requested", `Completion was submitted for job ${result.row.job_code}. Confirm it to close the job.`, updated, { actor_uuid: me.uuid, action: "confirm_completion" });
+    });
+    return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    console.error("suggestJobCompletion error:", err);
+    return res.status(500).json({ message: "Failed to submit completion" });
+  }
+}
+
+export async function confirmJobCompletion(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "hirer") return res.status(403).json({ message: "Only the hirer can confirm completion" });
+    if (!["working", "completion_pending"].includes(String(result.row.status))) return res.status(409).json({ message: "This job cannot be completed from this state" });
+    const officialAt = parseDateInput(req.body?.completed_at || req.body?.completion_at || req.body?.date || result.row.provider_suggested_completed_at);
+    if (!officialAt) return res.status(400).json({ message: "Valid completion date/time required" });
+    const [updated] = await db("jobs").where({ id: result.row.id }).update({
+      status: "completed",
+      completed_at: officialAt,
+      completed_by_uuid: me.uuid,
+      completion_confirmed_by_boss_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    }).returning("*");
+    updated.contact_details = await assignedJobContactDetails(updated, me);
+    await db.transaction(async (trx) => {
+      await addNotification(trx, result.row.assigned_provider_uuid, "job_completed", `Job ${result.row.job_code} has been confirmed complete.`, updated, { actor_uuid: me.uuid, action: "rate_or_view" });
+    });
+    return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    console.error("confirmJobCompletion error:", err);
+    return res.status(500).json({ message: "Failed to confirm completion" });
+  }
+}
+
+export async function disputeJobCloseout(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    const reason = String(req.body?.reason || req.body?.dispute_reason || "").trim();
+    if (reason.length < 8) return res.status(400).json({ message: "Please explain the dispute" });
+    const [updated] = await db("jobs").where({ id: result.row.id }).update({
+      status: "disputed",
+      disputed_by_uuid: me.uuid,
+      dispute_reason: reason,
+      dispute_created_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    }).returning("*");
+    updated.contact_details = await assignedJobContactDetails(updated, me);
+    return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    console.error("disputeJobCloseout error:", err);
+    return res.status(500).json({ message: "Failed to report dispute" });
+  }
+}
+
 export async function acceptDirectHire(req, res) {
   try {
     const me = actor(req);
@@ -512,11 +834,19 @@ export async function acceptDirectHire(req, res) {
     }
 
     const provider = await db("profiles").where({ uuid: me.uuid }).first();
+    const providerStartDate = parseDateInput(req.body?.provider_start_date || req.body?.available_from || req.body?.start_date);
+    const durationValue = Number(req.body?.estimated_duration_value || req.body?.duration_value || 0);
+    const unit = durationUnit(req.body?.estimated_duration_unit || req.body?.duration_unit);
     const [updated] = await db("jobs")
       .where({ id: job.id })
       .update({
         status: "active",
+        direct_status: "accepted",
         assigned_provider_uuid: me.uuid,
+        provider_start_note: String(req.body?.provider_start_note || req.body?.acceptance_note || "").trim() || job.provider_start_note || null,
+        provider_start_date: providerStartDate || null,
+        estimated_duration_value: Number.isFinite(durationValue) && durationValue > 0 ? Math.round(durationValue) : null,
+        estimated_duration_unit: unit,
         updated_at: db.fn.now(),
       })
       .returning("*");
@@ -528,10 +858,10 @@ export async function acceptDirectHire(req, res) {
       title: `Job ${job.job_code}`,
       body: `${provider?.full_name || provider?.username || "Provider"} has accepted job ${job.job_code} of ${job.title}.`,
       job_id: job.id,
-      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid })]),
+      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid, actor_uuid: me.uuid, action: "open_workspace" })]),
     });
 
-    return res.json({ job: serializeJob({ ...updated, applicant_count: 0 }) });
+    return res.json({ success: true, message: "Direct hire accepted", job: serializeJob({ ...updated, applicant_count: 0 }), workspace: { job_id: updated.id } });
   } catch (err) {
     console.error("acceptDirectHire error:", err);
     return res.status(500).json({ message: "Failed to accept hire request" });
@@ -559,6 +889,7 @@ export async function declineDirectHire(req, res) {
       .where({ id: job.id })
       .update({
         status: "declined",
+        direct_status: "declined",
         updated_at: db.fn.now(),
       })
       .returning("*");
@@ -570,13 +901,44 @@ export async function declineDirectHire(req, res) {
       title: `Job ${job.job_code}`,
       body: `${provider?.full_name || provider?.username || "Provider"} has declined job ${job.job_code} of ${job.title}.`,
       job_id: job.id,
-      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid })]),
+      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid, actor_uuid: me.uuid, action: "publish_publicly" })]),
     });
 
-    return res.json({ job: serializeJob({ ...updated, applicant_count: 0 }) });
+    return res.json({ success: true, message: "Direct hire declined", job: serializeJob({ ...updated, applicant_count: 0 }) });
   } catch (err) {
     console.error("declineDirectHire error:", err);
     return res.status(500).json({ message: "Failed to decline hire request" });
+  }
+}
+
+export async function publishJobPublicly(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const job = await db("jobs").where({ id: req.params.id }).first();
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (job.created_by !== me.uuid) return res.status(403).json({ message: "Only the hirer can publish this job" });
+    if (job.hire_type !== "direct") return res.status(409).json({ message: "This job is already public" });
+    if (!["pending", "declined"].includes(String(job.status))) {
+      return res.status(409).json({ message: "Only pending or declined direct hires can be posted publicly" });
+    }
+
+    const [updated] = await db("jobs")
+      .where({ id: job.id })
+      .update({
+        status: "open",
+        direct_status: null,
+        hire_type: "posted",
+        target_provider_uuid: null,
+        assigned_provider_uuid: null,
+        updated_at: db.fn.now(),
+      })
+      .returning("*");
+
+    return res.json({ success: true, message: "Job posted publicly", job: serializeJob({ ...updated, applicant_count: 0 }) });
+  } catch (err) {
+    console.error("publishJobPublicly error:", err);
+    return res.status(500).json({ message: "Failed to publish job" });
   }
 }
 
@@ -621,7 +983,7 @@ export async function cancelJob(req, res) {
       }
     });
 
-    return res.json({ success: true });
+    return res.json({ success: true, message: "Job cancelled" });
   } catch (err) {
     console.error("cancelJob error:", err);
     return res.status(500).json({ message: "Failed to cancel job" });
@@ -634,6 +996,7 @@ export async function applyToJob(req, res) {
     if (!me) return res.status(401).json({ message: "User account required" });
     const job = await db("jobs").where({ id: req.params.id }).first();
     if (!job) return res.status(404).json({ message: "Job not found" });
+    if (job.hire_type === "direct" || job.target_provider_uuid) return res.status(409).json({ message: "Direct hire requests cannot be applied to" });
     if (job.created_by === me.uuid) return res.status(409).json({ message: "You cannot apply to your own job" });
     if (!ACTIVE_STATUSES.includes(job.status)) return res.status(409).json({ message: "This job is not accepting applications" });
 
@@ -678,7 +1041,7 @@ export async function applyToJob(req, res) {
       );
     });
 
-    return res.status(201).json({ success: true });
+    return res.status(201).json({ success: true, message: "Application submitted" });
   } catch (err) {
     console.error("applyToJob error:", err);
     return res.status(500).json({ message: "Failed to apply" });
@@ -727,8 +1090,10 @@ export async function assignProvider(req, res) {
       db("profiles").where({ uuid: profile_uuid }).first(),
       db("profiles").where({ uuid: me.uuid }).first(),
     ]);
+    let assignedJob = null;
     await db.transaction(async (trx) => {
-      const [updated] = await trx("jobs").where({ id: job.id }).update({ status: "closed", assigned_provider_uuid: profile_uuid, updated_at: db.fn.now() }).returning("*");
+      const [updated] = await trx("jobs").where({ id: job.id }).update({ status: "active", assigned_provider_uuid: profile_uuid, updated_at: db.fn.now() }).returning("*");
+      assignedJob = updated;
       const apps = await trx("job_applications").where({ job_id: job.id }).whereNull("withdrawn_at").select("profile_uuid");
       for (const item of apps) {
         if (item.profile_uuid === profile_uuid) {
@@ -743,13 +1108,18 @@ export async function assignProvider(req, res) {
           );
         } else {
           await trx("job_applications").where({ job_id: job.id, profile_uuid: item.profile_uuid }).update({ status: "not_attained", updated_at: db.fn.now() });
-          await addNotification(trx, item.profile_uuid, "job_filled", `Job ${updated.job_code} has been filled. Applications closed.`, updated);
+          await addNotification(trx, item.profile_uuid, "job_filled", `Job ${updated.job_code} has been assigned. Applications closed.`, updated);
         }
       }
       await addNotification(trx, me.uuid, "job_assignment_confirmed", `You assigned job ${updated.job_code} to @${selected?.username || "provider"}.`, updated, { profile_uuid });
     });
 
-    return res.json({ success: true });
+    return res.json({
+      success: true,
+      message: "Provider assigned",
+      job: serializeJob({ ...(assignedJob || job), applicant_count: 0 }),
+      workspace: { job_id: assignedJob?.id || job.id },
+    });
   } catch (err) {
     console.error("assignProvider error:", err);
     return res.status(500).json({ message: "Failed to assign provider" });
@@ -762,7 +1132,7 @@ export async function deleteJob(req, res) {
     const job = await db("jobs").where({ id: req.params.id }).first();
     if (!job) return res.status(404).json({ message: "Job not found" });
     if (!me || job.created_by !== me.uuid) return res.status(403).json({ message: "Only the poster can delete this job" });
-    if (!["cancelled", "closed"].includes(job.status)) return res.status(409).json({ message: "Only cancelled or closed jobs can be deleted" });
+    if (!["cancelled", "closed", "completed"].includes(job.status)) return res.status(409).json({ message: "Only cancelled or completed jobs can be deleted" });
     await db("jobs").where({ id: job.id }).del();
     return res.json({ success: true });
   } catch (err) {

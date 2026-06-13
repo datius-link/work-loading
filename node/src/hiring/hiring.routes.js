@@ -8,9 +8,18 @@ import {
   createJob,
   declineDirectHire,
   deleteJob,
+  disputeJobCloseout,
   getJob,
+  getJobWorkspace,
+  listJobMessages,
   listMyJobs,
   listRequests,
+  confirmJobCompletion,
+  confirmJobStart,
+  publishJobPublicly,
+  sendJobMessage,
+  suggestJobCompletion,
+  suggestJobStart,
   updateJob,
   withdrawApplication,
 } from "./hiring.controller.js";
@@ -132,6 +141,17 @@ router.post("/direct-hire", createDirectHire);
  *                     $ref: '#/components/schemas/Job'
  */
 router.get("/requests", listRequests);
+
+router.get("/jobs/:jobId/workspace", getJobWorkspace);
+router.get("/jobs/:jobId/messages", listJobMessages);
+router.post("/jobs/:jobId/messages", sendJobMessage);
+router.post("/jobs/:jobId/start-suggest", suggestJobStart);
+router.post("/jobs/:jobId/start-confirm", confirmJobStart);
+router.post("/jobs/:jobId/complete-suggest", suggestJobCompletion);
+router.post("/jobs/:jobId/complete-confirm", confirmJobCompletion);
+router.post("/jobs/:jobId/dispute", disputeJobCloseout);
+router.post("/jobs/:id/publish", publishJobPublicly);
+
 /**
  * @swagger
  * /api/hiring/jobs/{id}:
