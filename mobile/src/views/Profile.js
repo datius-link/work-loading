@@ -58,6 +58,7 @@ const T = {
     vsLastMonth: "vs last month",
     totalVisits: "Total visits",
     recommendations: "Recommendations",
+    ratings: "Ratings",
     worksDone: "Jobs Done",
     noJobsDone: "No completed jobs yet",
   },
@@ -95,6 +96,7 @@ const T = {
     vsLastMonth: "ikilinganishwa na mwezi uliopita",
     totalVisits: "Jumla ya waliotembelea",
     recommendations: "Mapendekezo",
+    ratings: "Ukadiriaji",
     worksDone: "Kazi zilizokamilika",
     noJobsDone: "Hakuna kazi zilizokamilika bado",
   },
@@ -283,6 +285,14 @@ export default function Profile() {
             count={recommendationsCount}
             icon="activity"
             onPress={() => navigation.navigate("ProfileRecommendations", { profileUuid: profile?.uuid, username: profile?.username, count: recommendationsCount })}
+            styles={styles}
+            theme={theme}
+          />
+          <CommunityButton
+            label={t.ratings}
+            count={Number(profileSummary?.ratings_count || profile?.ratings_count || 0)}
+            icon="star"
+            onPress={() => navigation.navigate("ProfileRatings", { profileUuid: profile?.uuid, username: profile?.username, count: Number(profileSummary?.ratings_count || profile?.ratings_count || 0) })}
             styles={styles}
             theme={theme}
           />
