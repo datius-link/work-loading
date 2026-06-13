@@ -1,6 +1,6 @@
 import db from "../db/index.js";
 
-const RATEABLE_STATUSES = ["filled", "closed"];
+const RATEABLE_STATUSES = ["filled", "closed", "completed"];
 
 function actor(req) {
   return req.user || req.viewer || null;
@@ -41,9 +41,10 @@ async function refreshProviderRating(providerUuid) {
 
 export async function listRecommendations(req, res) {
   try {
-    const { profileUuid } = req.params;
+    const profileUuid = req.params.uuid || req.params.profileUuid;
     const rows = await db("job_recommendations as jr")
       .leftJoin("job_ratings as rt", "rt.id", "jr.rating_id")
+      .leftJoin("jobs as j", "j.id", "jr.job_id")
       .leftJoin("profiles as rp", "rp.uuid", "jr.recommender_uuid")
       .where("jr.provider_uuid", profileUuid)
       .where("jr.status", "closed")
@@ -52,10 +53,16 @@ export async function listRecommendations(req, res) {
         "jr.job_id",
         "jr.job_title",
         "jr.job_code",
+        "jr.service_type",
+        "jr.started_at",
+        "jr.completed_at",
         "jr.reason",
         "jr.recommender_visible",
         "jr.created_at",
         "rt.score",
+        "j.service_type as job_service_type",
+        "j.started_at as job_started_at",
+        "j.completed_at as job_completed_at",
         "rp.uuid as recommender_uuid",
         "rp.username as recommender_username",
         "rp.full_name as recommender_full_name",
@@ -70,6 +77,9 @@ export async function listRecommendations(req, res) {
         job_id: row.job_id,
         job_title: row.job_title,
         job_code: row.job_code,
+        service_type: row.service_type || row.job_service_type || "",
+        started_at: row.started_at || row.job_started_at || null,
+        completed_at: row.completed_at || row.job_completed_at || null,
         reason: row.reason,
         score: row.score,
         created_at: row.created_at,
@@ -82,6 +92,55 @@ export async function listRecommendations(req, res) {
   }
 }
 
+export async function listRatings(req, res) {
+  try {
+    const profileUuid = req.params.uuid || req.params.profileUuid;
+    const rows = await db("job_ratings as rt")
+      .join("jobs as j", "j.id", "rt.job_id")
+      .leftJoin("profiles as hp", "hp.uuid", "rt.rater_uuid")
+      .where("rt.provider_uuid", profileUuid)
+      .select(
+        "rt.id",
+        "rt.job_id",
+        "rt.score",
+        "rt.comment",
+        "rt.created_at",
+        "j.job_code",
+        "j.title as job_title",
+        "j.service_type",
+        "j.started_at",
+        "j.completed_at",
+        "hp.uuid as hirer_uuid",
+        "hp.username as hirer_username",
+        "hp.full_name as hirer_full_name"
+      )
+      .orderBy("rt.created_at", "desc");
+
+    return res.json({
+      ratings: rows.map((row) => ({
+        id: row.id,
+        job_id: row.job_id,
+        job_code: row.job_code,
+        job_title: row.job_title,
+        service_type: row.service_type || "",
+        started_at: row.started_at || null,
+        completed_at: row.completed_at || null,
+        score: Number(row.score || 0),
+        note: row.comment || "",
+        created_at: row.created_at,
+        hirer: {
+          uuid: row.hirer_uuid,
+          username: row.hirer_username || "",
+          full_name: row.hirer_full_name || "",
+        },
+      })),
+    });
+  } catch (err) {
+    console.error("listRatings error:", err);
+    return res.status(500).json({ message: "Failed to load ratings" });
+  }
+}
+
 export async function rateJobProvider(req, res) {
   try {
     const me = actor(req);
@@ -91,7 +150,7 @@ export async function rateJobProvider(req, res) {
     const providerUuid = String(req.body.provider_uuid || req.body.providerUuid || "").trim();
     const score = Number(req.body.score);
     const comment = String(req.body.comment || "").trim();
-    const recommend = !!req.body.recommend;
+    const recommend = !!req.body.recommend && score > 6;
     const reason = String(req.body.reason || "").trim();
     const recommenderVisible = !!(req.body.recommender_visible || req.body.recommenderVisible);
 
@@ -124,14 +183,18 @@ export async function rateJobProvider(req, res) {
       rating = created;
     }
 
+    const existingRecommendation = await db("job_recommendations")
+      .where({ job_id: jobId, provider_uuid: providerUuid, recommender_uuid: me.uuid })
+      .first();
+
     if (recommend) {
-      const existingRecommendation = await db("job_recommendations")
-        .where({ job_id: jobId, provider_uuid: providerUuid, recommender_uuid: me.uuid })
-        .first();
       const payload = {
         rating_id: rating.id,
         job_title: job.title,
         job_code: job.job_code,
+        service_type: job.service_type || null,
+        started_at: job.started_at || null,
+        completed_at: job.completed_at || null,
         reason,
         recommender_visible: recommenderVisible,
         status: "closed",
@@ -147,6 +210,8 @@ export async function rateJobProvider(req, res) {
           ...payload,
         });
       }
+    } else if (existingRecommendation) {
+      await db("job_recommendations").where({ id: existingRecommendation.id }).del();
     }
 
     await refreshProviderRating(providerUuid);
