@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   StatusBar,
@@ -69,6 +70,13 @@ export default function JobDetails() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [directActioning, setDirectActioning] = useState(false);
+  const [directAcceptNote, setDirectAcceptNote] = useState("");
+  const [directStartDate, setDirectStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [directDurationValue, setDirectDurationValue] = useState("");
+  const [directDurationUnit, setDirectDurationUnit] = useState("days");
+  const [directBudget, setDirectBudget] = useState("");
+  const [directNotes, setDirectNotes] = useState("");
 
   const loadJob = useCallback(async () => {
     try {
@@ -87,6 +95,46 @@ export default function JobDetails() {
 
   const openApplication = (application) => {
     navigation.navigate("JobApplicantDetails", { request: applicationToRequest(application, job) });
+  };
+
+  const respondDirectHire = async (accepted) => {
+    if (directActioning || !job?.id) return;
+    setDirectActioning(true);
+    try {
+      const endpoint = accepted ? "accept-direct" : "decline-direct";
+      const res = await viewerRequest("post", `/hiring/jobs/${job.id}/${endpoint}`, accepted ? {
+        provider_start_note: directAcceptNote,
+        provider_start_date: directStartDate,
+        estimated_duration_value: directDurationValue,
+        estimated_duration_unit: directDurationUnit,
+        budget: directBudget,
+        notes: directNotes,
+      } : undefined);
+      setJob(res?.data?.job || job);
+      if (accepted)navigation.navigate("JobWorkspace", {
+          jobId: job.id,
+          jobCode: job.job_code,
+        }); 
+      else loadJob();
+    } catch (err) {
+      console.log("direct hire response error:", err?.response?.data || err?.message);
+    } finally {
+      setDirectActioning(false);
+    }
+  };
+
+  const publishPublicly = async () => {
+    if (directActioning || !job?.id) return;
+    setDirectActioning(true);
+    try {
+      const res = await viewerRequest("post", `/hiring/jobs/${job.id}/publish`);
+      setJob(res?.data?.job || job);
+      loadJob();
+    } catch (err) {
+      console.log("publish direct job error:", err?.response?.data || err?.message);
+    } finally {
+      setDirectActioning(false);
+    }
   };
 
   if (loading) {
@@ -111,12 +159,15 @@ export default function JobDetails() {
 
   const images = mediaUrls(job.media);
   const count = applications.length || Number(job.applicant_count || 0);
+  const isDirect = job.hire_type === "direct" || !!job.target_provider_uuid || !!job.direct_status;
+  const directProvider = job.assigned_provider || job.target_provider;
+  const workspaceReady = !!job.assigned_provider_uuid && ["active", "start_pending", "working", "completion_pending", "completed", "closed", "filled"].includes(String(job.status || ""));
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.colors.surface} />
       <FlatList
-        data={applications}
+        data={isDirect ? [] : applications}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadJob(); }} tintColor={theme.colors.primary} />}
@@ -144,10 +195,111 @@ export default function JobDetails() {
                 <Text style={styles.meta}>{formatDeadline(job.tender_closes_at)}</Text>
               </View>
 
-              <View style={styles.countBand}>
-                <Text style={styles.countNumber}>{count}</Text>
-                <Text style={styles.countLabel}>{count === 1 ? "application" : "applications"}</Text>
-              </View>
+              {!isDirect ? (
+                <View style={styles.countBand}>
+                  <Text style={styles.countNumber}>{count}</Text>
+                  <Text style={styles.countLabel}>{count === 1 ? "application" : "applications"}</Text>
+                </View>
+              ) : null}
+
+              {job.can_accept_direct_hire ? (
+                <View style={styles.directBox}>
+                  <Text style={styles.directHint}>Accept the offer and add how you will perform the job.</Text>
+                  <TextInput
+                    value={directAcceptNote}
+                    onChangeText={setDirectAcceptNote}
+                    placeholder="What will you do first?"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={styles.directInput}
+                    multiline
+                  />
+                  <View style={styles.dateRow}>
+                    {[
+                      { label: "Today", days: 0 },
+                      { label: "Tomorrow", days: 1 },
+                      { label: "Next week", days: 7 },
+                    ].map((item) => {
+                      const date = new Date();
+                      date.setDate(date.getDate() + item.days);
+                      const value = date.toISOString().slice(0, 10);
+                      const active = directStartDate === value;
+                      return (
+                        <TouchableOpacity key={item.label} style={[styles.dateChip, active && styles.dateChipActive]} onPress={() => setDirectStartDate(value)}>
+                          <Text style={[styles.dateChipText, active && styles.dateChipTextActive]}>{item.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.directSmall}>Start date: {directStartDate}</Text>
+                  <View style={styles.durationRow}>
+                    <TextInput
+                      value={directDurationValue}
+                      onChangeText={setDirectDurationValue}
+                      placeholder="Duration"
+                      keyboardType="numeric"
+                      placeholderTextColor={theme.colors.textMuted}
+                      style={[styles.directInput, styles.durationInput]}
+                    />
+                    {["hours", "days", "weeks", "months"].map((unit) => (
+                      <TouchableOpacity key={unit} style={[styles.unitChip, directDurationUnit === unit && styles.unitChipActive]} onPress={() => setDirectDurationUnit(unit)}>
+                        <Text style={[styles.unitText, directDurationUnit === unit && styles.unitTextActive]}>{unit}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TextInput
+                    value={directBudget}
+                    onChangeText={setDirectBudget}
+                    placeholder="Budget or price note"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={styles.directInput}
+                  />
+                  <TextInput
+                    value={directNotes}
+                    onChangeText={setDirectNotes}
+                    placeholder="Extra notes for the hirer"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={styles.directInput}
+                    multiline
+                  />
+                  <View style={styles.directActions}>
+                    <TouchableOpacity style={[styles.directBtn, styles.declineBtn]} onPress={() => respondDirectHire(false)} disabled={directActioning}>
+                      <Text style={styles.declineText}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.directBtn, styles.acceptBtn]} onPress={() => respondDirectHire(true)} disabled={directActioning}>
+                      {directActioning ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Text style={styles.acceptText}>Accept & Open Workspace</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
+              {isDirect && !job.can_accept_direct_hire ? (
+                <View style={styles.directSummary}>
+                  <Text style={styles.sectionTitle}>Direct hire</Text>
+                  {directProvider ? (
+                    <View style={styles.directProviderRow}>
+                      {directProvider.profile_pic ? <Image source={{ uri: directProvider.profile_pic }} style={styles.directAvatar} /> : <View style={[styles.directAvatar, styles.avatarPlaceholder]}><AppIcon name="user" size={18} color={theme.colors.textMuted} /></View>}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.username}>@{directProvider.username || "provider"}</Text>
+                        <Text style={styles.fullName}>{directProvider.full_name || "Selected provider"}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  {job.direct_status === "declined" || job.status === "declined" ? (
+                    <TouchableOpacity style={[styles.directBtn, styles.acceptBtn]} onPress={publishPublicly} disabled={directActioning}>
+                      {directActioning ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Text style={styles.acceptText}>Post Publicly</Text>}
+                    </TouchableOpacity>
+                  ) : workspaceReady ? (
+                    <TouchableOpacity style={[styles.directBtn, styles.acceptBtn]} onPress={() => navigation.navigate("JobWorkspace", {
+                      jobId: job.id,
+                      jobCode: job.job_code,
+                    })}>
+                      <Text style={styles.acceptText}>Open Workspace</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.directHint}>Waiting for the selected provider to accept or decline.</Text>
+                  )}
+                </View>
+              ) : null}
 
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>About this job</Text>
@@ -163,7 +315,7 @@ export default function JobDetails() {
                 </View>
               ) : null}
 
-              <Text style={styles.appSectionTitle}>Provider Applications</Text>
+              {!isDirect ? <Text style={styles.appSectionTitle}>Provider Applications</Text> : null}
             </View>
           </View>
         }
@@ -192,8 +344,8 @@ export default function JobDetails() {
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No applications yet</Text>
-            <Text style={styles.emptyText}>Applications will appear here after providers apply.</Text>
+            <Text style={styles.emptyTitle}>{isDirect ? "No public applications" : "No applications yet"}</Text>
+            <Text style={styles.emptyText}>{isDirect ? "Direct hires are accepted or declined by the selected provider." : "Applications will appear here after providers apply."}</Text>
           </View>
         }
       />
@@ -245,6 +397,30 @@ const createStyles = (theme) =>
     },
     countNumber: { color: theme.colors.text, fontSize: 28, fontWeight: "900" },
     countLabel: { color: theme.colors.textMuted, fontSize: 14, fontWeight: "800" },
+    directBox: { gap: 10, paddingVertical: 12 },
+    directSummary: { gap: 12, paddingVertical: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.colors.border, marginTop: 10 },
+    directHint: { color: theme.colors.textMuted, fontSize: 13, fontWeight: "700" },
+    directSmall: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "800" },
+    directInput: { minHeight: 82, borderRadius: theme.radius.xs, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, color: theme.colors.text, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, textAlignVertical: "top" },
+    dateRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+    dateChip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: theme.radius.xs, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+    dateChipActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
+    dateChipText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "900" },
+    dateChipTextActive: { color: theme.colors.primary },
+    durationRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+    durationInput: { minHeight: 44, width: 96, flexGrow: 0 },
+    unitChip: { paddingHorizontal: 9, paddingVertical: 8, borderRadius: theme.radius.xs, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+    unitChipActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
+    unitText: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "900" },
+    unitTextActive: { color: theme.colors.primary },
+    directActions: { flexDirection: "row", gap: 10 },
+    directBtn: { flex: 1, minHeight: 46, borderRadius: theme.radius.xs, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+    acceptBtn: { backgroundColor: theme.colors.primary },
+    declineBtn: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+    acceptText: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: "900" },
+    declineText: { color: theme.colors.text, fontSize: 13, fontWeight: "900" },
+    directProviderRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    directAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.colors.surfaceSoft },
     section: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
     sectionTitle: { color: theme.colors.text, fontSize: 17, fontWeight: "900", marginBottom: 9 },
     bodyText: { color: theme.colors.textSecondary, fontSize: 15, lineHeight: 23 },

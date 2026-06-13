@@ -1,13 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useAppTheme } from "../../../theme";
@@ -20,408 +12,182 @@ import CreateJobModal from "./CreateJobModal";
 import { UploadManager } from "../../../utils/UploadManager";
 import { formatRelativeDate, formatJobDate } from "../jobDate";
 import HiringNoticeModal from "../HiringNoticeModal";
+import { C, StatusBadge } from "../jobsUI";
 
 const T = {
-  en: {
-    title: "My Jobs",
-    subtitle: "Jobs you posted or sent directly to people.",
-    loginTitle: "Login to your account",
-    loginBody: "Sign in to see your job posts, direct requests, applications, and responses.",
-    loginAction: "Login",
-    postJob: "Post Job",
-    emptyTitle: "No jobs yet",
-    emptyBody: "Use Hire Me on a provider post or create a job request. Your jobs will appear here.",
-    retry: "Try again",
-    applicants: (count) => `${count} applicant${count === 1 ? "" : "s"}`,
-    direct: "Direct hire",
-    posted: "Posted job",
-    open: "Open",
-    postedOk: "Job posted",
-    postedOkBody: "People can now see and apply for this job.",
-    postFailed: "Could not post job",
-  },
-  sw: {
-    title: "Kazi Zangu",
-    subtitle: "Kazi ulizochapisha au kutuma moja kwa moja kwa watoa huduma.",
-    loginTitle: "Ingia kwenye akaunti yako",
-    loginBody: "Ingia kuona kazi zako, maombi ya kuajiri moja kwa moja, waombaji, na majibu ya watoa huduma.",
-    loginAction: "Ingia",
-    postJob: "Chapisha Kazi",
-    emptyTitle: "Hakuna kazi bado",
-    emptyBody: "Tumia Hire Me kwenye post ya mtoa huduma au chapisha ombi la kazi. Kazi zako zitaonekana hapa.",
-    retry: "Jaribu tena",
-    applicants: (count) => `${count} ${count === 1 ? "mwombaji" : "waombaji"}`,
-    direct: "Direct hire",
-    posted: "Kazi iliyochapishwa",
-    open: "Fungua",
-    postedOk: "Kazi imechapishwa",
-    postedOkBody: "Watoa huduma sasa wanaweza kuona na kuomba kazi hii.",
-    postFailed: "Imeshindikana kuchapisha kazi",
-  },
+  en:{title:"My Jobs",subtitle:"Jobs you posted or sent directly.",loginTitle:"Sign in to continue",loginBody:"See your job posts, requests and responses.",loginAction:"Login",postJob:"Post a Job",emptyTitle:"No jobs yet",emptyBody:"Post a job or send a hire request. Everything appears here.",retry:"Try again",applicants:(n)=>`${n} applicant${n===1?"":"s"}`,postedOk:"Job posted",postedOkBody:"Providers can now apply for your job.",postFailed:"Could not post job"},
+  sw:{title:"Kazi Zangu",subtitle:"Kazi ulizochapisha au kutuma.",loginTitle:"Ingia kuendelea",loginBody:"Ona kazi zako na maombi.",loginAction:"Ingia",postJob:"Chapisha Kazi",emptyTitle:"Hakuna kazi bado",emptyBody:"Chapisha kazi au tuma ombi.",retry:"Jaribu tena",applicants:(n)=>`${n} ${n===1?"mwombaji":"waombaji"}`,postedOk:"Kazi imechapishwa",postedOkBody:"Watoa huduma wanaweza kuomba.",postFailed:"Imeshindikana"},
 };
 
-function jobPhase(job) {
-  const status = String(job?.status || "open");
-  const applicants = Number(job?.applicant_count || 0);
-  if (["closed", "filled"].includes(status)) return "completed";
-  if (["active"].includes(status)) return "in_progress";
-  if (status === "pending") return "waiting_approval";
-  if (["applied"].includes(status) || applicants > 0) return "applications";
+function jobPhase(job){
+  const st=String(job?.status||"open");
+  const ap=Number(job?.applicant_count||0);
+  if(["closed","filled","completed"].includes(st))return "completed";
+  if(["active","start_pending","working","completion_pending","started","submitted"].includes(st))return "in_progress";
+  if(st==="pending")return "waiting_approval";
+  if(st==="applied"||ap>0)return "applications";
   return "posted";
 }
 
-function statusText(status, language = "en") {
-  const sw = language === "sw";
-  const labels = {
-    posted: sw ? "Imewekwa" : "Posted",
-    applications: sw ? "Maombi yapo" : "Applications",
-    waiting_approval: sw ? "Inasubiri mtoa huduma" : "Waiting approval",
-    in_progress: sw ? "Inaendelea" : "In progress",
-    completed: sw ? "Imekamilika" : "Completed",
-    cancelled: sw ? "Imefutwa" : "Cancelled",
-    declined: sw ? "Imekataliwa" : "Declined",
-  };
-  return labels[status] || String(status || "posted").replace(/_/g, " ");
-}
+export default function MyJobs({embedded=false,createJobSignal=0}){
+  const nav=useNavigation();
+  const {theme}=useAppTheme();
+  const {language}=useLanguage();const t=T[language]||T.en;
+  const {refresh:refreshSession}=useUserSession();
 
-export default function MyJobs({ embedded = false, createJobSignal = 0 }) {
-  const navigation = useNavigation();
-  const { theme } = useAppTheme();
-  const { language } = useLanguage();
-  const t = T[language] || T.en;
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const [jobs,setJobs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [refreshing,setRefreshing]=useState(false);
+  const [needsLogin,setNeedsLogin]=useState(false);
+  const [error,setError]=useState("");
+  const [showLogin,setShowLogin]=useState(false);
+  const [showCreate,setShowCreate]=useState(false);
+  const [posting,setPosting]=useState(false);
+  const [notice,setNotice]=useState(null);
+  const lastSignal=useRef(createJobSignal);
 
-  const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [needsLogin, setNeedsLogin] = useState(false);
-  const [error, setError] = useState("");
-  const [showLogin, setShowLogin] = useState(false);
-  const [showCreateJob, setShowCreateJob] = useState(false);
-  const [postingJob, setPostingJob] = useState(false);
-  const [notice, setNotice] = useState(null);
-  const lastCreateSignal = useRef(createJobSignal);
-  const { refresh: refreshUserSession } = useUserSession();
-
-  const loadJobs = useCallback(async ({ refresh = false } = {}) => {
-    if (refresh) setRefreshing(true);
-    else setLoading(true);
-
-    try {
+  const load=useCallback(async({refresh=false}={})=>{
+    if(refresh)setRefreshing(true);else setLoading(true);
+    try{
       setError("");
-      const session = await getUserSession();
-      if (!session.isLoggedIn) {
-        setNeedsLogin(true);
-        setJobs([]);
-        return;
-      }
-
+      const session=await getUserSession();
+      if(!session.isLoggedIn){setNeedsLogin(true);setJobs([]);return;}
       setNeedsLogin(false);
-      const res = await viewerRequest("get", "/hiring/my-jobs");
-      setJobs(Array.isArray(res?.data?.jobs) ? res.data.jobs : []);
-    } catch (err) {
-      if (err?.response?.status === 401 || err?.response?.status === 403) {
-        setNeedsLogin(true);
-        setJobs([]);
-      } else {
-        setError(err?.response?.data?.message || "Failed to load jobs");
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+      const res=await viewerRequest("get","/hiring/my-jobs");
+      setJobs(Array.isArray(res?.data?.jobs)?res.data.jobs:[]);
+    }catch(err){
+      if([401,403].includes(err?.response?.status)){setNeedsLogin(true);setJobs([]);}
+      else setError(err?.response?.data?.message||"Failed to load jobs");
+    }finally{setLoading(false);setRefreshing(false);}
+  },[]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadJobs();
-    }, [loadJobs])
-  );
+  useFocusEffect(useCallback(()=>{load();},[load]));
+  useEffect(()=>{
+    if(!createJobSignal||createJobSignal===lastSignal.current)return;
+    lastSignal.current=createJobSignal;openPost();
+  },[createJobSignal]);
 
-  const openJob = (job) => {
-    if (!job?.id) return;
-    navigation.navigate("JobDetails", { jobId: job.id });
+  const openPost=async()=>{
+    const session=await getUserSession();
+    if(!session.isLoggedIn){setShowLogin(true);return;}
+    setShowCreate(true);
   };
 
-  const openPostJob = async () => {
-    const session = await getUserSession();
-    if (!session.isLoggedIn) {
-      setShowLogin(true);
-      return;
-    }
-    setShowCreateJob(true);
+  const submitJob=async(payload)=>{
+    if(posting)return;setPosting(true);
+    try{
+      const media=payload.images?.length?await UploadManager.startUpload(payload.images,"jobs"):[];
+      await viewerRequest("post","/hiring/jobs",{title:payload.title,description:payload.description,service_type:payload.service_type,location:payload.location,tender_closes_at:payload.tender_closes_at,availability_required:payload.availability_required,scheduled_for:payload.scheduled_for||null,availability_notes:payload.availability_notes||null,media});
+      setShowCreate(false);await load({refresh:true});
+      setNotice({type:"success",title:t.postedOk,body:t.postedOkBody});
+    }catch(err){setNotice({type:"error",title:t.postFailed,body:err?.response?.data?.message||"Please try again."});}
+    finally{setPosting(false);}
   };
 
-  useEffect(() => {
-    if (!createJobSignal || createJobSignal === lastCreateSignal.current) return;
-    lastCreateSignal.current = createJobSignal;
-    openPostJob();
-  }, [createJobSignal]);
-
-  const submitPostedJob = async (payload) => {
-    if (postingJob) return;
-    setPostingJob(true);
-    try {
-      const media = payload.images?.length
-        ? await UploadManager.startUpload(payload.images, "jobs")
-        : [];
-      await viewerRequest("post", "/hiring/jobs", {
-        title: payload.title,
-        description: payload.description,
-        service_type: payload.service_type,
-        location: payload.location,
-        tender_closes_at: payload.tender_closes_at,
-        availability_required: payload.availability_required,
-        scheduled_for: payload.scheduled_for || null,
-        availability_notes: payload.availability_notes || null,
-        media,
-      });
-      setShowCreateJob(false);
-      await loadJobs({ refresh: true });
-      setNotice({ type: "success", title: t.postedOk, body: t.postedOkBody });
-    } catch (err) {
-      setNotice({ type: "error", title: t.postFailed, body: err?.response?.data?.message || "Please try again." });
-    } finally {
-      setPostingJob(false);
-    }
-  };
-
-  const renderJob = ({ item }) => {
-    const phase = jobPhase(item);
-    const count = Number(item.applicant_count || 0);
-    const code = item.job_code || item.code || "JOB";
-    const deadline = formatJobDate(item.tender_closes_at);
-    const status = statusText(phase, language);
-
-    return (
-      <TouchableOpacity style={styles.jobRow} activeOpacity={0.86} onPress={() => openJob(item)}>
-        <View style={styles.rowBody}>
-          <View style={styles.rowTop}>
-            <Text style={styles.jobCode}>{code}</Text>
-            <Text style={styles.jobTitle} numberOfLines={1}>{item.title}</Text>
-          </View>
-          <Text style={styles.jobMeta} numberOfLines={1}>
-            {[item.location || "Location not set", `Posted ${formatRelativeDate(item.created_at) || "Today"}`].join(" • ")}
-          </Text>
-          <Text style={styles.jobSubMeta} numberOfLines={1}>
-            {[deadline ? `Deadline ${deadline}` : null, t.applicants(count)].filter(Boolean).join(" • ")}
-          </Text>
+  const renderItem=({item})=>{
+    const phase=jobPhase(item);
+    const count=Number(item.applicant_count||0);
+    const code=item.job_code||item.code||"JOB";
+    const deadline=formatJobDate(item.tender_closes_at);
+    return(
+      <TouchableOpacity style={s.card} activeOpacity={0.88} onPress={()=>nav.navigate("JobDetails",{jobId:item.id})}>
+        <View style={s.cardTop}>
+          <View style={s.codePill}><Text style={s.codeText}>{code}</Text></View>
+          <StatusBadge status={phase} size="sm"/>
         </View>
-        <Text style={[styles.rowStatus, statusTextStyle(phase, theme)]} numberOfLines={1}>{status}</Text>
+        <Text style={s.title} numberOfLines={2}>{item.title}</Text>
+        <View style={s.metaRow}><AppIcon name="map-pin" size={12} color={C.slate}/><Text style={s.meta} numberOfLines={1}>{item.location||"Location not set"}</Text></View>
+        <View style={s.cardFooter}>
+          <View style={s.metaRow}><AppIcon name="calendar" size={12} color={C.slate}/><Text style={s.metaSm}>Posted {formatRelativeDate(item.created_at)||"Today"}</Text></View>
+          {deadline?<View style={s.metaRow}><AppIcon name="calendar" size={12} color={C.slate}/><Text style={s.metaSm}>Closes {deadline}</Text></View>:null}
+          {count>0?<View style={s.applicantPill}><Text style={s.applicantTxt}>{t.applicants(count)}</Text></View>:null}
+        </View>
       </TouchableOpacity>
     );
   };
 
-  const listEmpty = () => {
-    if (loading) {
-      return (
-        <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} size="large" />
-        </View>
-      );
-    }
-
-    if (needsLogin) {
-      return (
-        <View style={styles.centerState}>
-          <View style={styles.emptyIcon}>
-            <AppIcon name="lock" size={30} color={theme.colors.primary} />
-          </View>
-          <Text style={styles.emptyTitle}>{t.loginTitle}</Text>
-          <Text style={styles.emptyText}>{t.loginBody}</Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowLogin(true)}>
-            <AppIcon name="login" size={17} color={theme.colors.onPrimary} />
-            <Text style={styles.primaryBtnText}>{t.loginAction}</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (error) {
-      return (
-        <View style={styles.centerState}>
-          <View style={styles.emptyIcon}>
-            <AppIcon name="warning" size={30} color={theme.colors.danger} />
-          </View>
-          <Text style={styles.emptyTitle}>{error}</Text>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => loadJobs()}>
-            <Text style={styles.secondaryBtnText}>{t.retry}</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.centerState}>
-        <View style={styles.emptyIcon}>
-          <AppIcon name="briefcase" size={30} color={theme.colors.primary} />
-        </View>
-        <Text style={styles.emptyTitle}>{t.emptyTitle}</Text>
-        <Text style={styles.emptyText}>{t.emptyBody}</Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={openPostJob}>
-          <AppIcon name="plus" size={17} color={theme.colors.onPrimary} />
-          <Text style={styles.primaryBtnText}>{t.postJob}</Text>
+  const listEmpty=()=>{
+    if(loading)return<View style={s.center}><ActivityIndicator color={C.teal} size="large"/></View>;
+    if(needsLogin)return(
+      <View style={s.center}>
+        <View style={s.emptyIcon}><AppIcon name="lock" size={28} color={C.teal}/></View>
+        <Text style={s.emptyTitle}>{t.loginTitle}</Text>
+        <Text style={s.emptyBody}>{t.loginBody}</Text>
+        <TouchableOpacity style={s.primaryBtn} onPress={()=>setShowLogin(true)}>
+          <AppIcon name="login" size={17} color={C.white}/><Text style={s.primaryTxt}>{t.loginAction}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+    if(error)return(
+      <View style={s.center}>
+        <View style={[s.emptyIcon,{backgroundColor:C.redLight}]}><AppIcon name="warning" size={28} color={C.red}/></View>
+        <Text style={s.emptyTitle}>{error}</Text>
+        <TouchableOpacity style={s.outlineBtn} onPress={()=>load()}><Text style={s.outlineTxt}>{t.retry}</Text></TouchableOpacity>
+      </View>
+    );
+    return(
+      <View style={s.center}>
+        <View style={s.emptyIcon}><AppIcon name="briefcase" size={28} color={C.teal}/></View>
+        <Text style={s.emptyTitle}>{t.emptyTitle}</Text>
+        <Text style={s.emptyBody}>{t.emptyBody}</Text>
+        <TouchableOpacity style={s.primaryBtn} onPress={openPost}>
+          <AppIcon name="plus" size={17} color={C.white}/><Text style={s.primaryTxt}>{t.postJob}</Text>
         </TouchableOpacity>
       </View>
     );
   };
 
-  return (
-    <SafeAreaView style={styles.safe} edges={embedded ? [] : ["top"]}>
-      {!embedded && (
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>{t.title}</Text>
-            <Text style={styles.subtitle}>{t.subtitle}</Text>
+  return(
+    <SafeAreaView style={s.safe} edges={embedded?[]:["top"]}>
+      {!embedded&&(
+        <View style={s.header}>
+          <View style={{flex:1}}>
+            <Text style={s.headerTitle}>{t.title}</Text>
+            <Text style={s.headerSub}>{t.subtitle}</Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.iconBtn} onPress={openPostJob}>
-              <AppIcon name="plus" size={20} color={theme.colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => loadJobs({ refresh: true })}>
-              <AppIcon name="history" size={20} color={theme.colors.primary} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={s.fab} onPress={openPost}>
+            <AppIcon name="plus" size={20} color={C.white}/>
+          </TouchableOpacity>
         </View>
       )}
-
       <FlatList
-        data={jobs}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderJob}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadJobs({ refresh: true })}
-            tintColor={theme.colors.primary}
-          />
-        }
-        ListEmptyComponent={listEmpty}
-        contentContainerStyle={[styles.listContent, !jobs.length && styles.listEmptyContent]}
+        data={jobs} keyExtractor={i=>String(i.id)} renderItem={renderItem}
+        contentContainerStyle={[s.list,!jobs.length&&{flexGrow:1}]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} tintColor={C.teal} onRefresh={()=>load({refresh:true})}/>}
+        ListEmptyComponent={listEmpty}
       />
-
-      <LoginModal
-        visible={showLogin}
-        onClose={() => setShowLogin(false)}
-        onSuccess={async () => {
-          setShowLogin(false);
-          await refreshUserSession();
-          loadJobs();
-        }}
-      />
-      <CreateJobModal
-        visible={showCreateJob}
-        onClose={() => setShowCreateJob(false)}
-        mode="indirect"
-        onSubmit={submitPostedJob}
-        submitting={postingJob}
-      />
-      <HiringNoticeModal
-        visible={!!notice}
-        type={notice?.type}
-        title={notice?.title}
-        body={notice?.body}
-        onPrimary={() => setNotice(null)}
-        onClose={() => setNotice(null)}
-      />
+      <LoginModal visible={showLogin} onClose={()=>setShowLogin(false)} onSuccess={async()=>{setShowLogin(false);await refreshSession();load();}}/>
+      <CreateJobModal visible={showCreate} onClose={()=>setShowCreate(false)} mode="indirect" onSubmit={submitJob} submitting={posting}/>
+      <HiringNoticeModal visible={!!notice} type={notice?.type} title={notice?.title} body={notice?.body} onPrimary={()=>setNotice(null)} onClose={()=>setNotice(null)}/>
     </SafeAreaView>
   );
 }
 
-function statusTextStyle(status, theme) {
-  const normalized = String(status || "open");
-  if (normalized === "waiting_approval") return { color: theme.colors.warning || theme.colors.accent };
-  if (normalized === "in_progress") return { color: theme.colors.accent };
-  if (normalized === "completed") return { color: theme.colors.success || theme.colors.primary };
-  if (["cancelled", "declined"].includes(normalized)) return { color: theme.colors.danger };
-  return { color: theme.colors.primary };
-}
-
-const createStyles = (theme) =>
-  StyleSheet.create({
-    safe: { flex: 1, backgroundColor: theme.colors.bg },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 16,
-      backgroundColor: theme.colors.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
-    },
-    headerText: { flex: 1 },
-    title: { color: theme.colors.text, fontSize: 24, fontWeight: "900" },
-    subtitle: { color: theme.colors.textMuted, fontSize: 13, lineHeight: 18, marginTop: 4 },
-    iconBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.primarySoft,
-      borderWidth: 1,
-      borderColor: theme.colors.primary + "30",
-    },
-    headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-    listContent: { paddingHorizontal: theme.spacing.md, paddingTop: 8, paddingBottom: theme.spacing.xxl },
-    listEmptyContent: { flexGrow: 1 },
-    jobRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 10,
-      paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
-      backgroundColor: theme.colors.bg,
-    },
-    rowBody: { flex: 1, minWidth: 0 },
-    rowTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 },
-    jobCode: { color: theme.colors.primary, fontSize: 12, fontWeight: "900", minWidth: 42 },
-    jobTitle: { flex: 1, color: theme.colors.text, fontSize: 15, fontWeight: "900" },
-    jobMeta: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "700", marginBottom: 2 },
-    jobSubMeta: { color: theme.colors.textVeryMuted || theme.colors.textMuted, fontSize: 12, fontWeight: "700" },
-    rowStatus: { maxWidth: 118, paddingTop: 1, fontSize: 12, fontWeight: "900", textTransform: "capitalize", textAlign: "right" },
-    centerState: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 28,
-      paddingBottom: 48,
-    },
-    emptyIcon: {
-      width: 68,
-      height: 68,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.primarySoft,
-      marginBottom: 16,
-    },
-    emptyTitle: { color: theme.colors.text, fontSize: 20, fontWeight: "900", textAlign: "center" },
-    emptyText: { color: theme.colors.textMuted, fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 8 },
-    primaryBtn: {
-      marginTop: 18,
-      minHeight: 48,
-      borderRadius: 8,
-      paddingHorizontal: 18,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      backgroundColor: theme.colors.primary,
-    },
-    primaryBtnText: { color: theme.colors.onPrimary, fontWeight: "900" },
-    secondaryBtn: {
-      marginTop: 18,
-      minHeight: 46,
-      borderRadius: 8,
-      paddingHorizontal: 18,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    secondaryBtnText: { color: theme.colors.text, fontWeight: "900" },
-  });
+const s=StyleSheet.create({
+  safe:{flex:1,backgroundColor:C.bg},
+  center:{flex:1,alignItems:"center",justifyContent:"center",padding:32,gap:12},
+  header:{flexDirection:"row",alignItems:"center",paddingHorizontal:20,paddingVertical:16,backgroundColor:C.white,borderBottomWidth:1,borderBottomColor:"#EEF0F4"},
+  headerTitle:{fontSize:24,fontWeight:"900",color:"#1A1A2E"},
+  headerSub:{fontSize:13,color:C.slate,marginTop:2},
+  fab:{width:44,height:44,borderRadius:22,backgroundColor:C.teal,alignItems:"center",justifyContent:"center",shadowColor:C.teal,shadowOffset:{width:0,height:4},shadowOpacity:0.3,shadowRadius:8,elevation:5},
+  list:{paddingHorizontal:16,paddingTop:12,paddingBottom:100,gap:10},
+  card:{backgroundColor:C.white,borderRadius:16,padding:14,borderWidth:1,borderColor:"#EEF0F4",shadowColor:"#000",shadowOffset:{width:0,height:2},shadowOpacity:0.06,shadowRadius:8,elevation:2,gap:6},
+  cardTop:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:2},
+  codePill:{backgroundColor:C.tealLight,paddingHorizontal:8,paddingVertical:3,borderRadius:8},
+  codeText:{color:C.teal,fontSize:11,fontWeight:"800"},
+  title:{fontSize:16,fontWeight:"800",color:"#1A1A2E",lineHeight:22},
+  metaRow:{flexDirection:"row",alignItems:"center",gap:5},
+  meta:{color:C.slate,fontSize:13,flex:1},
+  metaSm:{color:C.slate,fontSize:12},
+  cardFooter:{flexDirection:"row",alignItems:"center",gap:12,marginTop:4,flexWrap:"wrap"},
+  applicantPill:{marginLeft:"auto",backgroundColor:C.blueLight,paddingHorizontal:8,paddingVertical:3,borderRadius:8},
+  applicantTxt:{color:C.blue,fontSize:11,fontWeight:"700"},
+  emptyIcon:{width:72,height:72,borderRadius:22,backgroundColor:C.tealLight,alignItems:"center",justifyContent:"center"},
+  emptyTitle:{fontSize:18,fontWeight:"800",color:"#1A1A2E",textAlign:"center"},
+  emptyBody:{fontSize:14,color:C.slate,textAlign:"center",lineHeight:21},
+  primaryBtn:{flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:24,paddingVertical:13,backgroundColor:C.teal,borderRadius:14,shadowColor:C.teal,shadowOffset:{width:0,height:4},shadowOpacity:0.25,shadowRadius:8,elevation:4},
+  primaryTxt:{color:C.white,fontWeight:"800",fontSize:15},
+  outlineBtn:{paddingHorizontal:24,paddingVertical:12,borderRadius:12,borderWidth:1.5,borderColor:C.slate},
+  outlineTxt:{color:C.slate,fontWeight:"700"},
+});
