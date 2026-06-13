@@ -37,7 +37,7 @@ export default function RecommendationsScreen() {
     try {
       if (!silent) setLoading(true);
       setError("");
-      const res = await api.get(`/recommendations/${profileUuid}`);
+      const res = await api.get(`/recommendations/users/${profileUuid}`);
       setItems(Array.isArray(res?.data?.recommendations) ? res.data.recommendations : []);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load recommendations");
@@ -60,7 +60,7 @@ export default function RecommendationsScreen() {
     const score = Number(item.score || 0);
     const recommender = item.recommender?.visible
       ? item.recommender.full_name || item.recommender.username || "Client"
-      : "Private client";
+      : "Recommended by a client";
     return (
       <View style={styles.row}>
         <View style={[styles.scoreBadge, { backgroundColor: ratingColor(score, theme) }]}>
@@ -69,6 +69,14 @@ export default function RecommendationsScreen() {
         <View style={styles.rowBody}>
           <Text style={styles.jobTitle} numberOfLines={1}>{item.job_title || "Completed job"}</Text>
           <Text style={styles.jobCode}>{item.job_code || `Job #${item.job_id}`}</Text>
+          {item.service_type ? <Text style={styles.serviceText}>Recommended for {item.service_type}</Text> : null}
+          {(item.started_at || item.completed_at) ? (
+            <Text style={styles.timelineText}>
+              {item.started_at ? `Started ${new Date(item.started_at).toLocaleDateString()}` : "Start not confirmed"}
+              {" | "}
+              {item.completed_at ? `Completed ${new Date(item.completed_at).toLocaleDateString()}` : "Completion not confirmed"}
+            </Text>
+          ) : null}
           <Text style={styles.reason}>{item.reason}</Text>
           <View style={styles.recommenderRow}>
             <AppIcon name={item.recommender?.visible ? "user" : "lock"} size={14} color={theme.colors.textMuted} />
@@ -160,6 +168,8 @@ const createStyles = (theme) => StyleSheet.create({
   rowBody: { flex: 1, minWidth: 0 },
   jobTitle: { color: theme.colors.text, fontSize: 15, fontWeight: "900" },
   jobCode: { color: theme.colors.primary, fontSize: 12, fontWeight: "900", marginTop: 2 },
+  serviceText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "800", marginTop: 4 },
+  timelineText: { color: theme.colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 4 },
   reason: { color: theme.colors.text, fontSize: 14, lineHeight: 20, marginTop: 8 },
   recommenderRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 },
   recommender: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "800" },
