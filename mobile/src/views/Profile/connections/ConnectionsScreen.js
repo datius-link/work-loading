@@ -14,9 +14,38 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, socialRequest, viewerRequest } from "../../../api/api";
 import AppIcon from "../../../icons/AppIcon";
+import { useLanguage } from "../../../LanguageContext";
 import { useAppTheme } from "../../../theme";
 
 const Tab = createMaterialTopTabNavigator();
+const T = {
+  en: {
+    title: "Connections",
+    followers: "Followers",
+    following: "Following",
+    search: "Search users",
+    noFollowers: "No followers yet",
+    noFollowersBody: "People who follow this profile will appear here.",
+    noFollowing: "Not following anyone yet",
+    noFollowingBody: "Profiles followed from this account will appear here.",
+    noMatches: "No matching users.",
+    followBack: "Follow Back",
+    viewProfile: "View Profile",
+  },
+  sw: {
+    title: "Miunganisho",
+    followers: "Followers",
+    following: "Following",
+    search: "Tafuta watumiaji",
+    noFollowers: "Hakuna followers bado",
+    noFollowersBody: "Watu wanaofuata profaili hii wataonekana hapa.",
+    noFollowing: "Hufuati mtu bado",
+    noFollowingBody: "Profaili unazofuata zitaonekana hapa.",
+    noMatches: "Hakuna watumiaji wanaolingana.",
+    followBack: "Follow Back",
+    viewProfile: "Ona Profaili",
+  },
+};
 
 function avatarFor(user) {
   if (user?.profile_pic || user?.profilePic) return user.profile_pic || user.profilePic;
@@ -28,6 +57,8 @@ function avatarFor(user) {
 export default function ConnectionsScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
+  const t = T[language] || T.en;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const providerUuid = route?.params?.providerUuid || route?.params?.providerId || "me";
 
@@ -40,21 +71,22 @@ export default function ConnectionsScreen({ navigation, route }) {
         >
           <AppIcon name="arrowLeft" size={20} color={theme.colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.topTitle}>Connections</Text>
+        <Text style={styles.topTitle}>{t.title}</Text>
         <View style={styles.iconBtn} />
       </View>
 
       <Tab.Navigator
-        initialRouteName={route?.params?.initialTab === "following" ? "Following" : "Followers"}
+        initialRouteName={route?.params?.initialTab === "following" ? t.following : t.followers}
         screenOptions={{
           tabBarStyle: styles.tabBar,
           tabBarIndicatorStyle: styles.indicator,
           tabBarLabelStyle: styles.tabLabel,
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: theme.colors.textMuted,
+          sceneContainerStyle: styles.scene,
         }}
       >
-        <Tab.Screen name="Followers">
+        <Tab.Screen name={t.followers}>
           {() => (
             <ConnectionsList
               type="followers"
@@ -62,10 +94,11 @@ export default function ConnectionsScreen({ navigation, route }) {
               navigation={navigation}
               styles={styles}
               theme={theme}
+              t={t}
             />
           )}
         </Tab.Screen>
-        <Tab.Screen name="Following">
+        <Tab.Screen name={t.following}>
           {() => (
             <ConnectionsList
               type="following"
@@ -73,6 +106,7 @@ export default function ConnectionsScreen({ navigation, route }) {
               navigation={navigation}
               styles={styles}
               theme={theme}
+              t={t}
             />
           )}
         </Tab.Screen>
@@ -81,7 +115,7 @@ export default function ConnectionsScreen({ navigation, route }) {
   );
 }
 
-function ConnectionsList({ type, providerUuid, navigation, styles, theme }) {
+function ConnectionsList({ type, providerUuid, navigation, styles, theme, t }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -147,12 +181,12 @@ function ConnectionsList({ type, providerUuid, navigation, styles, theme }) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyTitle}>
-          {type === "followers" ? "No followers yet" : "Not following anyone yet"}
+          {type === "followers" ? t.noFollowers : t.noFollowing}
         </Text>
         <Text style={styles.emptyText}>
           {type === "followers"
-            ? "People who follow this profile will appear here."
-            : "Profiles followed from this account will appear here."}
+            ? t.noFollowersBody
+            : t.noFollowingBody}
         </Text>
       </View>
     );
@@ -168,7 +202,7 @@ function ConnectionsList({ type, providerUuid, navigation, styles, theme }) {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search users"
+            placeholder={t.search}
             placeholderTextColor={theme.colors.textMuted}
             style={styles.searchInput}
           />
@@ -176,7 +210,7 @@ function ConnectionsList({ type, providerUuid, navigation, styles, theme }) {
       }
       ListEmptyComponent={
         <View style={styles.emptySmall}>
-          <Text style={styles.emptyText}>No matching users.</Text>
+          <Text style={styles.emptyText}>{t.noMatches}</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -203,7 +237,7 @@ function ConnectionsList({ type, providerUuid, navigation, styles, theme }) {
               onPress={() => (type === "followers" && !(item.is_following || item.is_followed_by_me) ? toggleFollow(item) : navigation.navigate("UserProfile", { uuid: item.provider_uuid || item.uuid }))}
             >
               <Text style={[styles.followText, (type === "following" || item.is_following || item.is_followed_by_me) && styles.followingText]}>
-                {type === "followers" && !(item.is_following || item.is_followed_by_me) ? "Follow Back" : "View Profile"}
+                {type === "followers" && !(item.is_following || item.is_followed_by_me) ? t.followBack : t.viewProfile}
               </Text>
             </TouchableOpacity>
           )}
@@ -260,6 +294,10 @@ const createStyles = (theme) =>
     },
     listContent: {
       paddingVertical: 8,
+      backgroundColor: theme.colors.bg,
+    },
+    scene: {
+      backgroundColor: theme.colors.bg,
     },
     searchWrap: {
       paddingHorizontal: 16,
