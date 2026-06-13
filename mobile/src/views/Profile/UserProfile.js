@@ -302,6 +302,13 @@ export default function UserProfile() {
       count: Number(profile?.recommendations_count || profile?.ratings_count || 0),
     });
 
+  const navigateToRatings = () =>
+    navigation.navigate("ProfileRatings", {
+      profileUuid: profile?.uuid,
+      username: profile?.username,
+      count: Number(profile?.ratings_count || 0),
+    });
+
   const navigateToFollowers = () =>
     navigation.navigate("ConnectionsScreen", { providerUuid: profile?.uuid, initialTab: "followers" });
 
@@ -501,6 +508,18 @@ export default function UserProfile() {
             <Text style={styles.recommendationsMeta}>Coming soon as a list</Text>
           </View>
           <Text style={styles.recommendationsCount}>{formatCount(profile.recommendations_count || profile.ratings_count || 0)}</Text>
+          <AppIcon name="arrowRight" size={16} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.recommendationsBtn} onPress={navigateToRatings} activeOpacity={0.86}>
+          <View style={styles.recommendationsIcon}>
+            <AppIcon name="star" size={18} color={theme.colors.primary} />
+          </View>
+          <View style={styles.recommendationsCopy}>
+            <Text style={styles.recommendationsTitle}>Ratings</Text>
+            <Text style={styles.recommendationsMeta}>Per completed job</Text>
+          </View>
+          <Text style={styles.recommendationsCount}>{formatCount(profile.ratings_count || 0)}</Text>
           <AppIcon name="arrowRight" size={16} color={theme.colors.textMuted} />
         </TouchableOpacity>
 
