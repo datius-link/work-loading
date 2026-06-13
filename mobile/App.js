@@ -27,6 +27,7 @@ import JobApplicantDetails from "./src/views/Jobs/MyRequests/JobApplicantDetails
 import UserProfile from "./src/views/Profile/UserProfile";
 import ProfileFutureList from "./src/views/Profile/ProfileFutureList";
 import RecommendationsScreen from "./src/views/Profile/RecommendationsScreen";
+import RatingsScreen from "./src/views/Profile/RatingsScreen";
 import EditProfile from "./src/views/Profile/editProfile/EditProfile";
 
 /* ---------------------------
@@ -50,6 +51,7 @@ import PostDetails from "./src/views/Profile/posting/PostDetails";
 import PostFeedView from "./src/views/postCard/PostFeedView";
 import RequestDetails from "./src/views/Jobs/MyJobs/RequestDetails";
 import JobApplication from "./src/views/Jobs/MyRequests/JobApplication";
+import JobWorkspace from "./src/views/Jobs/Workspace/JobWorkspace";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -200,6 +202,7 @@ function RootNavigator() {
         {/* -------- USER WORKFLOWS -------- */}
         <Stack.Screen name="UserProfile" component={UserProfile} />
         <Stack.Screen name="ProfileRecommendations" component={RecommendationsScreen} />
+        <Stack.Screen name="ProfileRatings" component={RatingsScreen} />
         <Stack.Screen name="ProfileWorksDone" component={ProfileFutureList} />
         <Stack.Screen name="PostFeedView" component={PostFeedView} />
         <Stack.Screen name="JobDetails" component={JobDetails} />
@@ -207,6 +210,7 @@ function RootNavigator() {
         <Stack.Screen name="EditProfile" component={EditProfile} />
         <Stack.Screen name="RequestDetails" component={RequestDetails} />
         <Stack.Screen name="JobApplication" component={JobApplication} />
+        <Stack.Screen name="JobWorkspace" component={JobWorkspace} />
 
         {/* -------- POSTS -------- */}
         <Stack.Screen name="PicksScreen" component={ConnectionsScreen} />
