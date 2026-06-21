@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as jobMessages from "../jobMessages.js";
+import type * as realtimeEvents from "../realtimeEvents.js";
 import type * as storage from "../storage.js";
 
 import type {
@@ -17,6 +19,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  jobMessages: typeof jobMessages;
+  realtimeEvents: typeof realtimeEvents;
   storage: typeof storage;
 }>;
 
