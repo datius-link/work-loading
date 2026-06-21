@@ -42,7 +42,7 @@ async function getProviderSocialCounts(profileUuid) {
 }
 
 async function getProviderOr404(uuid) {
-  return db("profiles").where({ uuid, role: "service_provider" }).first();
+  return db("profiles").where({ uuid }).first();
 }
 
 export async function getMyProviderProfile(req, res) {
@@ -118,7 +118,6 @@ export async function searchProviderProfiles(req, res) {
     const term = q.replace(/^[@#]+/, "");
     const providers = await db("profiles")
       .select("uuid", "username", "full_name", "profile_pic", "services")
-      .where({ role: "service_provider" })
       .where((qb) => {
         qb.whereILike("username", `%${term}%`)
           .orWhereILike("full_name", `%${term}%`)
@@ -174,7 +173,7 @@ export async function updateMyProviderProfile(req, res) {
     }
 
     const updated = await db("profiles")
-      .where({ uuid: profileUuid, role: "service_provider" })
+      .where({ uuid: profileUuid })
       .update(updatePayload);
 
     if (!updated) return res.status(404).json({ message: "Profile not found" });
