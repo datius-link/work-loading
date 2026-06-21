@@ -1,13 +1,23 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
 import LoginModal from "./Auth/LoginModal";
 import { useUserSession } from "../utils/userSession";
-import { api, viewerRequest } from "../api/api";
+import { api, getFriendlyApiError, viewerRequest } from "../api/api";
 import Txt from "../Txt";
+import PrivacySettings from "./Settings/PrivacySettings";
+import NotificationSettings, { DEFAULT_NOTIFICATION_SETTINGS } from "./Settings/NotificationSettings";
+import HelpCenter from "./Settings/HelpCenter";
+import ContactAdmin from "./Settings/ContactAdmin";
+import PrivacyPolicy from "./Settings/PrivacyPolicy";
+import AboutEkazi from "./Settings/AboutEkazi";
+import BluetoothDemo from "./Settings/BluetoothDemo";
+import SupportActionSheet from "./Settings/SupportActionSheet";
+import { cachedGet } from "../utils/offlineCache";
+import CachedDataNotice from "../components/CachedDataNotice";
 
 const DEFAULT_PRIVACY = {
   show_phone_in_jobs: true,
@@ -15,185 +25,283 @@ const DEFAULT_PRIVACY = {
   show_socials_in_jobs: false,
   show_public_insights: true,
   show_profile_in_recommendations: false,
+  notification_settings: DEFAULT_NOTIFICATION_SETTINGS,
 };
+
+const APP_VERSION = "1.0.0";
 
 export default function Settings() {
   const { theme, mode, toggleTheme } = useAppTheme();
   const { language, setLanguage } = useLanguage();
   const insets = useSafeAreaInsets();
-  const { email, loaded, profile, user, clearSession, refresh } = useUserSession();
+  const { email, profile, user, clearSession, refresh } = useUserSession();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [query, setQuery] = useState("");
+  const [activeScreen, setActiveScreen] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
+  const [showSupportActions, setShowSupportActions] = useState(false);
   const [privacy, setPrivacy] = useState(DEFAULT_PRIVACY);
   const [savingPrivacy, setSavingPrivacy] = useState(false);
+  const [showingCached, setShowingCached] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
   const isDark = mode === "dark";
   const nextLanguage = language === "en" ? "sw" : "en";
   const nextLanguageLabel = language === "en" ? "Kiswahili" : "English";
 
-  const visible = (...terms) => {
+  const visible = (..._terms) => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return terms.join(" ").toLowerCase().includes(q);
+    return !q;
   };
 
   useEffect(() => {
     const uuid = profile?.uuid || user?.uuid;
     if (!email || !uuid) return;
-    api.get(`/profiles/${uuid}`)
-      .then((res) => {
-        setPrivacy({ ...DEFAULT_PRIVACY, ...(res?.data?.profile?.privacy_settings || {}) });
+    cachedGet(`profile:${uuid}`, () => api.get(`/profiles/${uuid}`).then((res) => res.data))
+      .then((result) => {
+        const saved = result?.data?.profile?.privacy_settings || {};
+        setShowingCached(result.fromCache);
+        setPrivacy({
+          ...DEFAULT_PRIVACY,
+          ...saved,
+          notification_settings: {
+            ...DEFAULT_NOTIFICATION_SETTINGS,
+            ...(saved.notification_settings || {}),
+          },
+        });
       })
-      .catch(() => {});
-  }, [email, profile?.uuid, user?.uuid]);
+      .catch((err) => setSettingsError(getFriendlyApiError(err, language)));
+  }, [email, language, profile?.uuid, user?.uuid]);
 
-  const updatePrivacy = async (key, value) => {
-    const previous = privacy;
-    const next = { ...privacy, [key]: value };
+  const updatePrivacyObject = async (next, previous) => {
     setPrivacy(next);
     setSavingPrivacy(true);
     try {
+      setSettingsError("");
       await viewerRequest("put", "/profiles/me", { privacy_settings: next });
     } catch (err) {
       setPrivacy(previous);
+      setSettingsError(getFriendlyApiError(err, language));
       console.log("privacy update error:", err?.response?.data || err?.message);
     } finally {
       setSavingPrivacy(false);
     }
   };
 
+  const updatePrivacy = (key, value) => {
+    const previous = privacy;
+    updatePrivacyObject({ ...privacy, [key]: value }, previous);
+  };
+
+  const updateNotification = (key, value) => {
+    const previous = privacy;
+    updatePrivacyObject({
+      ...privacy,
+      notification_settings: {
+        ...DEFAULT_NOTIFICATION_SETTINGS,
+        ...(privacy.notification_settings || {}),
+        [key]: value,
+      },
+    }, previous);
+  };
+
+  const openProtected = (screen) => {
+    if (!email) {
+      setShowLogin(true);
+      return;
+    }
+    setActiveScreen(screen);
+  };
+
+  const searchItems = [
+    { icon: "shield", en: "Privacy", sw: "Faragha", terms: "privacy contacts faragha mawasiliano", action: () => openProtected("privacy") },
+    { icon: "bell", en: "Notification Settings", sw: "Mipangilio ya Notifications", terms: "notification messages jobs sound vibration popup ujumbe kazi sauti", action: () => openProtected("notifications") },
+    { icon: "globe", en: "Language", sw: "Lugha", terms: "language english swahili kiswahili lugha", action: () => setLanguage(nextLanguage) },
+    { icon: isDark ? "moon" : "sun", en: "Theme", sw: "Muonekano", terms: "theme appearance dark light muonekano nyeusi nyepesi", action: toggleTheme },
+    { icon: "help", en: "Help", sw: "Msaada", terms: "help faq support msaada", action: () => setActiveScreen("help") },
+    { icon: "mail", en: "Contact Admin", sw: "Wasiliana na Admin", terms: "contact admin support wasiliana msaada", action: () => openProtected("contact") },
+    { icon: "more-horizontal", en: "Support Actions", sw: "Hatua za Msaada", terms: "feedback report problem support maoni ripoti", action: () => email ? setShowSupportActions(true) : setShowLogin(true) },
+    { icon: "file-text", en: "Privacy Policy", sw: "Sera ya Faragha", terms: "legal privacy policy sheria sera faragha", action: () => setActiveScreen("privacyPolicy") },
+    { icon: "logo", en: "About e-kazi", sw: "Kuhusu e-kazi", terms: "about version kuhusu toleo", action: () => setActiveScreen("about") },
+    { icon: "activity", en: "Bluetooth Demo", sw: "Bluetooth Demo", terms: "bluetooth demo assignment", action: () => setActiveScreen("bluetooth") },
+  ];
+  const normalizedQuery = query.trim().toLowerCase();
+  const searchResults = normalizedQuery
+    ? searchItems.filter((item) => `${item.en} ${item.sw} ${item.terms}`.toLowerCase().includes(normalizedQuery)).slice(0, 7)
+    : [];
+
+  if (activeScreen === "privacy") {
+    return <PrivacySettings onBack={() => setActiveScreen(null)} privacy={privacy} saving={savingPrivacy} onChange={updatePrivacy} />;
+  }
+  if (activeScreen === "notifications") {
+    return (
+      <NotificationSettings
+        onBack={() => setActiveScreen(null)}
+        settings={privacy.notification_settings}
+        saving={savingPrivacy}
+        onChange={updateNotification}
+      />
+    );
+  }
+  if (activeScreen === "help") return <HelpCenter onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "contact") return <ContactAdmin onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "privacyPolicy") return <PrivacyPolicy onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "about") return <AboutEkazi version={APP_VERSION} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "bluetooth") return <BluetoothDemo onBack={() => setActiveScreen(null)} />;
+
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 28 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 28 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Txt en="Settings" sw="Mipangilio" style={styles.title} />
+        <CachedDataNotice visible={showingCached} />
+        {settingsError ? (
+          <View style={styles.inlineError}>
+            <AppIcon name="warning" size={15} color={theme.colors.danger} />
+            <Txt en={settingsError} sw={settingsError} style={styles.inlineErrorText} />
+          </View>
+        ) : null}
 
         <View style={styles.searchBox}>
-          <AppIcon name="search" size={17} color={theme.colors.textMuted} />
+          <AppIcon name="search" size={16} color={theme.colors.textMuted} />
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder={language === "sw" ? "Tafuta account, privacy, lugha..." : "Search account, privacy, language..."}
+            placeholder={language === "sw" ? "Tafuta mipangilio..." : "Search settings..."}
             placeholderTextColor={theme.colors.textMuted}
             style={styles.searchInput}
           />
           {query ? (
             <TouchableOpacity onPress={() => setQuery("")} hitSlop={8}>
-              <AppIcon name="close" size={17} color={theme.colors.textMuted} />
+              <AppIcon name="close" size={16} color={theme.colors.textMuted} />
             </TouchableOpacity>
           ) : null}
         </View>
+        {normalizedQuery ? (
+          <View style={styles.searchDropdown}>
+            {searchResults.length ? searchResults.map((item, index) => (
+              <React.Fragment key={item.en}>
+                {index ? <View style={styles.searchDivider} /> : null}
+                <TouchableOpacity
+                  style={styles.searchResult}
+                  onPress={() => {
+                    setQuery("");
+                    item.action();
+                  }}
+                >
+                  <AppIcon name={item.icon} size={16} color={theme.colors.primary} />
+                  <Txt en={item.en} sw={item.sw} style={styles.searchResultText} />
+                  <AppIcon name="chevron-right" size={14} color={theme.colors.textMuted} />
+                </TouchableOpacity>
+              </React.Fragment>
+            )) : (
+              <Txt en="No matching settings" sw="Hakuna mipangilio inayolingana" style={styles.noResults} />
+            )}
+          </View>
+        ) : null}
 
-        {visible("account login register logout user akaunti ingia jisajili toka") ? (
+        {visible("account login register privacy notifications language theme akaunti faragha lugha muonekano") ? (
           <>
             <Section en="Account" sw="Akaunti" styles={styles} />
             <View style={styles.panel}>
+              {!email && visible("login register account ingia jisajili akaunti") ? (
+                <>
+                  <SettingRow icon="login" en="Login / Register" sw="Ingia / Jisajili" bodyEn="One account for hiring and work." bodySw="Akaunti moja kwa kuajiri na kufanya kazi." onPress={() => setShowLogin(true)} styles={styles} theme={theme} />
+                  <Divider styles={styles} />
+                </>
+              ) : null}
+              {visible("privacy contacts faragha mawasiliano") ? (
+                <>
+                  <SettingRow icon="shield" en="Privacy" sw="Faragha" bodyEn="Job contact and profile visibility." bodySw="Mawasiliano ya kazi na mwonekano wa profaili." onPress={() => openProtected("privacy")} styles={styles} theme={theme} />
+                  <Divider styles={styles} />
+                </>
+              ) : null}
+              {visible("notification messages jobs sound vibration popup ujumbe kazi sauti mtetemo") ? (
+                <>
+                  <SettingRow icon="bell" en="Notification Settings" sw="Mipangilio ya Notifications" bodyEn="Messages, jobs, sound, vibration, and previews." bodySw="Ujumbe, kazi, sauti, mtetemo na previews." onPress={() => openProtected("notifications")} styles={styles} theme={theme} />
+                  <Divider styles={styles} />
+                </>
+              ) : null}
+              {visible("language english swahili kiswahili lugha") ? (
+                <>
+                  <View style={styles.row}>
+                    <IconBox name="globe" styles={styles} theme={theme} />
+                    <View style={styles.rowText}>
+                      <Txt en="Language" sw="Lugha" style={styles.rowTitle} />
+                      <Txt en={language === "en" ? "English" : "Kiswahili"} sw={language === "en" ? "English" : "Kiswahili"} style={styles.rowBody} />
+                    </View>
+                    <TouchableOpacity style={styles.smallBtn} onPress={() => setLanguage(nextLanguage)}>
+                      <Txt en={nextLanguageLabel} sw={nextLanguageLabel} style={styles.smallBtnText} />
+                    </TouchableOpacity>
+                  </View>
+                  <Divider styles={styles} />
+                </>
+              ) : null}
+              {visible("theme appearance dark light muonekano nyeusi nyepesi") ? (
+                <View style={styles.row}>
+                  <IconBox name={isDark ? "moon" : "sun"} styles={styles} theme={theme} />
+                  <View style={styles.rowText}>
+                    <Txt en="Theme" sw="Muonekano" style={styles.rowTitle} />
+                    <Txt en={isDark ? "Dark" : "Light"} sw={isDark ? "Nyeusi" : "Nyepesi"} style={styles.rowBody} />
+                  </View>
+                  <View style={styles.modeSwitch}>
+                    <TouchableOpacity style={[styles.modeBtn, !isDark && styles.modeActive]} onPress={() => isDark && toggleTheme()}>
+                      <Txt en="Light" sw="Light" style={[styles.modeText, !isDark && styles.modeTextActive]} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeActive]} onPress={() => !isDark && toggleTheme()}>
+                      <Txt en="Dark" sw="Dark" style={[styles.modeText, isDark && styles.modeTextActive]} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </>
+        ) : null}
+
+        {visible("support help contact admin feedback report problem msaada maoni ripoti") ? (
+          <>
+            <Section en="Support" sw="Msaada" styles={styles} />
+            <View style={styles.panel}>
+              <SettingRow icon="help" en="Help" sw="Msaada" bodyEn="Frequently asked questions." bodySw="Maswali yanayoulizwa mara kwa mara." onPress={() => setActiveScreen("help")} styles={styles} theme={theme} />
+              <Divider styles={styles} />
+              <SettingRow icon="mail" en="Contact Admin" sw="Wasiliana na Admin" bodyEn="Send a private support message." bodySw="Tuma ujumbe wa faragha wa msaada." onPress={() => openProtected("contact")} styles={styles} theme={theme} />
+              <Divider styles={styles} />
+              <SettingRow icon="more-horizontal" en="Support Actions" sw="Hatua za Msaada" bodyEn="Send feedback or report a problem." bodySw="Tuma maoni au ripoti tatizo." onPress={() => email ? setShowSupportActions(true) : setShowLogin(true)} styles={styles} theme={theme} />
+            </View>
+          </>
+        ) : null}
+
+        {visible("legal privacy policy sheria sera faragha") ? (
+          <>
+            <Section en="Legal" sw="Sheria" styles={styles} />
+            <View style={styles.panel}>
+              <SettingRow icon="file-text" en="Privacy Policy" sw="Sera ya Faragha" bodyEn="How e-kazi handles your information." bodySw="Jinsi e-kazi inavyotumia taarifa zako." onPress={() => setActiveScreen("privacyPolicy")} styles={styles} theme={theme} />
+            </View>
+          </>
+        ) : null}
+
+        {visible("about version bluetooth logout kuhusu toleo toka") ? (
+          <>
+            <Section en="About" sw="Kuhusu" styles={styles} />
+            <View style={styles.panel}>
+              <SettingRow icon="logo" en="About e-kazi" sw="Kuhusu e-kazi" bodyEn="Jobs, services, hiring, and trust." bodySw="Kazi, huduma, kuajiri na uaminifu." onPress={() => setActiveScreen("about")} styles={styles} theme={theme} />
+              <Divider styles={styles} />
               <View style={styles.row}>
-                <View style={styles.iconWrap}>
-                  <AppIcon name={email ? "user" : "lock"} size={19} color={theme.colors.primary} />
-                </View>
-                <View style={styles.rowText}>
-                  {email ? (
-                    <>
-                      <Txt en={email} sw={email} style={styles.rowTitle} />
-                      <Txt en="User account" sw="Akaunti ya mtumiaji" style={styles.rowBody} />
-                    </>
-                  ) : (
-                    <>
-                      <Txt en="Login / Register" sw="Ingia / Jisajili" style={styles.rowTitle} />
-                      <Txt en="One account for hiring and work." sw="Akaunti moja kwa kuajiri na kazi." style={styles.rowBody} />
-                    </>
-                  )}
-                </View>
+                <IconBox name="file-text" styles={styles} theme={theme} />
+                <View style={styles.rowText}><Txt en="App Version" sw="Toleo la App" style={styles.rowTitle} /></View>
+                <Txt en={APP_VERSION} sw={APP_VERSION} style={styles.version} />
               </View>
+              <Divider styles={styles} />
+              <SettingRow icon="activity" en="Bluetooth Demo" sw="Bluetooth Demo" bodyEn="Simulated assignment demo." bodySw="Demo ya assignment iliyosimuliwa." onPress={() => setActiveScreen("bluetooth")} styles={styles} theme={theme} />
               {email ? (
-                <TouchableOpacity style={styles.dangerBtn} onPress={() => setShowLogout(true)}>
-                  <AppIcon name="logout" size={16} color={theme.colors.danger} />
-                  <Txt en="Logout" sw="Toka" style={styles.dangerText} />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowLogin(true)}>
-                  <AppIcon name="login" size={16} color={theme.colors.onPrimary} />
-                  <Txt en="Login / Register" sw="Ingia / Jisajili" style={styles.primaryText} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </>
-        ) : null}
-
-        {email && visible("privacy contact phone email socials assigned job faragha simu barua pepe mitandao") ? (
-          <>
-            <Section en="Privacy" sw="Faragha" styles={styles} />
-            <View style={styles.panel}>
-              <Txt en="Assigned job contacts" sw="Mawasiliano ya kazi uliyopewa" style={styles.rowTitle} />
-              <Txt
-                en="These details are only shared inside assigned job screens, never on public profiles."
-                sw="Taarifa hizi zinaonekana ndani ya screen ya kazi iliyopewa tu, si kwenye public profile."
-                style={styles.rowBody}
-              />
-              <Divider styles={styles} />
-              <PrivacyToggle en="Show phone" sw="Onyesha simu" value={!!privacy.show_phone_in_jobs} disabled={savingPrivacy} onValueChange={(value) => updatePrivacy("show_phone_in_jobs", value)} styles={styles} theme={theme} />
-              <Divider styles={styles} />
-              <PrivacyToggle en="Show email" sw="Onyesha email" value={!!privacy.show_email_in_jobs} disabled={savingPrivacy} onValueChange={(value) => updatePrivacy("show_email_in_jobs", value)} styles={styles} theme={theme} />
-              <Divider styles={styles} />
-              <PrivacyToggle en="Show socials" sw="Onyesha mitandao" value={!!privacy.show_socials_in_jobs} disabled={savingPrivacy} onValueChange={(value) => updatePrivacy("show_socials_in_jobs", value)} styles={styles} theme={theme} />
-              <PrivacyToggle en="Show public insights" sw="Onyesha maarifa hadharani" value={!!privacy.show_public_insights} disabled={savingPrivacy} onValueChange={(value) => updatePrivacy("show_public_insights", value)} styles={styles} theme={theme} />
-              <PrivacyToggle en="Show name in recommendations" sw="Onyesha jina kwenye mapendekezo" value={!!privacy.show_profile_in_recommendations} disabled={savingPrivacy} onValueChange={(value) => updatePrivacy("show_profile_in_recommendations", value)} styles={styles} theme={theme} />
-            </View>
-          </>
-        ) : null}
-
-        {visible("preferences language appearance theme kiswahili english muonekano lugha") ? (
-          <>
-            <Section en="Preferences" sw="Mapendeleo" styles={styles} />
-            <View style={styles.panel}>
-              <View style={styles.row}>
-                <View style={styles.iconWrap}>
-                  <AppIcon name="globe" size={19} color={theme.colors.primary} />
-                </View>
-                <View style={styles.rowText}>
-                  <Txt en="Language" sw="Lugha" style={styles.rowTitle} />
-                  <Txt en={language === "en" ? "English" : "Kiswahili"} sw={language === "en" ? "English" : "Kiswahili"} style={styles.rowBody} />
-                </View>
-                <TouchableOpacity style={styles.smallBtn} onPress={() => setLanguage(nextLanguage)}>
-                  <Txt en={nextLanguageLabel} sw={nextLanguageLabel} style={styles.smallBtnText} />
-                </TouchableOpacity>
-              </View>
-              <Divider styles={styles} />
-              <View style={styles.row}>
-                <View style={styles.iconWrap}>
-                  <AppIcon name={isDark ? "moon" : "sun"} size={19} color={theme.colors.primary} />
-                </View>
-                <View style={styles.rowText}>
-                  <Txt en="Appearance" sw="Muonekano" style={styles.rowTitle} />
-                  <Txt en={isDark ? "Dark" : "Light"} sw={isDark ? "Nyeusi" : "Nyepesi"} style={styles.rowBody} />
-                </View>
-                <View style={styles.modeSwitch}>
-                  <TouchableOpacity style={[styles.modeBtn, !isDark && styles.modeActive]} onPress={() => isDark && toggleTheme()}>
-                    <Txt en="Light" sw="Nyepesi" style={[styles.modeText, !isDark && styles.modeTextActive]} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeActive]} onPress={() => !isDark && toggleTheme()}>
-                    <Txt en="Dark" sw="Nyeusi" style={[styles.modeText, isDark && styles.modeTextActive]} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </>
-        ) : null}
-
-        {visible("help support msaada profile posts jobs notifications") ? (
-          <>
-            <Section en="Help" sw="Msaada" styles={styles} />
-            <View style={styles.panel}>
-              <View style={styles.row}>
-                <View style={styles.iconWrap}>
-                  <AppIcon name="help" size={19} color={theme.colors.primary} />
-                </View>
-                <View style={styles.rowText}>
-                  <Txt en="Help Center" sw="Kituo cha Msaada" style={styles.rowTitle} />
-                  <Txt en="Get support for account, jobs, profile, posts, and notifications." sw="Pata msaada kuhusu akaunti, kazi, profaili, posts, na notifications." style={styles.rowBody} />
-                </View>
-              </View>
+                <>
+                  <Divider styles={styles} />
+                  <SettingRow icon="logout" en="Logout" sw="Toka" danger onPress={() => setShowLogout(true)} styles={styles} theme={theme} />
+                </>
+              ) : null}
             </View>
           </>
         ) : null}
@@ -207,14 +315,13 @@ export default function Settings() {
           await refresh();
         }}
       />
+      <SupportActionSheet visible={showSupportActions} onClose={() => setShowSupportActions(false)} />
       <Modal visible={showLogout} transparent animationType="fade" onRequestClose={() => setShowLogout(false)}>
         <View style={styles.overlay}>
           <View style={styles.sheet}>
-            <View style={styles.logoutIcon}>
-              <AppIcon name="logout" size={22} color={theme.colors.danger} />
-            </View>
+            <View style={styles.logoutIcon}><AppIcon name="logout" size={21} color={theme.colors.danger} /></View>
             <Txt en="Logout" sw="Toka" style={styles.sheetTitle} />
-            <Txt en="You will be signed out of this user account. Your jobs and profile will remain saved." sw="Utatoka kwenye akaunti hii. Kazi na profaili yako vitabaki." style={styles.sheetBody} />
+            <Txt en="Your jobs and profile will remain saved." sw="Kazi na profaili yako vitabaki salama." style={styles.sheetBody} />
             <View style={styles.sheetActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowLogout(false)}>
                 <Txt en="Cancel" sw="Ghairi" style={styles.cancelText} />
@@ -244,140 +351,61 @@ function Divider({ styles }) {
   return <View style={styles.divider} />;
 }
 
-function PrivacyToggle({ en, sw, value, disabled, onValueChange, styles, theme }) {
+function IconBox({ name, styles, theme }) {
+  return <View style={styles.iconWrap}><AppIcon name={name} size={17} color={theme.colors.primary} /></View>;
+}
+
+function SettingRow({ icon, en, sw, bodyEn, bodySw, onPress, danger, styles, theme }) {
   return (
-    <View style={styles.privacyRow}>
-      <Txt en={en} sw={sw} style={styles.rowTitle} />
-      <Switch
-        value={value}
-        disabled={disabled}
-        onValueChange={onValueChange}
-        trackColor={{ false: theme.colors.border, true: theme.colors.primarySoft }}
-        thumbColor={value ? theme.colors.primary : theme.colors.textMuted}
-      />
-    </View>
+    <TouchableOpacity style={styles.row} onPress={onPress} disabled={!onPress} activeOpacity={0.75}>
+      <IconBox name={icon} styles={styles} theme={theme} />
+      <View style={styles.rowText}>
+        <Txt en={en} sw={sw} style={[styles.rowTitle, danger && { color: theme.colors.danger }]} />
+        {bodyEn ? <Txt en={bodyEn} sw={bodySw} style={styles.rowBody} /> : null}
+      </View>
+      {onPress ? <AppIcon name="chevron-right" size={15} color={danger ? theme.colors.danger : theme.colors.textMuted} /> : null}
+    </TouchableOpacity>
   );
 }
 
 const createStyles = (theme) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.colors.bg },
-    content: { padding: theme.spacing.md, gap: 12 },
-    title: { color: theme.colors.text, fontSize: 24, fontWeight: "900" },
-    searchBox: {
-      minHeight: 46,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 9,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.surface,
-      paddingHorizontal: 12,
-    },
-    searchInput: { flex: 1, color: theme.colors.text, fontSize: 14, fontWeight: "700" },
-    section: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase", marginTop: 6 },
-    panel: {
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: theme.colors.border,
-      paddingVertical: 10,
-      gap: 12,
-    },
-    row: { flexDirection: "row", alignItems: "center", gap: 12 },
-    iconWrap: {
-      width: 40,
-      height: 40,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.primarySoft,
-    },
+    content: { padding: 14, gap: 9 },
+    title: { color: theme.colors.text, fontSize: 22, fontWeight: "900" },
+    searchBox: { height: 41, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, paddingHorizontal: 11 },
+    searchInput: { flex: 1, color: theme.colors.text, fontSize: 13, fontWeight: "700" },
+    searchDropdown: { marginTop: -4, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 9, paddingHorizontal: 10, backgroundColor: theme.colors.surface },
+    searchResult: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 9 },
+    searchResultText: { flex: 1, color: theme.colors.text, fontSize: 12.5, fontWeight: "800" },
+    searchDivider: { height: 1, marginLeft: 25, backgroundColor: theme.colors.border },
+    noResults: { color: theme.colors.textMuted, fontSize: 12, textAlign: "center", paddingVertical: 13 },
+    inlineError: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.danger + "55", backgroundColor: theme.colors.surface, flexDirection: "row", alignItems: "center", gap: 7 },
+    inlineErrorText: { flex: 1, color: theme.colors.text, fontSize: 11.5, lineHeight: 16 },
+    section: { color: theme.colors.textMuted, fontSize: 10.5, fontWeight: "900", textTransform: "uppercase", marginTop: 5 },
+    panel: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 2, backgroundColor: theme.colors.surface },
+    row: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 5 },
+    iconWrap: { width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primarySoft },
     rowText: { flex: 1, minWidth: 0 },
-    rowTitle: { color: theme.colors.text, fontSize: 15, fontWeight: "900" },
-    rowBody: { color: theme.colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2, fontWeight: "700" },
-    privacyRow: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-    divider: { height: 1, backgroundColor: theme.colors.border },
-    primaryBtn: {
-      minHeight: 46,
-      borderRadius: 8,
-      backgroundColor: theme.colors.primary,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-    },
-    primaryText: { color: theme.colors.onPrimary, fontWeight: "900" },
-    dangerBtn: {
-      minHeight: 46,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.danger,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-    },
-    dangerText: { color: theme.colors.danger, fontWeight: "900" },
-    smallBtn: {
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 9,
-      backgroundColor: theme.colors.primarySoft,
-    },
-    smallBtnText: { color: theme.colors.primary, fontWeight: "900", fontSize: 12 },
-    modeSwitch: {
-      flexDirection: "row",
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      padding: 3,
-      backgroundColor: theme.colors.surfaceSoft,
-    },
-    modeBtn: { paddingHorizontal: 9, paddingVertical: 7, borderRadius: 6 },
+    rowTitle: { color: theme.colors.text, fontSize: 13.5, fontWeight: "900" },
+    rowBody: { color: theme.colors.textMuted, fontSize: 11, lineHeight: 15, marginTop: 1 },
+    divider: { height: 1, marginLeft: 43, backgroundColor: theme.colors.border },
+    smallBtn: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: theme.colors.primarySoft },
+    smallBtnText: { color: theme.colors.primary, fontWeight: "900", fontSize: 11 },
+    modeSwitch: { flexDirection: "row", borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, padding: 2, backgroundColor: theme.colors.surfaceSoft },
+    modeBtn: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 },
     modeActive: { backgroundColor: theme.colors.primary },
-    modeText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "900" },
+    modeText: { color: theme.colors.textMuted, fontSize: 10.5, fontWeight: "900" },
     modeTextActive: { color: theme.colors.onPrimary },
+    version: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "800" },
     overlay: { flex: 1, backgroundColor: theme.colors.overlay, alignItems: "center", justifyContent: "center", padding: 24 },
-    sheet: {
-      width: "100%",
-      maxWidth: 420,
-      backgroundColor: theme.colors.surface,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      padding: theme.spacing.lg,
-      alignItems: "center",
-    },
-    logoutIcon: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.surfaceSoft,
-      marginBottom: 12,
-    },
-    sheetTitle: { color: theme.colors.text, fontSize: 20, fontWeight: "900" },
-    sheetBody: { color: theme.colors.textMuted, textAlign: "center", lineHeight: 20, marginTop: 8 },
-    sheetActions: { flexDirection: "row", gap: 10, marginTop: 18, width: "100%" },
-    cancelBtn: {
-      flex: 1,
-      minHeight: 46,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    cancelText: { color: theme.colors.text, fontWeight: "900" },
-    confirmBtn: {
-      flex: 1,
-      minHeight: 46,
-      borderRadius: 8,
-      backgroundColor: theme.colors.danger,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    confirmText: { color: theme.colors.onPrimary, fontWeight: "900" },
+    sheet: { width: "100%", maxWidth: 400, backgroundColor: theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, padding: 18, alignItems: "center" },
+    logoutIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.surfaceSoft, marginBottom: 9 },
+    sheetTitle: { color: theme.colors.text, fontSize: 18, fontWeight: "900" },
+    sheetBody: { color: theme.colors.textMuted, textAlign: "center", fontSize: 12, lineHeight: 18, marginTop: 5 },
+    sheetActions: { flexDirection: "row", gap: 9, marginTop: 15, width: "100%" },
+    cancelBtn: { flex: 1, minHeight: 43, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.border, alignItems: "center", justifyContent: "center" },
+    cancelText: { color: theme.colors.text, fontSize: 12, fontWeight: "900" },
+    confirmBtn: { flex: 1, minHeight: 43, borderRadius: 9, backgroundColor: theme.colors.danger, alignItems: "center", justifyContent: "center" },
+    confirmText: { color: theme.colors.onPrimary, fontSize: 12, fontWeight: "900" },
   });

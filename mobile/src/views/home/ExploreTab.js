@@ -15,6 +15,8 @@ import { api, getViewerAuthHeaders } from "../../api/api";
 import { useAppTheme } from "../../theme";
 
 import PostCard from "../postCard/PostCard";
+import { cachedGet } from "../../utils/offlineCache";
+import CachedDataNotice from "../../components/CachedDataNotice";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -42,6 +44,7 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
+  const [showingCached, setShowingCached] = useState(false);
 
   const search = searchQuery;
 
@@ -72,13 +75,15 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
       console.log(`[Explore] Fetching posts - Page: ${pageNumber}, Search: "${search}"`);
 
       const viewerHeaders = await getViewerAuthHeaders();
-      const res = await api.get("/posts/public", {
-        params: {
-          page: pageNumber,
-          q: search?.trim() || undefined,
-        },
+      const fetcher = () => api.get("/posts/public", {
+        params: { page: pageNumber, q: search?.trim() || undefined },
         headers: viewerHeaders || undefined,
-      });
+      }).then((response) => response.data);
+      const result = !append && pageNumber === 1
+        ? await cachedGet(`posts:explore:${search?.trim().toLowerCase() || "all"}`, fetcher)
+        : { data: await fetcher(), fromCache: false };
+      const res = { data: result.data };
+      if (!append) setShowingCached(result.fromCache);
 
       const fetchedPosts = search?.trim()
         ? res?.data?.posts || []
@@ -204,6 +209,7 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
       style={styles.container}
       onLayout={(event) => setLayoutHeight(event.nativeEvent.layout.height)}
     >
+      <CachedDataNotice visible={showingCached} />
       {/* FEED */}
       {loading && posts.length === 0 ? (
         <View style={styles.loader}>
