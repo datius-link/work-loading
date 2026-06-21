@@ -22,7 +22,7 @@ function setIfColumn(payload, columns, key, value) {
 function actor(req) {
   const payload = req.viewer || req.user;
   if (!payload?.uuid) return null;
-  return { uuid: payload.uuid, role: payload.role || "user" };
+  return { uuid: payload.uuid };
 }
 
 function normalizeList(value) {
@@ -235,7 +235,7 @@ async function addNotification(trx, profile_uuid, type, body, job, meta = {}, sy
 
 function durationUnit(value) {
   const unit = String(value || "").toLowerCase().trim();
-  return ["hours", "days", "weeks", "months"].includes(unit) ? unit : null;
+  return ["minutes", "hours", "days", "weeks", "months"].includes(unit) ? unit : null;
 }
 
 export async function createJob(req, res) {
@@ -321,7 +321,7 @@ export async function createJob(req, res) {
 export async function createDirectHire(req, res) {
   try {
     const me = actor(req);
-    if (!me || me.role !== "light_user") {
+    if (!me) {
       return res.status(401).json({ message: "User account required" });
     }
 
@@ -361,10 +361,10 @@ export async function createDirectHire(req, res) {
           created_by: me.uuid,
           target_provider_uuid: targetProviderUuid,
           hire_type: "direct",
-          direct_status: "pending",
           status: "pending",
           media: db.raw("?::jsonb", [JSON.stringify(media)]),
         };
+      setIfColumn(jobPayload, columns, "direct_status", "pending");
       setIfColumn(jobPayload, columns, "availability_required", availability_required);
       setIfColumn(jobPayload, columns, "scheduled_for", scheduled_for);
       setIfColumn(jobPayload, columns, "availability_notes", availability_notes);
@@ -379,7 +379,7 @@ export async function createDirectHire(req, res) {
         "direct_job_request",
         `${requester?.full_name || requester?.username || "A user"} has directly chosen you for job ${created.job_code}, ${created.title}.`,
         created,
-        { job_code: created.job_code, light_user_uuid: me.uuid, actions: ["claim", "decline", "see_details"] }
+        { job_code: created.job_code, requester_uuid: me.uuid, actions: ["claim", "decline", "see_details"] }
       );
       await addNotification(
         trx,
@@ -470,7 +470,7 @@ export async function listRequests(req, res) {
           .whereIn("job_id", jobIds)
           .where({ profile_uuid: me.uuid })
           .whereNull("withdrawn_at")
-          .select("id", "job_id", "message", "budget", "duration", "available_from", "experience", "notes", "media", "status", "created_at", "updated_at")
+          .select("id", "job_id", "message", "budget", "duration", "duration_value", "duration_unit", "available_from", "experience", "notes", "media", "status", "created_at", "updated_at")
       : [];
     const mineByJobId = new Map(mineRows.map((row) => [row.job_id, row]));
     const jobs = rows
@@ -487,29 +487,43 @@ export async function listRequests(req, res) {
 export async function getJob(req, res) {
   try {
     const me = actor(req);
+
     const query = baseJobsQuery();
     query.where("j.id", req.params.id);
+
     const row = await query.first();
-    if (!row) return res.status(404).json({ message: "Job not found" });
+    if (!row) {
+      return res.status(404).json({ message: "Job not found" });
+    }
 
     row.contact_details = await assignedJobContactDetails(row, me);
+
     const job = serializeJob(row);
     let applications = [];
-    if (me?.uuid && row.created_by === me.uuid) {
+
+    const isOwner = me?.uuid && row.created_by === me.uuid;
+
+    if (isOwner) {
       applications = await db("job_applications as ja")
         .join("profiles as p", "p.uuid", "ja.profile_uuid")
         .where("ja.job_id", row.id)
         .whereNull("ja.withdrawn_at")
         .select(
           "ja.id",
+          "ja.job_id",
+          "ja.profile_uuid",
           "ja.message",
           "ja.budget",
           "ja.duration",
+          "ja.duration_value",
+          "ja.duration_unit",
           "ja.available_from",
           "ja.experience",
           "ja.notes",
           "ja.media",
+          "ja.status",
           "ja.created_at",
+          "ja.updated_at",
           "p.uuid",
           "p.username",
           "p.full_name",
@@ -519,9 +533,17 @@ export async function getJob(req, res) {
         );
     }
 
-    if (me?.uuid && row.created_by !== me.uuid) {
-      const app = await db("job_applications").where({ job_id: row.id, profile_uuid: me.uuid }).whereNull("withdrawn_at").first();
+    if (me?.uuid && !isOwner) {
+      const app = await db("job_applications")
+        .where({
+          job_id: row.id,
+          profile_uuid: me.uuid,
+        })
+        .whereNull("withdrawn_at")
+        .first();
+
       job.has_applied = !!app;
+      job.my_application = app || null;
       job.you_got_this_job = row.assigned_provider_uuid === me.uuid;
       job.can_accept_direct_hire =
         row.hire_type === "direct" &&
@@ -569,7 +591,8 @@ async function workspaceJob(jobIdOrCode, me) {
   }
 
   row.contact_details = await assignedJobContactDetails(row, me);
-  return { row, job: serializeJob(row), role: isHirer ? "hirer" : "provider" };
+  const reputation = await reputationForJob(row.id, row.assigned_provider_uuid, row.created_by);
+  return { row, job: { ...serializeJob(row), ...reputation }, role: isHirer ? "hirer" : "provider" };
 }
 
 function routeJobId(req) {
@@ -611,6 +634,45 @@ async function listMessagesForJob(jobId) {
       profile_pic: row.sender_profile_pic || "",
     },
   }));
+}
+
+async function reputationForJob(jobId, providerUuid, raterUuid) {
+  if (!jobId || !providerUuid || !raterUuid) return {};
+  const [hasRatingsTable, hasRecommendationsTable] = await Promise.all([
+    db.schema.hasTable("job_ratings"),
+    db.schema.hasTable("job_recommendations"),
+  ]);
+  if (!hasRatingsTable) return {};
+
+  const rating = await db("job_ratings")
+    .where({ job_id: jobId, provider_uuid: providerUuid, rater_uuid: raterUuid })
+    .first();
+  const recommendation = hasRecommendationsTable
+    ? await db("job_recommendations")
+        .where({ job_id: jobId, provider_uuid: providerUuid, recommender_uuid: raterUuid })
+        .first()
+    : null;
+
+  return {
+    rating: rating
+      ? {
+          id: rating.id,
+          score: Number(rating.score || 0),
+          comment: rating.comment || "",
+          created_at: rating.created_at,
+        }
+      : null,
+    rating_submitted_at: rating?.created_at || null,
+    recommendation: recommendation
+      ? {
+          id: recommendation.id,
+          reason: recommendation.reason || "",
+          recommender_visible: !!recommendation.recommender_visible,
+          created_at: recommendation.created_at,
+        }
+      : null,
+    recommendation_submitted_at: recommendation?.created_at || null,
+  };
 }
 
 function parseDateInput(value) {
@@ -837,18 +899,20 @@ export async function acceptDirectHire(req, res) {
     const providerStartDate = parseDateInput(req.body?.provider_start_date || req.body?.available_from || req.body?.start_date);
     const durationValue = Number(req.body?.estimated_duration_value || req.body?.duration_value || 0);
     const unit = durationUnit(req.body?.estimated_duration_unit || req.body?.duration_unit);
+    const columns = await jobsColumns();
+    const updatePayload = {
+      status: "active",
+      assigned_provider_uuid: me.uuid,
+      updated_at: db.fn.now(),
+    };
+    setIfColumn(updatePayload, columns, "direct_status", "accepted");
+    setIfColumn(updatePayload, columns, "provider_start_note", String(req.body?.provider_start_note || req.body?.acceptance_note || "").trim() || job.provider_start_note || null);
+    setIfColumn(updatePayload, columns, "provider_start_date", providerStartDate || null);
+    setIfColumn(updatePayload, columns, "estimated_duration_value", Number.isFinite(durationValue) && durationValue > 0 ? Math.round(durationValue) : null);
+    setIfColumn(updatePayload, columns, "estimated_duration_unit", unit);
     const [updated] = await db("jobs")
       .where({ id: job.id })
-      .update({
-        status: "active",
-        direct_status: "accepted",
-        assigned_provider_uuid: me.uuid,
-        provider_start_note: String(req.body?.provider_start_note || req.body?.acceptance_note || "").trim() || job.provider_start_note || null,
-        provider_start_date: providerStartDate || null,
-        estimated_duration_value: Number.isFinite(durationValue) && durationValue > 0 ? Math.round(durationValue) : null,
-        estimated_duration_unit: unit,
-        updated_at: db.fn.now(),
-      })
+      .update(updatePayload)
       .returning("*");
 
     await db("notifications").insert({
@@ -885,13 +949,12 @@ export async function declineDirectHire(req, res) {
     }
 
     const provider = await db("profiles").where({ uuid: me.uuid }).first();
+    const columns = await jobsColumns();
+    const updatePayload = { status: "declined", updated_at: db.fn.now() };
+    setIfColumn(updatePayload, columns, "direct_status", "declined");
     const [updated] = await db("jobs")
       .where({ id: job.id })
-      .update({
-        status: "declined",
-        direct_status: "declined",
-        updated_at: db.fn.now(),
-      })
+      .update(updatePayload)
       .returning("*");
 
     await db("notifications").insert({
@@ -923,16 +986,18 @@ export async function publishJobPublicly(req, res) {
       return res.status(409).json({ message: "Only pending or declined direct hires can be posted publicly" });
     }
 
+    const columns = await jobsColumns();
+    const updatePayload = {
+      status: "open",
+      hire_type: "posted",
+      target_provider_uuid: null,
+      assigned_provider_uuid: null,
+      updated_at: db.fn.now(),
+    };
+    setIfColumn(updatePayload, columns, "direct_status", null);
     const [updated] = await db("jobs")
       .where({ id: job.id })
-      .update({
-        status: "open",
-        direct_status: null,
-        hire_type: "posted",
-        target_provider_uuid: null,
-        assigned_provider_uuid: null,
-        updated_at: db.fn.now(),
-      })
+      .update(updatePayload)
       .returning("*");
 
     return res.json({ success: true, message: "Job posted publicly", job: serializeJob({ ...updated, applicant_count: 0 }) });
@@ -1003,12 +1068,22 @@ export async function applyToJob(req, res) {
     const profile = await db("profiles").where({ uuid: me.uuid }).first();
 
     const media = normalizeMedia(req.body.media || req.body.images, "applications");
+    const durationValue = Number(req.body.duration_value ?? req.body.estimated_duration_value);
+    const applicationDurationUnit = durationUnit(
+      req.body.duration_unit || req.body.estimated_duration_unit
+    );
+    const structuredDuration =
+      Number.isFinite(durationValue) && durationValue > 0 && applicationDurationUnit
+        ? `${durationValue} ${applicationDurationUnit}`
+        : req.body.duration || null;
     const applicationPayload = {
       job_id: job.id,
       profile_uuid: me.uuid,
       message: req.body.message || req.body.explanation || null,
       budget: req.body.budget || null,
-      duration: req.body.duration || null,
+      duration: structuredDuration,
+      duration_value: Number.isFinite(durationValue) && durationValue > 0 ? durationValue : null,
+      duration_unit: applicationDurationUnit,
       available_from: req.body.available_from || req.body.availableFrom || null,
       experience: req.body.experience || null,
       notes: req.body.notes || null,
@@ -1024,6 +1099,8 @@ export async function applyToJob(req, res) {
           message: applicationPayload.message,
           budget: applicationPayload.budget,
           duration: applicationPayload.duration,
+          duration_value: applicationPayload.duration_value,
+          duration_unit: applicationPayload.duration_unit,
           available_from: applicationPayload.available_from,
           experience: applicationPayload.experience,
           notes: applicationPayload.notes,

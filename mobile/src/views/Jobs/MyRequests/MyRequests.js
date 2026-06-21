@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -11,22 +11,26 @@ import {
 } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useAppTheme } from "../../../theme";
-import { api } from "../../../api/api";
+import { api, getFriendlyApiError } from "../../../api/api";
 import { formatRelativeDate } from "../jobDate";
 import { C, StatusBadge } from "../jobsUI";
 import AppIcon from "../../../icons/AppIcon";
+import { useLanguage } from "../../../LanguageContext";
+import { cachedGet } from "../../../utils/offlineCache";
+import CachedDataNotice from "../../../components/CachedDataNotice";
 
 const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "requested", label: "Requested" },
-  { key: "approved", label: "Approved" },
-  { key: "closed", label: "Closed" },
-  { key: "not_attained", label: "Not Attained" },
+  { key: "all", en: "All", sw: "Zote" },
+  { key: "requested", en: "Requested", sw: "Zilizoombwa" },
+  { key: "approved", en: "Approved", sw: "Zilizokubaliwa" },
+  { key: "closed", en: "Closed", sw: "Zilizofungwa" },
+  { key: "not_attained", en: "Not Attained", sw: "Hukupata" },
 ];
 
-function mapStatus(job) {
+function mapStatus(job, language) {
+  const sw = language === "sw";
   if (job.you_got_this_job || ["active", "start_pending", "started", "working", "submitted", "completion_pending", "completed"].includes(job.status))
-    return { status: "approved", statusLabel: "Approved" };
+    return { status: "approved", statusLabel: sw ? "Imekubaliwa" : "Approved" };
   if (
     (job.status === "filled" || job.status === "closed" || job.status === "completed") &&
     !job.you_got_this_job &&
@@ -40,16 +44,18 @@ function mapStatus(job) {
   return { status: "requested", statusLabel: "Requested" };
 }
 
-function reqNote(job) {
-  if (job.hire_type === "direct" || job.target_provider_uuid) return "Sent to selected provider";
-  if (job.you_got_this_job) return "You were selected";
-  if (job.my_application) return "Application sent";
-  if (job.status === "closed" || job.status === "filled") return "Job filled. Keep moving.";
-  return "Tap to view details";
+function reqNote(job, language) {
+  const sw = language === "sw";
+  if (job.hire_type === "direct" || job.target_provider_uuid) return sw ? "Imetumwa kwa mtoa huduma aliyechaguliwa" : "Sent to selected provider";
+  if (job.you_got_this_job) return sw ? "Umechaguliwa" : "You were selected";
+  if (job.my_application) return sw ? "Ombi limetumwa" : "Application sent";
+  if (job.status === "closed" || job.status === "filled") return sw ? "Kazi imejazwa." : "Job filled. Keep moving.";
+  return sw ? "Gusa kuona maelezo" : "Tap to view details";
 }
 
-function toReq(job) {
-  const m = mapStatus(job);
+function toReq(job, language) {
+  const m = mapStatus(job, language);
+  const sw = language === "sw";
   return {
     ...job,
     ...m,
@@ -57,11 +63,11 @@ function toReq(job) {
     postedAt: formatRelativeDate(job.created_at),
     requestType:
       job.hire_type === "direct" || job.target_provider_uuid
-        ? "Direct Hire"
+        ? (sw ? "Ajira ya Moja kwa Moja" : "Direct Hire")
         : job.has_applied
-        ? "Application"
-        : "Request",
-    note: reqNote(job),
+        ? (sw ? "Ombi" : "Application")
+        : (sw ? "Ombi" : "Request"),
+    note: reqNote(job, language),
   };
 }
 
@@ -81,26 +87,35 @@ const REQUEST_TYPE_ICON = {
 
 export default function MyRequests() {
   const nav = useNavigation();
+  const {theme}=useAppTheme();
+  const {language}=useLanguage();
+  const s=useMemo(()=>createStyles(theme),[theme]);
   const [filter, setFilter] = useState("all");
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showingCached,setShowingCached]=useState(false);
+  const [error,setError]=useState("");
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get("/hiring/requests");
+      setError("");
+      const result = await cachedGet("hiring:requests",()=>api.get("/hiring/requests").then(res=>res.data));
+      const res={data:result.data};
+      setShowingCached(result.fromCache);
       setRequests(
         (res?.data?.jobs || [])
           .filter((j) => j.has_applied || j.target_provider_uuid || j.you_got_this_job)
-          .map(toReq)
+          .map((job) => toReq(job, language))
       );
     } catch (e) {
-      console.log("requests error", e?.message);
+      setError(getFriendlyApiError(e,language));
+      setShowingCached(false);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -120,6 +135,8 @@ export default function MyRequests() {
 
   return (
     <View style={s.safe}>
+      <CachedDataNotice visible={showingCached}/>
+      {error?<View style={s.errorBox}><Text style={s.errorText}>{error}</Text><TouchableOpacity style={s.retryBtn} onPress={load}><Text style={s.retryText}>{language==="sw"?"Jaribu tena":"Retry"}</Text></TouchableOpacity></View>:null}
       {/* Filter chips — compact pill row */}
       <ScrollView
         horizontal
@@ -139,7 +156,7 @@ export default function MyRequests() {
               onPress={() => setFilter(f.key)}
               activeOpacity={0.75}
             >
-              <Text style={[s.chipTxt, active && s.chipActiveTxt]}>{f.label}</Text>
+              <Text style={[s.chipTxt, active && s.chipActiveTxt]}>{language==="sw"?f.sw:f.en}</Text>
               {count > 0 && (
                 <View style={[s.chipBadge, active && s.chipBadgeActive]}>
                   <Text style={[s.chipBadgeTxt, active && s.chipBadgeTxtActive]}>{count}</Text>
@@ -225,7 +242,7 @@ export default function MyRequests() {
                 })}
               >
                 <AppIcon name="message-circle" size={14} color={C.teal} />
-                <Text style={s.workspaceBtnTxt}>Open Job Workspace</Text>
+                <Text style={s.workspaceBtnTxt}>{language === "sw" ? "Fungua Eneo la Kazi" : "Open Job Workspace"}</Text>
                 <AppIcon name="chevron-right" size={13} color={C.teal} />
               </TouchableOpacity>
             )}
@@ -258,8 +275,8 @@ export default function MyRequests() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+const createStyles=(theme)=>StyleSheet.create({
+  safe: { flex: 1, backgroundColor: theme.colors.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
   // Filters — compact pill style
@@ -277,25 +294,25 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: C.white,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#E8EAF0",
+    borderColor: theme.colors.border,
   },
   chipActive: {
-    backgroundColor: C.tealLight,
+    backgroundColor: theme.colors.primarySoft,
     borderColor: C.teal,
   },
   chipTxt: {
     fontSize: 13,
     fontWeight: "600",
-    color: C.slate,
+    color: theme.colors.textMuted,
   },
   chipActiveTxt: {
     color: C.teal,
     fontWeight: "700",
   },
   chipBadge: {
-    backgroundColor: "#E8EAF0",
+    backgroundColor: theme.colors.surfaceSoft,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
@@ -328,11 +345,11 @@ const s = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: C.white,
+    backgroundColor: theme.colors.surface,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#EEF0F4",
+    borderColor: theme.colors.border,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -365,7 +382,7 @@ const s = StyleSheet.create({
   title: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#1A1A2E",
+    color: theme.colors.text,
     lineHeight: 21,
   },
 
@@ -387,7 +404,7 @@ const s = StyleSheet.create({
   metaDivider: {
     width: 1,
     height: 10,
-    backgroundColor: "#DDE0E8",
+    backgroundColor: theme.colors.border,
   },
 
   // Note
@@ -395,14 +412,14 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: C.slateLight,
+    backgroundColor: theme.colors.surfaceSoft,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   noteTxt: {
     flex: 1,
-    color: C.slate,
+    color: theme.colors.textMuted,
     fontSize: 12,
     fontWeight: "500",
   },
@@ -414,7 +431,7 @@ const s = StyleSheet.create({
     gap: 6,
     paddingVertical: 9,
     paddingHorizontal: 12,
-    backgroundColor: C.tealLight,
+    backgroundColor: theme.colors.primarySoft,
     borderRadius: 10,
     marginTop: 2,
   },
@@ -437,7 +454,7 @@ const s = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: C.tealLight,
+    backgroundColor: theme.colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
@@ -445,7 +462,7 @@ const s = StyleSheet.create({
   emptyTitle: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#1A1A2E",
+    color: theme.colors.text,
     textAlign: "center",
     textTransform: "capitalize",
   },
@@ -463,8 +480,12 @@ const s = StyleSheet.create({
     borderRadius: 20,
   },
   emptyBtnTxt: {
-    color: "#fff",
+    color: theme.colors.onPrimary,
     fontSize: 14,
     fontWeight: "700",
   },
+  errorBox:{marginHorizontal:16,marginTop:8,padding:12,borderRadius:10,borderWidth:1,borderColor:theme.colors.border,backgroundColor:theme.colors.surface,alignItems:"center",gap:8},
+  errorText:{color:theme.colors.text,fontSize:12,textAlign:"center"},
+  retryBtn:{paddingHorizontal:14,paddingVertical:7,borderRadius:8,backgroundColor:theme.colors.primary},
+  retryText:{color:theme.colors.onPrimary,fontSize:12,fontWeight:"800"},
 });

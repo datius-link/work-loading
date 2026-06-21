@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useAppTheme } from "../../../theme";
 import { useLanguage } from "../../../LanguageContext";
 import AppIcon from "../../../icons/AppIcon";
-import { viewerRequest } from "../../../api/api";
+import { getFriendlyApiError, viewerRequest } from "../../../api/api";
 import LoginModal from "../../Auth/LoginModal";
 import { getUserSession, useUserSession } from "../../../utils/userSession";
 import CreateJobModal from "./CreateJobModal";
@@ -13,10 +13,13 @@ import { UploadManager } from "../../../utils/UploadManager";
 import { formatRelativeDate, formatJobDate } from "../jobDate";
 import HiringNoticeModal from "../HiringNoticeModal";
 import { C, StatusBadge } from "../jobsUI";
+import { cachedGet } from "../../../utils/offlineCache";
+import { isNetworkError } from "../../../utils/network";
+import CachedDataNotice from "../../../components/CachedDataNotice";
 
 const T = {
-  en:{title:"My Jobs",subtitle:"Jobs you posted or sent directly.",loginTitle:"Sign in to continue",loginBody:"See your job posts, requests and responses.",loginAction:"Login",postJob:"Post a Job",emptyTitle:"No jobs yet",emptyBody:"Post a job or send a hire request. Everything appears here.",retry:"Try again",applicants:(n)=>`${n} applicant${n===1?"":"s"}`,postedOk:"Job posted",postedOkBody:"Providers can now apply for your job.",postFailed:"Could not post job"},
-  sw:{title:"Kazi Zangu",subtitle:"Kazi ulizochapisha au kutuma.",loginTitle:"Ingia kuendelea",loginBody:"Ona kazi zako na maombi.",loginAction:"Ingia",postJob:"Chapisha Kazi",emptyTitle:"Hakuna kazi bado",emptyBody:"Chapisha kazi au tuma ombi.",retry:"Jaribu tena",applicants:(n)=>`${n} ${n===1?"mwombaji":"waombaji"}`,postedOk:"Kazi imechapishwa",postedOkBody:"Watoa huduma wanaweza kuomba.",postFailed:"Imeshindikana"},
+  en:{title:"My Jobs",subtitle:"Jobs you posted or sent directly.",loginTitle:"Sign in to continue",loginBody:"See your job posts, requests and responses.",loginAction:"Login",postJob:"Post a Job",emptyTitle:"No jobs yet",emptyBody:"Post a job or send a hire request. Everything appears here.",retry:"Try again",applicants:(n)=>`${n} applicant${n===1?"":"s"}`,postedOk:"Job posted",postedOkBody:"Providers can now apply for your job.",postFailed:"Could not post job",location:"Location not set",posted:"Posted",closes:"Closes",today:"Today"},
+  sw:{title:"Kazi Zangu",subtitle:"Kazi ulizochapisha au kutuma.",loginTitle:"Ingia kuendelea",loginBody:"Ona kazi zako na maombi.",loginAction:"Ingia",postJob:"Chapisha Kazi",emptyTitle:"Hakuna kazi bado",emptyBody:"Chapisha kazi au tuma ombi.",retry:"Jaribu tena",applicants:(n)=>`${n} ${n===1?"mwombaji":"waombaji"}`,postedOk:"Kazi imechapishwa",postedOkBody:"Watoa huduma wanaweza kuomba.",postFailed:"Imeshindikana",location:"Eneo halijawekwa",posted:"Imechapishwa",closes:"Inafungwa",today:"Leo"},
 };
 
 function jobPhase(job){
@@ -33,6 +36,7 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
   const nav=useNavigation();
   const {theme}=useAppTheme();
   const {language}=useLanguage();const t=T[language]||T.en;
+  const s=useMemo(()=>createStyles(theme),[theme]);
   const {refresh:refreshSession}=useUserSession();
 
   const [jobs,setJobs]=useState([]);
@@ -44,6 +48,8 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
   const [showCreate,setShowCreate]=useState(false);
   const [posting,setPosting]=useState(false);
   const [notice,setNotice]=useState(null);
+  const [showingCached,setShowingCached]=useState(false);
+  const [retryPayload,setRetryPayload]=useState(null);
   const lastSignal=useRef(createJobSignal);
 
   const load=useCallback(async({refresh=false}={})=>{
@@ -53,13 +59,14 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
       const session=await getUserSession();
       if(!session.isLoggedIn){setNeedsLogin(true);setJobs([]);return;}
       setNeedsLogin(false);
-      const res=await viewerRequest("get","/hiring/my-jobs");
-      setJobs(Array.isArray(res?.data?.jobs)?res.data.jobs:[]);
+      const result=await cachedGet("hiring:my-jobs",()=>viewerRequest("get","/hiring/my-jobs").then(res=>res.data));
+      setJobs(Array.isArray(result?.data?.jobs)?result.data.jobs:[]);
+      setShowingCached(result.fromCache);
     }catch(err){
       if([401,403].includes(err?.response?.status)){setNeedsLogin(true);setJobs([]);}
-      else setError(err?.response?.data?.message||"Failed to load jobs");
+      else {setError(getFriendlyApiError(err,language));setShowingCached(false);}
     }finally{setLoading(false);setRefreshing(false);}
-  },[]);
+  },[language]);
 
   useFocusEffect(useCallback(()=>{load();},[load]));
   useEffect(()=>{
@@ -79,8 +86,20 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
       const media=payload.images?.length?await UploadManager.startUpload(payload.images,"jobs"):[];
       await viewerRequest("post","/hiring/jobs",{title:payload.title,description:payload.description,service_type:payload.service_type,location:payload.location,tender_closes_at:payload.tender_closes_at,availability_required:payload.availability_required,scheduled_for:payload.scheduled_for||null,availability_notes:payload.availability_notes||null,media});
       setShowCreate(false);await load({refresh:true});
+      setRetryPayload(null);
       setNotice({type:"success",title:t.postedOk,body:t.postedOkBody});
-    }catch(err){setNotice({type:"error",title:t.postFailed,body:err?.response?.data?.message||"Please try again."});}
+    }catch(err){
+      const uploadNetworkFailure=isNetworkError(err)&&payload.images?.length;
+      setRetryPayload(uploadNetworkFailure?payload:null);
+      setNotice({
+        type:"error",
+        title:t.postFailed,
+        body:uploadNetworkFailure
+          ?(language==="sw"?"Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena.":"Media upload failed because of connection problem. Try again.")
+          :getFriendlyApiError(err,language),
+        retry:uploadNetworkFailure,
+      });
+    }
     finally{setPosting(false);}
   };
 
@@ -90,16 +109,24 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
     const code=item.job_code||item.code||"JOB";
     const deadline=formatJobDate(item.tender_closes_at);
     return(
-      <TouchableOpacity style={s.card} activeOpacity={0.88} onPress={()=>nav.navigate("JobDetails",{jobId:item.id})}>
+      <TouchableOpacity style={s.jobRow} activeOpacity={0.82} onPress={()=>nav.navigate("JobDetails",{jobId:item.id})}>
         <View style={s.cardTop}>
-          <View style={s.codePill}><Text style={s.codeText}>{code}</Text></View>
+          <View style={s.codeRow}>
+            <View style={s.statusDot}/>
+            <Text style={s.codeText}>{code}</Text>
+          </View>
           <StatusBadge status={phase} size="sm"/>
         </View>
-        <Text style={s.title} numberOfLines={2}>{item.title}</Text>
-        <View style={s.metaRow}><AppIcon name="map-pin" size={12} color={C.slate}/><Text style={s.meta} numberOfLines={1}>{item.location||"Location not set"}</Text></View>
+        <View style={s.mainRow}>
+          <View style={s.mainCopy}>
+            <Text style={s.title} numberOfLines={1}>{item.title}</Text>
+            <View style={s.metaRow}><AppIcon name="map-pin" size={11} color={theme.colors.textMuted}/><Text style={s.meta} numberOfLines={1}>{item.location||t.location}</Text></View>
+          </View>
+          <AppIcon name="chevron-right" size={15} color={theme.colors.textMuted}/>
+        </View>
         <View style={s.cardFooter}>
-          <View style={s.metaRow}><AppIcon name="calendar" size={12} color={C.slate}/><Text style={s.metaSm}>Posted {formatRelativeDate(item.created_at)||"Today"}</Text></View>
-          {deadline?<View style={s.metaRow}><AppIcon name="calendar" size={12} color={C.slate}/><Text style={s.metaSm}>Closes {deadline}</Text></View>:null}
+          <Text style={s.metaSm}>{t.posted} {formatRelativeDate(item.created_at)||t.today}</Text>
+          {deadline?<Text style={s.metaSm}>· {t.closes} {deadline}</Text>:null}
           {count>0?<View style={s.applicantPill}><Text style={s.applicantTxt}>{t.applicants(count)}</Text></View>:null}
         </View>
       </TouchableOpacity>
@@ -150,6 +177,7 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
           </TouchableOpacity>
         </View>
       )}
+      <CachedDataNotice visible={showingCached}/>
       <FlatList
         data={jobs} keyExtractor={i=>String(i.id)} renderItem={renderItem}
         contentContainerStyle={[s.list,!jobs.length&&{flexGrow:1}]}
@@ -159,35 +187,52 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
       />
       <LoginModal visible={showLogin} onClose={()=>setShowLogin(false)} onSuccess={async()=>{setShowLogin(false);await refreshSession();load();}}/>
       <CreateJobModal visible={showCreate} onClose={()=>setShowCreate(false)} mode="indirect" onSubmit={submitJob} submitting={posting}/>
-      <HiringNoticeModal visible={!!notice} type={notice?.type} title={notice?.title} body={notice?.body} onPrimary={()=>setNotice(null)} onClose={()=>setNotice(null)}/>
+      <HiringNoticeModal
+        visible={!!notice}
+        type={notice?.type}
+        title={notice?.title}
+        body={notice?.body}
+        primaryLabel={notice?.retry?(language==="sw"?"Jaribu tena":"Retry"):"OK"}
+        secondaryLabel={notice?.retry?(language==="sw"?"Baadaye":"Later"):undefined}
+        onPrimary={()=>{
+          const payload=retryPayload;
+          setNotice(null);
+          if(payload)submitJob(payload);
+        }}
+        onSecondary={()=>setNotice(null)}
+        onClose={()=>setNotice(null)}
+      />
     </SafeAreaView>
   );
 }
 
-const s=StyleSheet.create({
-  safe:{flex:1,backgroundColor:C.bg},
+const createStyles=(theme)=>StyleSheet.create({
+  safe:{flex:1,backgroundColor:theme.colors.bg},
   center:{flex:1,alignItems:"center",justifyContent:"center",padding:32,gap:12},
-  header:{flexDirection:"row",alignItems:"center",paddingHorizontal:20,paddingVertical:16,backgroundColor:C.white,borderBottomWidth:1,borderBottomColor:"#EEF0F4"},
-  headerTitle:{fontSize:24,fontWeight:"900",color:"#1A1A2E"},
-  headerSub:{fontSize:13,color:C.slate,marginTop:2},
-  fab:{width:44,height:44,borderRadius:22,backgroundColor:C.teal,alignItems:"center",justifyContent:"center",shadowColor:C.teal,shadowOffset:{width:0,height:4},shadowOpacity:0.3,shadowRadius:8,elevation:5},
-  list:{paddingHorizontal:16,paddingTop:12,paddingBottom:100,gap:10},
-  card:{backgroundColor:C.white,borderRadius:16,padding:14,borderWidth:1,borderColor:"#EEF0F4",shadowColor:"#000",shadowOffset:{width:0,height:2},shadowOpacity:0.06,shadowRadius:8,elevation:2,gap:6},
-  cardTop:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:2},
-  codePill:{backgroundColor:C.tealLight,paddingHorizontal:8,paddingVertical:3,borderRadius:8},
-  codeText:{color:C.teal,fontSize:11,fontWeight:"800"},
-  title:{fontSize:16,fontWeight:"800",color:"#1A1A2E",lineHeight:22},
+  header:{flexDirection:"row",alignItems:"center",paddingHorizontal:20,paddingVertical:16,backgroundColor:theme.colors.surface,borderBottomWidth:1,borderBottomColor:theme.colors.border},
+  headerTitle:{fontSize:24,fontWeight:"900",color:theme.colors.text},
+  headerSub:{fontSize:13,color:theme.colors.textMuted,marginTop:2},
+  fab:{width:44,height:44,borderRadius:22,backgroundColor:theme.colors.primary,alignItems:"center",justifyContent:"center",shadowColor:theme.colors.primary,shadowOffset:{width:0,height:4},shadowOpacity:0.3,shadowRadius:8,elevation:5},
+  list:{paddingHorizontal:16,paddingTop:4,paddingBottom:100},
+  jobRow:{paddingVertical:10,borderBottomWidth:1,borderBottomColor:theme.colors.border,gap:5},
+  cardTop:{flexDirection:"row",justifyContent:"space-between",alignItems:"center"},
+  codeRow:{flexDirection:"row",alignItems:"center",gap:6},
+  statusDot:{width:6,height:6,borderRadius:3,backgroundColor:theme.colors.primary},
+  codeText:{color:theme.colors.textMuted,fontSize:10.5,fontWeight:"800",letterSpacing:.4},
+  mainRow:{flexDirection:"row",alignItems:"center",gap:8},
+  mainCopy:{flex:1,gap:3},
+  title:{fontSize:15,fontWeight:"900",color:theme.colors.text,lineHeight:19},
   metaRow:{flexDirection:"row",alignItems:"center",gap:5},
-  meta:{color:C.slate,fontSize:13,flex:1},
-  metaSm:{color:C.slate,fontSize:12},
-  cardFooter:{flexDirection:"row",alignItems:"center",gap:12,marginTop:4,flexWrap:"wrap"},
-  applicantPill:{marginLeft:"auto",backgroundColor:C.blueLight,paddingHorizontal:8,paddingVertical:3,borderRadius:8},
+  meta:{color:theme.colors.textMuted,fontSize:11.5,flex:1},
+  metaSm:{color:theme.colors.textMuted,fontSize:10.5},
+  cardFooter:{flexDirection:"row",alignItems:"center",gap:5},
+  applicantPill:{marginLeft:"auto",backgroundColor:theme.colors.accentSoft,paddingHorizontal:7,paddingVertical:2,borderRadius:7},
   applicantTxt:{color:C.blue,fontSize:11,fontWeight:"700"},
   emptyIcon:{width:72,height:72,borderRadius:22,backgroundColor:C.tealLight,alignItems:"center",justifyContent:"center"},
-  emptyTitle:{fontSize:18,fontWeight:"800",color:"#1A1A2E",textAlign:"center"},
-  emptyBody:{fontSize:14,color:C.slate,textAlign:"center",lineHeight:21},
-  primaryBtn:{flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:24,paddingVertical:13,backgroundColor:C.teal,borderRadius:14,shadowColor:C.teal,shadowOffset:{width:0,height:4},shadowOpacity:0.25,shadowRadius:8,elevation:4},
+  emptyTitle:{fontSize:18,fontWeight:"800",color:theme.colors.text,textAlign:"center"},
+  emptyBody:{fontSize:14,color:theme.colors.textMuted,textAlign:"center",lineHeight:21},
+  primaryBtn:{flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:24,paddingVertical:13,backgroundColor:theme.colors.primary,borderRadius:12,shadowColor:theme.colors.primary,shadowOffset:{width:0,height:4},shadowOpacity:0.25,shadowRadius:8,elevation:4},
   primaryTxt:{color:C.white,fontWeight:"800",fontSize:15},
-  outlineBtn:{paddingHorizontal:24,paddingVertical:12,borderRadius:12,borderWidth:1.5,borderColor:C.slate},
-  outlineTxt:{color:C.slate,fontWeight:"700"},
+  outlineBtn:{paddingHorizontal:24,paddingVertical:12,borderRadius:12,borderWidth:1.5,borderColor:theme.colors.border},
+  outlineTxt:{color:theme.colors.text,fontWeight:"700"},
 });

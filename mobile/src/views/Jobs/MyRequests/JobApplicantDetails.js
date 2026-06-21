@@ -3,17 +3,17 @@
  * Shown to hirer when reviewing a provider's application.
  * After hiring: shows "Open Workspace" button.
  */
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, StatusBar } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View, StatusBar } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../../../theme";
 import { useLanguage } from "../../../LanguageContext";
 import AppIcon from "../../../icons/AppIcon";
-import { viewerRequest } from "../../../api/api";
+import { getFriendlyApiError, viewerRequest } from "../../../api/api";
 import { formatJobDate, formatRelativeDate } from "../jobDate";
 import HiringNoticeModal from "../HiringNoticeModal";
-import { C, NavHeader, SectionHeading, Card, PrimaryButton, OutlineButton, InfoRow } from "../jobsUI";
+import { NavHeader, SectionHeading, PrimaryButton, InfoRow } from "../jobsUI";
 
 const T={
   en:{budget:"Budget",time:"Est. Time",available:"Available From",experience:"Experience",howIWork:"How I'll do this",workImages:"Previous Work / Tools",notes:"Additional Notes",jobInfo:"Job Info",hire:"Hire This Provider",openWorkspace:"Open Job Workspace",closed:"Request Closed",confirmTitle:"Hire provider?",confirmBack:"Cancel",confirmHire:"Hire",hired:"Provider hired!",errHire:"Could not hire",noRating:"Not rated yet"},
@@ -26,7 +26,10 @@ function avatarUri(u){if(u?.profilePic||u?.profile_pic)return u.profilePic||u.pr
 export default function JobApplicantDetails(){
   const nav=useNavigation();const route=useRoute();
   const {theme,mode}=useAppTheme();const {language}=useLanguage();const t=T[language]||T.en;
+  const s=useMemo(()=>createStyles(theme),[theme]);
   const insets=useSafeAreaInsets();
+  const {width}=useWindowDimensions();
+  const isWide=width>=900;
   const [hiring,setHiring]=useState(false);
   const [notice,setNotice]=useState(null);
   const [detailJob,setDetailJob]=useState(null);
@@ -76,7 +79,7 @@ export default function JobApplicantDetails(){
             jobId: request.job.id,
             jobCode: request.job.code,
           })});
-        }catch(e){setNotice({type:"error",title:t.errHire,body:e?.response?.data?.message||"Please try again."});}
+        }catch(e){setNotice({type:"error",title:t.errHire,body:getFriendlyApiError(e,language)});}
         finally{setHiring(false);}
       },
     });
@@ -84,65 +87,68 @@ export default function JobApplicantDetails(){
 
   return(
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <StatusBar barStyle={mode==="dark"?"light-content":"dark-content"} backgroundColor={C.white}/>
-      <NavHeader title="Provider Request" onBack={()=>nav.goBack()}/>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.scroll,{paddingBottom:BOTTOM+16}]}>
+      <StatusBar barStyle={mode==="dark"?"light-content":"dark-content"} backgroundColor={theme.colors.surface}/>
+      <NavHeader title={language==="sw"?"Ombi la Mtoa Huduma":"Provider Request"} onBack={()=>nav.goBack()}/>
+      <ScrollView
+        style={Platform.OS==="web"&&s.webScroller}
+        showsVerticalScrollIndicator={Platform.OS==="web"}
+        contentContainerStyle={[s.scroll,{paddingBottom:BOTTOM+16},isWide&&s.scrollWide]}
+      >
+        <View style={[s.contentShell,isWide&&s.contentShellWide]}>
 
-        {/* Provider profile card */}
+        {/* Compact provider identity */}
         <View style={s.profileBanner}>
           <Image source={{uri:avatarUri(provider)}} style={s.avatar}/>
-          <Text style={s.provUsername}>@{provider.username}</Text>
-          <Text style={s.provFull}>{provider.fullName||""}</Text>
-          <View style={s.ratingRow}>
-            {provider.rating
-              ?<><AppIcon name="star" size={14} color={C.amber}/><Text style={s.ratingTxt}>{provider.rating}</Text></>
-              :<Text style={s.ratingTxt}>{t.noRating}</Text>}
-          </View>
-          {provider.services?.length?(
-            <View style={s.serviceChips}>
-              {(Array.isArray(provider.services)?provider.services:[provider.services]).filter(Boolean).map((sv,i)=>(
-                <View key={i} style={s.serviceChip}><Text style={s.serviceChipTxt}>{sv}</Text></View>
-              ))}
+          <View style={s.profileCopy}>
+            <Text style={s.provUsername}>@{provider.username}</Text>
+            <Text style={s.provFull}>{provider.fullName||provider.full_name||""}</Text>
+            <View style={s.ratingRow}>
+              {provider.rating
+                ?<><AppIcon name="star" size={13} color={theme.colors.warning} filled/><Text style={s.ratingTxt}>{provider.rating}</Text></>
+                :<Text style={s.ratingTxt}>{t.noRating}</Text>}
             </View>
-          ):null}
+          </View>
+          <TouchableOpacity style={s.profileLink} onPress={()=>nav.navigate("UserProfile",{uuid:provider.uuid})}>
+            <AppIcon name="chevron-right" size={17} color={theme.colors.primary}/>
+          </TouchableOpacity>
         </View>
 
         {/* How I'll do it */}
-        <Card>
+        <View style={s.section}>
           <SectionHeading label={t.howIWork}/>
           <Text style={s.bodyTxt}>{request.explanation||"No explanation provided."}</Text>
-        </Card>
+        </View>
 
-        {/* Offer grid */}
-        <Card>
-          <SectionHeading label="Offer summary"/>
-          <View style={s.infoGrid}>
+        {/* Offer summary */}
+        <View style={s.section}>
+          <SectionHeading label={language==="sw"?"Muhtasari wa ofa":"Offer summary"}/>
+          <View>
             {[{l:t.budget,v:formatBudget(request.budget)},{l:t.time,v:request.duration||"Not set"},{l:t.available,v:request.availableFrom||"Not set"},{l:t.experience,v:request.experience||"Not set"}].map(r=>(
-              <View key={r.l} style={s.infoBox}>
+              <View key={r.l} style={s.infoRow}>
                 <Text style={s.infoLbl}>{r.l}</Text>
                 <Text style={s.infoVal}>{r.v}</Text>
               </View>
             ))}
           </View>
-        </Card>
+        </View>
 
         {/* Work images */}
         {request.images?.length?(
-          <Card>
+          <View style={s.section}>
             <SectionHeading label={t.workImages}/>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:10,paddingRight:4}}>
               {request.images.map((uri,i)=><Image key={`${uri}-${i}`} source={{uri}} style={s.workImg}/>)}
             </ScrollView>
-          </Card>
+          </View>
         ):null}
 
         {/* Notes */}
         {request.notes?(
-          <Card><SectionHeading label={t.notes}/><Text style={s.bodyTxt}>{request.notes}</Text></Card>
+          <View style={s.section}><SectionHeading label={t.notes}/><Text style={s.bodyTxt}>{request.notes}</Text></View>
         ):null}
 
         {/* Job mini card */}
-        <Card style={s.jobMini}>
+        <View style={s.section}>
           <SectionHeading label={t.jobInfo}/>
           <View style={s.jobCodeRow}>
             <View style={s.jobCodePill}><Text style={s.jobCodeTxt}>{request.job.code}</Text></View>
@@ -150,11 +156,12 @@ export default function JobApplicantDetails(){
           <Text style={s.jobTitle}>{request.job.title}</Text>
           <InfoRow icon="map-pin" label="Location" value={request.job.location||"Not set"}/>
           <InfoRow icon="calendar" label="Posted" value={formatRelativeDate(request.job.postedAt)||"Today"}/>
-        </Card>
+        </View>
+        </View>
       </ScrollView>
 
       {/* Bottom action bar */}
-      <View style={[s.bottomBar,{paddingBottom:insets.bottom+14}]}>
+      <View style={[s.bottomBar,{paddingBottom:insets.bottom+14},isWide&&s.bottomBarWide]}>
         {hired?(
           <PrimaryButton label={t.openWorkspace} icon="message"
             onPress={()=>nav.navigate("JobWorkspace", {
@@ -178,30 +185,33 @@ export default function JobApplicantDetails(){
   );
 }
 
-const s=StyleSheet.create({
-  safe:{flex:1,backgroundColor:C.bg},
+const createStyles=(theme)=>StyleSheet.create({
+  safe:{flex:1,backgroundColor:theme.colors.bg},
   center:{flex:1,alignItems:"center",justifyContent:"center"},
-  notFoundTxt:{fontSize:17,fontWeight:"700",color:"#1A1A2E"},
-  scroll:{padding:16,gap:12},
-  profileBanner:{backgroundColor:C.white,borderRadius:20,padding:24,alignItems:"center",gap:8,borderWidth:1,borderColor:"#EEF0F4",shadowColor:"#000",shadowOffset:{width:0,height:2},shadowOpacity:0.06,shadowRadius:8,elevation:3},
-  avatar:{width:96,height:96,borderRadius:48,borderWidth:3,borderColor:C.tealLight,marginBottom:4},
-  provUsername:{fontSize:20,fontWeight:"800",color:"#1A1A2E"},
-  provFull:{fontSize:13,color:C.slate},
+  notFoundTxt:{fontSize:17,fontWeight:"700",color:theme.colors.text},
+  webScroller:{height:"100vh"},
+  scroll:{paddingHorizontal:16},
+  scrollWide:{alignItems:"center"},
+  contentShell:{},
+  contentShellWide:{width:"100%",maxWidth:1180},
+  profileBanner:{flexDirection:"row",alignItems:"center",gap:11,paddingVertical:12,borderBottomWidth:1,borderBottomColor:theme.colors.border},
+  avatar:{width:54,height:54,borderRadius:27,borderWidth:2,borderColor:theme.colors.primarySoft,backgroundColor:theme.colors.surfaceSoft},
+  profileCopy:{flex:1,minWidth:0},
+  profileLink:{width:32,height:32,alignItems:"center",justifyContent:"center"},
+  provUsername:{fontSize:16,fontWeight:"900",color:theme.colors.text},
+  provFull:{fontSize:11.5,color:theme.colors.textMuted,marginTop:1},
   ratingRow:{flexDirection:"row",alignItems:"center",gap:4},
-  ratingTxt:{fontSize:13,fontWeight:"700",color:C.amber},
-  serviceChips:{flexDirection:"row",flexWrap:"wrap",gap:6,justifyContent:"center",marginTop:4},
-  serviceChip:{backgroundColor:C.tealLight,paddingHorizontal:10,paddingVertical:4,borderRadius:20},
-  serviceChipTxt:{color:C.teal,fontSize:12,fontWeight:"700"},
-  bodyTxt:{fontSize:14,color:C.slate,lineHeight:22},
-  infoGrid:{flexDirection:"row",flexWrap:"wrap",gap:10},
-  infoBox:{width:"47%",backgroundColor:C.slateLight,borderRadius:12,padding:14,borderWidth:1,borderColor:"#EEF0F4"},
-  infoLbl:{color:C.slate,fontSize:11,fontWeight:"700",marginBottom:4},
-  infoVal:{color:"#1A1A2E",fontSize:15,fontWeight:"800"},
-  workImg:{width:140,height:110,borderRadius:12,backgroundColor:C.slateLight},
-  jobMini:{backgroundColor:C.tealLight,borderColor:C.tealMid},
+  ratingTxt:{fontSize:13,fontWeight:"700",color:theme.colors.warning},
+  section:{paddingVertical:12,borderBottomWidth:1,borderBottomColor:theme.colors.border},
+  bodyTxt:{fontSize:14,color:theme.colors.textMuted,lineHeight:22},
+  infoRow:{minHeight:38,flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:12,borderBottomWidth:1,borderBottomColor:theme.colors.borderLight},
+  infoLbl:{color:theme.colors.textMuted,fontSize:12,fontWeight:"700"},
+  infoVal:{color:theme.colors.text,fontSize:13,fontWeight:"900",textAlign:"right"},
+  workImg:{width:140,height:110,borderRadius:12,backgroundColor:theme.colors.surfaceSoft},
   jobCodeRow:{marginBottom:6},
-  jobCodePill:{backgroundColor:C.white,paddingHorizontal:8,paddingVertical:3,borderRadius:8,alignSelf:"flex-start"},
-  jobCodeTxt:{color:C.teal,fontSize:11,fontWeight:"800"},
-  jobTitle:{fontSize:17,fontWeight:"800",color:"#1A1A2E",marginBottom:4},
-  bottomBar:{borderTopWidth:1,borderTopColor:"#EEF0F4",paddingHorizontal:16,paddingTop:14,backgroundColor:C.white},
+  jobCodePill:{backgroundColor:theme.colors.surface,paddingHorizontal:8,paddingVertical:3,borderRadius:8,alignSelf:"flex-start"},
+  jobCodeTxt:{color:theme.colors.primary,fontSize:11,fontWeight:"800"},
+  jobTitle:{fontSize:17,fontWeight:"800",color:theme.colors.text,marginBottom:4},
+  bottomBar:{borderTopWidth:1,borderTopColor:theme.colors.border,paddingHorizontal:16,paddingTop:14,backgroundColor:theme.colors.surface},
+  bottomBarWide:{alignSelf:"center",width:"100%",maxWidth:1180,borderLeftWidth:1,borderRightWidth:1,borderColor:theme.colors.border},
 });

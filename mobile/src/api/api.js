@@ -1,6 +1,7 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearUserSession, getUserToken } from "../utils/userSession";
+import { isNetworkError, networkErrorMessage } from "../utils/network";
 
 export const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL,
@@ -9,6 +10,19 @@ export const api = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+export function getFriendlyApiError(error, language = "en") {
+  if (isNetworkError(error)) return networkErrorMessage(language);
+  if (error?.response?.status === 401) {
+    return language === "sw" ? "Tafadhali ingia ili kuendelea." : "Please login to continue.";
+  }
+  if (error?.response?.status === 403) {
+    return language === "sw" ? "Huna ruhusa ya kufanya hili." : "You do not have permission to do this.";
+  }
+  return language === "sw"
+    ? "Kuna tatizo. Tafadhali jaribu tena."
+    : "Something went wrong. Please try again.";
+}
 
 /** Remove viewer token accidentally left on the shared axios instance. */
 export function clearViewerAuthOverride() {
@@ -120,12 +134,14 @@ api.interceptors.request.use(
     const isViewerRoute =
       url.startsWith("/posts/public") ||
       url.startsWith("/posts/provider/") ||
+      url.startsWith("/search") ||
       /\/posts\/\d+\/(like|comments)/.test(url) ||
       /\/posts\/follow\//.test(url) ||
       url.startsWith("/profiles/") ||
       url.startsWith("/hiring/") ||
       url.startsWith("/recommendations") ||
-      url.startsWith("/notifications");
+      url.startsWith("/notifications") ||
+      url.startsWith("/support");
 
     if (isViewerRoute) {
       const viewerToken = await getUserToken();
@@ -161,7 +177,8 @@ api.interceptors.response.use(
         url.startsWith("/profiles/") ||
         url.startsWith("/hiring/") ||
         url.startsWith("/recommendations") ||
-        url.startsWith("/notifications");
+        url.startsWith("/notifications") ||
+        url.startsWith("/support");
       const isSocialAction =
         /\/posts\/[^/]+\/(like|comments)/.test(url) ||
         /\/posts\/follow\//.test(url);

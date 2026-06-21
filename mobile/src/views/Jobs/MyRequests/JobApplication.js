@@ -2,6 +2,8 @@ import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,10 +16,12 @@ import * as ImagePicker from "expo-image-picker";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useAppTheme } from "../../../theme";
 import AppIcon from "../../../icons/AppIcon";
-import { api } from "../../../api/api";
+import { api, getFriendlyApiError } from "../../../api/api";
 import { UploadManager } from "../../../utils/UploadManager";
 import { formatDeadline, formatRelativeDate } from "../jobDate";
 import HiringNoticeModal from "../HiringNoticeModal";
+import { useLanguage } from "../../../LanguageContext";
+import { isNetworkError } from "../../../utils/network";
 
 const AVAILABILITY = ["Today", "Tomorrow", "This Week", "Choose Date"];
 const DURATION_UNITS = ["minute", "hour", "day"];
@@ -40,12 +44,18 @@ export default function JobApplication() {
   const navigation = useNavigation();
   const route = useRoute();
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
 
   const job = route.params?.job || null;
   const existing = route.params?.application || job?.my_application || null;
-  const initialDuration = splitNumberUnit(existing?.duration || existing?.estimated_time, "hour");
+  const initialDuration = existing?.duration_value
+    ? {
+        value: String(existing.duration_value),
+        unit: String(existing.duration_unit || "hours").replace(/s$/, ""),
+      }
+    : splitNumberUnit(existing?.duration || existing?.estimated_time, "hour");
   const initialExperience = splitNumberUnit(existing?.experience, "year");
   const initialAvailability = existing?.available_from || existing?.availableFrom || "";
 
@@ -116,6 +126,8 @@ export default function JobApplication() {
         message: plan.trim(),
         budget: cleanBudget ? `TZS ${Number(cleanBudget).toLocaleString("en-US")}` : "",
         duration: pluralize(cleanDuration, durationUnit),
+        duration_value: cleanDuration ? Number(cleanDuration) : null,
+        duration_unit: cleanDuration ? `${durationUnit}s` : null,
         availableFrom,
         experience: pluralize(cleanExperience, experienceUnit),
         notes: notes.trim(),
@@ -129,7 +141,14 @@ export default function JobApplication() {
         onPrimary: () => navigation.navigate("MainTabs", { screen: "Jobs", params: { initialTab: "requests" } }),
       });
     } catch (err) {
-      setNotice({ type: "error", title: "Application failed", body: err?.response?.data?.message || "Please try again." });
+      const mediaNetworkFailure = images.length && isNetworkError(err);
+      setNotice({
+        type: "error",
+        title: language==="sw"?"Ombi halikutumwa":"Application failed",
+        body: mediaNetworkFailure
+          ?(language==="sw"?"Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena.":"Media upload failed because of connection problem. Try again.")
+          :getFriendlyApiError(err,language),
+      });
     } finally {
       setSubmitting(false);
     }
@@ -139,8 +158,15 @@ export default function JobApplication() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header title={existing ? "Update Application" : "Apply For Job"} navigation={navigation} theme={theme} styles={styles} />
 
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 56 : 0}
+      >
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 106 + insets.bottom }]}
       >
         <View style={styles.jobMini}>
@@ -256,6 +282,7 @@ export default function JobApplication() {
           />
         </Section>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <View style={[styles.bottomAction, { paddingBottom: insets.bottom + 14 }]}>
         <TouchableOpacity style={[styles.submitBtn, submitting && styles.submitBtnDisabled]} disabled={submitting} onPress={submitApplication}>
@@ -312,6 +339,7 @@ function Segmented({ values, active, onChange, styles }) {
 
 const createStyles = (theme) =>
   StyleSheet.create({
+    keyboard: { flex: 1 },
     safe: { flex: 1, backgroundColor: theme.colors.bg },
     header: {
       flexDirection: "row",
