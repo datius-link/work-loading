@@ -11,7 +11,6 @@ export default function ProfileFutureList() {
   const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const isWorks = route.name === "ProfileWorksDone";
   const count = Number(route.params?.count || 0);
 
   return (
@@ -20,12 +19,12 @@ export default function ProfileFutureList() {
         <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
           <AppIcon name="arrowLeft" size={19} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isWorks ? "Jobs" : "Recommendations"}</Text>
+        <Text style={styles.headerTitle}>Jobs</Text>
         <View style={styles.iconBtn} />
       </View>
       <View style={styles.body}>
         <Text style={styles.count}>{count.toLocaleString()}</Text>
-        <Text style={styles.title}>{isWorks ? "Archived jobs will appear here." : "Recommendations will appear here."}</Text>
+        <Text style={styles.title}>Archived jobs will appear here.</Text>
         <Text style={styles.copy}>
           This screen is reserved for the full community history view.
         </Text>

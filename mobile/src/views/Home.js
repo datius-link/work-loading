@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Image,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,10 +16,10 @@ import { useAppTheme } from "../theme";
 import AppIcon from "../icons/AppIcon";
 import { api } from "../api/api";
 
-function avatarFor(username, profilePic) {
-  if (profilePic) return profilePic;
+function avatarFor(user) {
+  if (user?.profile_pic) return user.profile_pic;
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    username || "U"
+    user?.full_name || user?.username || "U"
   )}&background=0B6B63&color=fff`;
 }
 
@@ -27,283 +27,232 @@ export default function Home() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const inputRef = useRef(null);
+  const requestRef = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // Search results state
-  const [userResults, setUserResults] = useState([]);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState({ users: [], hashtags: [] });
   const [searching, setSearching] = useState(false);
-  const searchRef = useRef(null);
 
-  // Fetch users matching query
-  const fetchUsers = useCallback(async (q) => {
-    if (!q || q.trim().length < 1) {
-      setUserResults([]);
-      return;
-    }
-    try {
-      setSearching(true);
-      const res = await api.get("/service-provider/search", {
-        params: { q: q.trim(), limit: 10 },
-      });
-      setUserResults(res?.data?.providers || res?.data?.users || []);
-    } catch {
-      setUserResults([]);
-    } finally {
-      setSearching(false);
-    }
-  }, []);
-
-  // Debounce user search
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      fetchUsers(searchQuery);
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [searchQuery, fetchUsers]);
+    const plain = query.replace(/^[@#]+/, "").trim();
+    if (!plain) {
+      requestRef.current?.abort();
+      setResults({ users: [], hashtags: [] });
+      setSearching(false);
+      return undefined;
+    }
+
+    const timer = setTimeout(async () => {
+      requestRef.current?.abort();
+      const controller = new AbortController();
+      requestRef.current = controller;
+      setSearching(true);
+      try {
+        const response = await api.get("/search", {
+          params: { q: query.trim(), type: "suggestions", limit: 6 },
+          signal: controller.signal,
+        });
+        setResults({
+          users: response?.data?.users || [],
+          hashtags: response?.data?.hashtags || [],
+        });
+      } catch (error) {
+        if (error?.code !== "ERR_CANCELED") {
+          setResults({ users: [], hashtags: [] });
+        }
+      } finally {
+        if (requestRef.current === controller) setSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => () => requestRef.current?.abort(), []);
 
   const closeSearch = () => {
+    requestRef.current?.abort();
     setSearchOpen(false);
-    setSearchQuery("");
-    setUserResults([]);
+    setQuery("");
+    setResults({ users: [], hashtags: [] });
   };
 
-  const openProfile = (provider) => {
+  const submitSearch = (value = query) => {
+    const clean = String(value || "").trim();
+    if (!clean.replace(/^[@#]+/, "").trim()) return;
+    requestRef.current?.abort();
+    setSearchOpen(false);
+    navigation.navigate("SearchResults", { query: clean });
+  };
+
+  const openUser = (user) => {
     closeSearch();
     navigation.navigate("UserProfile", {
-      providerUuid: provider.provider_uuid || provider.uuid,
-      username: provider.username,
+      providerUuid: user.uuid,
+      providerId: user.uuid,
+      username: user.username,
     });
   };
 
-  const showDropdown = searchOpen && searchQuery.trim().length > 0;
-
-  const renderUserItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.resultItem}
-      activeOpacity={0.85}
-      onPress={() => openProfile(item)}
-    >
-      <Image
-        source={{ uri: avatarFor(item.username, item.profile_pic || item.profilePic) }}
-        style={styles.resultAvatar}
-      />
-      <View style={styles.resultMeta}>
-        <Text style={styles.resultUsername}>@{item.username}</Text>
-        {!!item.full_name && (
-          <Text style={styles.resultFullName}>{item.full_name}</Text>
-        )}
-      </View>
-      <AppIcon name="chevron-right" size={16} color={theme.colors.textMuted} />
-    </TouchableOpacity>
-  );
+  const showDropdown = searchOpen && query.replace(/^[@#]+/, "").trim().length > 0;
+  const noResults = !searching && results.users.length === 0 && results.hashtags.length === 0;
 
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <View style={[styles.brandRow, searchOpen && styles.brandCompact]}>
-          <AppIcon name="logo" size={34} color={theme.colors.primary} />
-          {!searchOpen && <Text style={styles.logo}>e-kazi</Text>}
-        </View>
+        {!searchOpen ? (
+          <View style={styles.brandRow}>
+            <AppIcon name="logo" size={34} color={theme.colors.primary} />
+            <Text style={styles.logo}>e-kazi</Text>
+          </View>
+        ) : null}
 
         <View style={[styles.searchWrap, searchOpen && styles.searchWrapOpen]}>
           <TouchableOpacity
             style={styles.searchIconBtn}
             onPress={() => {
-              if (searchOpen) {
-                closeSearch();
-              } else {
+              if (searchOpen) closeSearch();
+              else {
                 setSearchOpen(true);
-                setTimeout(() => searchRef.current?.focus(), 100);
+                setTimeout(() => inputRef.current?.focus(), 80);
               }
             }}
           >
-            <AppIcon
-              name={searchOpen ? "close" : "search"}
-              size={18}
-              color={theme.colors.primary}
-            />
+            <AppIcon name={searchOpen ? "close" : "search"} size={18} color={theme.colors.primary} />
           </TouchableOpacity>
-          {searchOpen && (
+          {searchOpen ? (
             <TextInput
-              ref={searchRef}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search @users, #services"
+              ref={inputRef}
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={() => submitSearch()}
+              placeholder="Search people, skills, #hashtags"
               placeholderTextColor={theme.colors.textMuted}
               style={styles.searchInput}
               autoCapitalize="none"
-              autoFocus
+              autoCorrect={false}
               returnKeyType="search"
             />
-          )}
+          ) : null}
         </View>
       </View>
 
-      {/* Search Dropdown */}
-      {showDropdown && (
-        <View style={styles.searchDropdown}>
+      {showDropdown ? (
+        <View style={[styles.dropdown, { top: insets.top + 59 }]}>
           {searching ? (
-            <View style={styles.searchLoading}>
+            <View style={styles.loadingRow}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
-              <Text style={styles.searchLoadingText}>Searching...</Text>
+              <Text style={styles.muted}>Searching...</Text>
             </View>
-          ) : userResults.length === 0 ? (
-            <View style={styles.noResults}>
-              <Text style={styles.noResultsText}>No users found for "{searchQuery}"</Text>
-            </View>
+          ) : noResults ? (
+            <TouchableOpacity style={styles.emptyRow} onPress={() => submitSearch()}>
+              <AppIcon name="search" size={18} color={theme.colors.textMuted} />
+              <Text style={styles.muted}>Search all results for “{query.trim()}”</Text>
+            </TouchableOpacity>
           ) : (
-            <FlatList
-              data={userResults}
-              renderItem={renderUserItem}
-              keyExtractor={(item) =>
-                String(item.provider_uuid || item.uuid || item.username)
-              }
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              style={styles.resultList}
-            />
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {results.users.map((user) => (
+                <TouchableOpacity key={user.uuid} style={styles.resultRow} onPress={() => openUser(user)}>
+                  <Image source={{ uri: avatarFor(user) }} style={styles.avatar} />
+                  <View style={styles.resultText}>
+                    <Text style={styles.username}>@{user.username || "user"}</Text>
+                    <Text style={styles.fullName} numberOfLines={1}>{user.full_name || "e-kazi user"}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {results.hashtags.map((tag) => (
+                <TouchableOpacity key={tag.name} style={styles.resultRow} onPress={() => submitSearch(`#${tag.name}`)}>
+                  <View style={styles.hashtagIcon}><Text style={styles.hashtagMark}>#</Text></View>
+                  <View style={styles.resultText}>
+                    <Text style={styles.username}>#{tag.name}</Text>
+                    <Text style={styles.fullName}>{Number(tag.posts_count) || 0} posts</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={styles.allResults} onPress={() => submitSearch()}>
+                <AppIcon name="search" size={17} color={theme.colors.primary} />
+                <Text style={styles.allResultsText}>See all results for “{query.trim()}”</Text>
+              </TouchableOpacity>
+            </ScrollView>
           )}
         </View>
-      )}
+      ) : null}
 
-      <ExploreTab navigation={navigation} searchQuery={searchQuery} />
+      <ExploreTab navigation={navigation} />
     </View>
   );
 }
 
-
 const createStyles = (theme) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.colors.bg,
-    },
+    container: { flex: 1, backgroundColor: theme.colors.bg },
     header: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
       paddingHorizontal: 16,
       paddingBottom: 10,
       backgroundColor: theme.colors.surface,
       borderBottomWidth: 1,
       borderColor: theme.colors.border,
-      zIndex: 10,
+      zIndex: 20,
     },
-    brandRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    brandCompact: {
-      width: 38,
-    },
-    logo: {
-      fontSize: 22,
-      fontWeight: "800",
-      color: theme.colors.primary,
-    },
+    brandRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    logo: { fontSize: 22, fontWeight: "900", color: theme.colors.primary },
     searchWrap: {
+      marginLeft: "auto",
+      minHeight: 40,
       flexDirection: "row",
       alignItems: "center",
       borderRadius: 18,
       borderWidth: 1,
       borderColor: theme.colors.primary,
       backgroundColor: theme.colors.primarySoft,
-      minHeight: 38,
-      marginLeft: "auto",
     },
-    searchWrapOpen: {
-      flex: 1,
-      marginHorizontal: 10,
-      maxWidth: undefined,
-    },
-    searchIconBtn: {
-      width: 38,
-      height: 38,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    searchInput: {
-      flex: 1,
-      paddingRight: 12,
-      fontSize: 13,
-      fontWeight: "700",
-      color: theme.colors.primary,
-    },
-
-    // Search dropdown
-    searchDropdown: {
+    searchWrapOpen: { flex: 1, marginLeft: 0 },
+    searchIconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+    searchInput: { flex: 1, paddingRight: 12, color: theme.colors.text, fontSize: 14, fontWeight: "700" },
+    dropdown: {
       position: "absolute",
-      top: 0,
       left: 0,
       right: 0,
-      marginTop: 70,
-      zIndex: 999,
+      zIndex: 15,
+      maxHeight: 430,
       backgroundColor: theme.colors.surface,
-      borderBottomLeftRadius: 16,
-      borderBottomRightRadius: 16,
-      borderWidth: 1,
-      borderTopWidth: 0,
+      borderBottomWidth: 1,
       borderColor: theme.colors.border,
-      maxHeight: 320,
       shadowColor: "#000",
-      shadowOpacity: 0.08,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 8,
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      elevation: 12,
     },
-    searchLoading: {
+    loadingRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 18 },
+    emptyRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 18 },
+    muted: { color: theme.colors.textMuted, fontSize: 14, fontWeight: "700" },
+    resultRow: {
+      minHeight: 66,
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      padding: 16,
-    },
-    searchLoadingText: {
-      color: theme.colors.textMuted,
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    noResults: {
-      padding: 20,
-      alignItems: "center",
-    },
-    noResultsText: {
-      color: theme.colors.textMuted,
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    resultList: {
-      maxHeight: 320,
-    },
-    resultItem: {
-      flexDirection: "row",
-      alignItems: "center",
+      gap: 12,
       paddingHorizontal: 16,
-      paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
-      gap: 12,
     },
-    resultAvatar: {
+    avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.colors.primarySoft },
+    hashtagIcon: {
       width: 44,
       height: 44,
       borderRadius: 22,
-      backgroundColor: theme.colors.primarySoft,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.border,
     },
-    resultMeta: {
-      flex: 1,
-    },
-    resultUsername: {
-      fontSize: 14,
-      fontWeight: "800",
-      color: theme.colors.primary,
-    },
-    resultFullName: {
-      fontSize: 13,
-      color: theme.colors.textSecondary,
-      fontWeight: "500",
-      marginTop: 2,
-    },
+    hashtagMark: { color: theme.colors.text, fontSize: 22, fontWeight: "900" },
+    resultText: { flex: 1, minWidth: 0 },
+    username: { color: theme.colors.text, fontSize: 14, fontWeight: "900" },
+    fullName: { color: theme.colors.textMuted, fontSize: 13, marginTop: 2 },
+    allResults: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+    allResultsText: { color: theme.colors.primary, fontWeight: "900" },
   });

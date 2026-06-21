@@ -10,9 +10,11 @@ import {
   RefreshControl,
   StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../../../theme";
 import { socialRequest } from "../../../api/api";
+import AppIcon from "../../../icons/AppIcon";
+import { useLanguage } from "../../../LanguageContext";
 
 // ------------------------------------------------------------------
 // Constants & helpers
@@ -30,7 +32,7 @@ const EMPTY_SUMMARY = {
   activity_posts: 0, activity_jobs_applied: 0, activity_jobs_posted: 0,
   views: 0, likes: 0, comments: 0, shares: 0, saves: 0,
   media_posts: 0, followers: 0, followers_gained: 0,
-  average_rating: 0, recommendations: 0,
+  average_rating: 0, rating_count: 0,
   jobs_posted: 0, jobs_filled: 0, jobs_open: 0, jobs_waiting_decision: 0,
   applicants_received: 0, average_applicants_per_job: 0,
   direct_hires_made: 0, average_time_to_first_applicant: null,
@@ -58,12 +60,14 @@ function useRangedSummary(ranges) {
   const [data, setData] = useState(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
   const lastRangesRef = useRef({});
 
   const fetchData = useCallback(async (r, isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
+      setError("");
       const params = new URLSearchParams({
         activity_range: r.activity,
         content_range:  r.content,
@@ -75,6 +79,12 @@ function useRangedSummary(ranges) {
         setData({
           ...EMPTY_SUMMARY,
           ...res.data.summary,
+          rating_count: Number(
+            res.data.summary.rating_count ??
+            res.data.summary.ratings_count ??
+            res.data.summary.recommendations ??
+            0
+          ),
           top_posts: res.data.summary.top_posts || [],
           top_jobs:  res.data.summary.top_jobs || [],
           achievements: res.data.summary.achievements || [],
@@ -83,6 +93,7 @@ function useRangedSummary(ranges) {
       }
     } catch (err) {
       console.warn("Insights fetch error", err);
+      setError(err?.response?.data?.message || err?.message || "Could not load insights.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -101,7 +112,7 @@ function useRangedSummary(ranges) {
     fetchData(ranges, true);
   }, [fetchData, ranges]);
 
-  return { data, loading, refreshing, refresh };
+  return { data, loading, refreshing, error, refresh };
 }
 
 // ------------------------------------------------------------------
@@ -404,7 +415,10 @@ function FooterNote() {
 // ------------------------------------------------------------------
 export default function Insights({ navigation }) {
   const { theme, mode } = useAppTheme();
+  const { language } = useLanguage();
+  const insets = useSafeAreaInsets();
   const c = theme.colors;
+  const tx = (en, sw) => language === "sw" ? sw : en;
 
   // Per‑section time ranges
   const [ranges, setRanges] = useState({
@@ -416,68 +430,84 @@ export default function Insights({ navigation }) {
 
   const setRange = (section) => (val) => setRanges(prev => ({ ...prev, [section]: val }));
 
-  const { data: s, loading, refreshing, refresh } = useRangedSummary(ranges);
+  const { data: s, loading, refreshing, error, refresh } = useRangedSummary(ranges);
 
   // Compute max for score bars (avoid division by zero)
   const scoreMax = Math.max(s.activity_score, 1);
 
   if (loading && !refreshing) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
+      <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: c.bg }}>
         <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} backgroundColor={c.surface} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={c.primary} />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: c.bg }}>
       <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} backgroundColor={c.surface} />
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 48 }}
+        contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: Math.max(insets.bottom, 16) + 36 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[c.primary]} />}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={{ marginBottom: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View>
-            <Text style={{ fontSize: 22, fontWeight: "700", color: c.text, marginBottom: 3 }}>Insights</Text>
-            <Text style={{ fontSize: 13, color: c.textMuted }}>Activity, content & hiring in one place</Text>
+        <View style={{ minHeight: 54, marginBottom: 16, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
+          <TouchableOpacity
+            onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate("MainTabs", { screen: "Profile" })}
+            style={{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: c.surfaceSoft }}
+          >
+            <AppIcon name="arrowLeft" size={18} color={c.text} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 19, fontWeight: "800", color: c.text }}>{language === "sw" ? "Maarifa" : "Insights"}</Text>
+            <Text style={{ fontSize: 11.5, color: c.textMuted }}>{language === "sw" ? "Shughuli, maudhui na kuajiri" : "Activity, content and hiring"}</Text>
           </View>
           {loading && <ActivityIndicator size="small" color={c.primary} />}
         </View>
 
+        {error ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 12, marginBottom: 18, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface }}>
+            <AppIcon name="warning" size={18} color={c.warning} />
+            <Text style={{ flex: 1, color: c.textSecondary, fontSize: 12.5, lineHeight: 18 }}>{error}</Text>
+            <TouchableOpacity onPress={refresh}>
+              <Text style={{ color: c.primary, fontWeight: "800", fontSize: 12 }}>{tx("Retry", "Jaribu tena")}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* ───────── Activity score ───────── */}
-        <SectionHeader title="Activity score" range={ranges.activity} onRangeChange={setRange("activity")} theme={theme} />
+        <SectionHeader title={tx("Activity score", "Kiwango cha shughuli")} range={ranges.activity} onRangeChange={setRange("activity")} theme={theme} />
         <BigScore value={s.activity_score} />
-        <ScoreBar label="Likes given"      value={s.activity_likes}        max={scoreMax} />
-        <ScoreBar label="Comments made"    value={s.activity_comments}     max={scoreMax} />
-        <ScoreBar label="Posts published"  value={s.activity_posts}        max={scoreMax} />
-        <ScoreBar label="Jobs applied to"  value={s.activity_jobs_applied} max={scoreMax} />
-        <ScoreBar label="Jobs posted"      value={s.activity_jobs_posted}  max={scoreMax} />
+        <ScoreBar label={tx("Likes given", "Likes ulizoweka")} value={s.activity_likes} max={scoreMax} />
+        <ScoreBar label={tx("Comments made", "Comments ulizoandika")} value={s.activity_comments} max={scoreMax} />
+        <ScoreBar label={tx("Posts published", "Posts ulizochapisha")} value={s.activity_posts} max={scoreMax} />
+        <ScoreBar label={tx("Jobs applied to", "Kazi ulizoomba")} value={s.activity_jobs_applied} max={scoreMax} />
+        <ScoreBar label={tx("Jobs posted", "Kazi ulizoweka")} value={s.activity_jobs_posted} max={scoreMax} />
 
         <View style={{ height: 0.5, backgroundColor: c.border, marginVertical: 28 }} />
 
         {/* ───────── Overview ───────── */}
-        <SectionHeader title="Overview" range={ranges.content} onRangeChange={setRange("content")} theme={theme} />
+        <SectionHeader title={tx("Overview", "Muhtasari")} range={ranges.content} onRangeChange={setRange("content")} theme={theme} />
         <StatGrid>
-          <Stat label="Followers" value={formatCount(s.followers)} sub={s.followers_gained > 0 ? `+${s.followers_gained} new` : undefined} />
-          <Stat label="Posts" value={s.media_posts} />
-          <Stat label="Total views" value={formatCount(s.views)} />
+          <Stat label={tx("Followers", "Followers")} value={formatCount(s.followers)} sub={s.followers_gained > 0 ? `+${s.followers_gained} ${tx("new", "wapya")}` : undefined} />
+          <Stat label={tx("Posts", "Posts")} value={s.media_posts} />
+          <Stat label={tx("Total views", "Jumla ya views")} value={formatCount(s.views)} />
           <Stat label="Likes" value={formatCount(s.likes)} />
           <Stat label="Comments" value={formatCount(s.comments)} />
-          <Stat label="Shares" value={formatCount(s.shares)} />
-          <Stat label="Saves" value={formatCount(s.saves)} />
-          <Stat label="Rating" value={s.average_rating ? `${s.average_rating}★` : "—"} sub={`${s.recommendations} reviews`} />
-          <Stat label="Profile visits" value="—" sub="Coming soon" />
+          <Stat label={tx("Shares", "Shares")} value={formatCount(s.shares)} />
+          <Stat label={tx("Saves", "Saved")} value={formatCount(s.saves)} />
+          <Stat label={tx("Rating", "Rating")} value={s.average_rating ? `${s.average_rating}★` : "—"} sub={`${s.rating_count} ${tx("ratings", "ratings")}`} />
+          <Stat label={tx("Profile visits", "Waliotembelea profaili")} value="—" sub={tx("Coming soon", "Inakuja")} />
         </StatGrid>
 
         <View style={{ height: 0.5, backgroundColor: c.border, marginVertical: 28 }} />
 
         {/* ───────── Content performance ───────── */}
-        <SectionHeader title="Content performance" range={ranges.content} onRangeChange={setRange("content")} theme={theme} />
+        <SectionHeader title={tx("Content performance", "Matokeo ya maudhui")} range={ranges.content} onRangeChange={setRange("content")} theme={theme} />
         {s.top_posts.length === 0 ? (
           <Text style={{ fontSize: 13, color: c.textMuted, paddingVertical: 8 }}>No posts in this time window yet.</Text>
         ) : (
@@ -492,7 +522,7 @@ export default function Insights({ navigation }) {
         <View style={{ height: 0.5, backgroundColor: c.border, marginVertical: 28 }} />
 
         {/* ───────── Hiring insights ───────── */}
-        <SectionHeader title="Hiring insights" range={ranges.hiring} onRangeChange={setRange("hiring")} theme={theme} />
+        <SectionHeader title={tx("Hiring insights", "Taarifa za kuajiri")} range={ranges.hiring} onRangeChange={setRange("hiring")} theme={theme} />
         <StatGrid>
           <Stat label="Jobs posted" value={s.jobs_posted} />
           <Stat label="Jobs open" value={s.jobs_open} />
@@ -516,7 +546,7 @@ export default function Insights({ navigation }) {
         <View style={{ height: 0.5, backgroundColor: c.border, marginVertical: 28 }} />
 
         {/* ───────── Work insights ───────── */}
-        <SectionHeader title="Work insights" range={ranges.work} onRangeChange={setRange("work")} theme={theme} />
+        <SectionHeader title={tx("Work insights", "Taarifa za kazi")} range={ranges.work} onRangeChange={setRange("work")} theme={theme} />
         <StatGrid>
           <Stat label="Applied to" value={s.jobs_applied} />
           <Stat label="Jobs attained" value={s.jobs_attained} accent />
@@ -530,18 +560,6 @@ export default function Insights({ navigation }) {
             <ScoreBar label="Application success rate" value={s.application_success_rate} max={100} />
           </View>
         )}
-
-        <View style={{ height: 0.5, backgroundColor: c.border, marginVertical: 28 }} />
-
-        {/* ───────── Ratings & recommendations ───────── */}
-        <View style={{ marginBottom: 20 }}>
-          <Text style={{ fontSize: 15, fontWeight: "600", color: c.text, marginBottom: 12 }}>Ratings & recommendations</Text>
-          <StatGrid>
-            <Stat label="Average rating" value={s.average_rating ? `${s.average_rating}/5` : "Not rated"} />
-            <Stat label="Recommendations" value={s.recommendations} />
-          </StatGrid>
-          <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 8 }}>Complete jobs and get feedback to improve trust.</Text>
-        </View>
 
         {/* ───────── Activity streak ───────── */}
         <View style={{ marginBottom: 20 }}>
@@ -568,6 +586,6 @@ export default function Insights({ navigation }) {
 
         <FooterNote />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }

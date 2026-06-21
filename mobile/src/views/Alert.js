@@ -12,9 +12,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
-import { viewerRequest } from "../api/api";
+import { getFriendlyApiError, viewerRequest } from "../api/api";
 import AppIcon from "../icons/AppIcon";
 import LoginModal from "./Auth/LoginModal";
+import { cachedGet } from "../utils/offlineCache";
+import CachedDataNotice from "../components/CachedDataNotice";
 
 const T = {
   en: {
@@ -67,6 +69,7 @@ export default function Alerts() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState("");
   const [showLogin, setShowLogin] = useState(false);
+  const [showingCached, setShowingCached] = useState(false);
 
   const loadAlerts = useCallback(async ({ refresh = false } = {}) => {
     if (refresh) setRefreshing(true);
@@ -75,20 +78,23 @@ export default function Alerts() {
     try {
       setError("");
       setNeedsLogin(false);
-      const res = await viewerRequest("get", "/notifications");
+      const result = await cachedGet("notifications", () => viewerRequest("get", "/notifications").then((res) => res.data));
+      const res = { data: result.data };
       setNotifications(Array.isArray(res?.data?.notifications) ? res.data.notifications : []);
+      setShowingCached(result.fromCache);
     } catch (err) {
       if (err?.response?.status === 401 || err?.response?.status === 403) {
         setNeedsLogin(true);
         setNotifications([]);
       } else {
-        setError(err?.response?.data?.message || "Failed to load activities");
+        setError(getFriendlyApiError(err, language));
+        setShowingCached(false);
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -174,6 +180,7 @@ export default function Alerts() {
         <Text style={styles.title}>{t.title}</Text>
         <Text style={styles.subtitle}>{t.subtitle}</Text>
       </View>
+      <CachedDataNotice visible={showingCached} />
       <FlatList
         data={notifications}
         keyExtractor={(item) => String(item.id)}

@@ -21,7 +21,7 @@ export function requireAnyToken(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.AUTH_TOKEN_SECRET);
     req.tokenType = "auth";
-    req.user = payload; // { uuid, role }
+    req.user = payload; // Old token role fields, if present, are intentionally ignored.
     return next();
   } catch {}
 

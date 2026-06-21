@@ -9,6 +9,8 @@ import hiringRoutes from "./hiring/hiring.routes.js";
 import notificationsRoutes from "./notifications/notifications.routes.js";
 import profilesRoutes from "./profiles/profiles.routes.js";
 import recommendationsRoutes from "./recommendations/recommendations.routes.js";
+import searchRoutes from "./search/search.routes.js";
+import supportRoutes from "./support/support.routes.js";
 
 import { setupSwagger } from "./config/swagger.js";
 
@@ -42,6 +44,8 @@ app.use("/api/hiring", hiringRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/profiles", profilesRoutes);
 app.use("/api/recommendations", recommendationsRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/support", supportRoutes);
 
 app.get("/health", (_req, res) => {
   return res.status(200).json({

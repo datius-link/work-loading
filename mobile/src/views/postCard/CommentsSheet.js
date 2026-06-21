@@ -19,11 +19,12 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, socialRequest } from "../../api/api";
+import { api, getFriendlyApiError, socialRequest } from "../../api/api";
 import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
 import { CommentBody } from "./commentUtils";
 import { getUserSession } from "../../utils/userSession";
+import { useLanguage } from "../../LanguageContext";
 
 function avatarFor(username, profilePic) {
   if (profilePic) return profilePic;
@@ -46,10 +47,12 @@ function CommentRow({
 }) {
   const isProviderAuthor =
     comment.author_type === "provider" ||
-    comment.author_type === "service_provider";
+    comment.author_type === "service_provider" ||
+    comment.author_type === "user";
   const isViewerAuthor =
     comment.author_type === "viewer" ||
-    comment.author_type === "light_user";
+    comment.author_type === "light_user" ||
+    comment.author_type === "user";
   const canDelete =
     (isProviderAuthor &&
       currentProviderUuid &&
@@ -152,6 +155,7 @@ export default function CommentsSheet({
 }) {
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
   const styles = createStyles(theme);
 
   const [comments, setComments] = useState([]);
@@ -225,7 +229,7 @@ export default function CommentsSheet({
       setTotalCount(Number(res?.data?.total_count) || 0);
     } catch (err) {
       console.log("Comments error:", err?.response?.data || err?.message);
-      setError(err?.response?.data?.message || "Could not load comments");
+      setError(getFriendlyApiError(err, language));
       setComments([]);
       setTotalCount(0);
     } finally {
@@ -298,7 +302,7 @@ export default function CommentsSheet({
             }
             Alert.alert(
               "Could not delete",
-              err?.response?.data?.message || "Please try again."
+              getFriendlyApiError(err, language)
             );
           }
         },
@@ -336,7 +340,8 @@ export default function CommentsSheet({
   const handleAuthorPress = (item) => {
     const isProviderAuthor =
       item.author_type === "provider" ||
-      item.author_type === "service_provider";
+      item.author_type === "service_provider" ||
+      item.author_type === "user";
 
     if (isProviderAuthor) {
       openUserProfile(item.author_id, item.username);

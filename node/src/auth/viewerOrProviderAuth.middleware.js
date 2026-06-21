@@ -1,117 +1,53 @@
 import jwt from "jsonwebtoken";
 import db from "../db/index.js";
 
+async function profileForToken(token) {
+  const payload = jwt.verify(token, process.env.AUTH_TOKEN_SECRET);
+  if (!payload?.uuid) return null;
+
+  return db("profiles")
+    .select("uuid", "email", "is_verified")
+    .where({ uuid: payload.uuid })
+    .first();
+}
+
 export async function requireViewerOrProviderAuth(req, res, next) {
-  let authHeader = null;
   try {
-    authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.log("[AUTH social] missing authorization", {
-        method: req.method,
-        path: req.originalUrl,
-      });
-      return res.status(401).json({
-        message: "Authorization token missing",
-      });
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Authorization token missing" });
     }
 
-    const token = authHeader.split(" ")[1];
+    const profile = await profileForToken(authHeader.split(" ")[1]);
+    if (!profile) return res.status(401).json({ message: "User account not found" });
+    if (!profile.is_verified) return res.status(403).json({ message: "Email verification required" });
 
-    const payload = jwt.verify(token, process.env.AUTH_TOKEN_SECRET);
-    console.log("[AUTH social] token payload", {
-      method: req.method,
-      path: req.originalUrl,
-      uuid: payload.uuid,
-      role: payload.role,
-    });
-
-    if (payload.role === "provider" || payload.role === "service_provider") {
-      req.user = payload;
-      return next();
-    }
-
-    if (payload.role === "viewer" || payload.role === "light_user") {
-      const profile = await db("profiles")
-        .select("uuid", "role", "is_verified")
-        .where({ uuid: payload.uuid })
-        .where({ role: "light_user" })
-        .where({ is_verified: true })
-        .first();
-      if (!profile) {
-        console.log("[AUTH social] verified user profile not found", {
-          method: req.method,
-          path: req.originalUrl,
-          uuid: payload.uuid,
-          role: payload.role,
-        });
-        return res.status(403).json({ message: "Email verification required" });
-      }
-      req.viewer = { ...payload, role: "light_user" };
-      return next();
-    }
-
-    console.log("[AUTH social] invalid token role", {
-      method: req.method,
-      path: req.originalUrl,
-      uuid: payload.uuid,
-      role: payload.role,
-    });
-    return res.status(401).json({
-      message: "Invalid token role",
-    });
-  } catch (err) {
-    const decoded = authHeader?.startsWith("Bearer ")
-      ? jwt.decode(authHeader.split(" ")[1])
-      : null;
-    console.log("[AUTH social] token verify failed", {
-      method: req.method,
-      path: req.originalUrl,
-      decoded,
-      name: err?.name,
-      message: err?.message,
-    });
-    return res.status(401).json({
-      message: "Invalid or expired token",
-    });
+    const identity = { uuid: profile.uuid, email: profile.email, is_verified: true };
+    req.user = identity;
+    req.viewer = identity;
+    return next();
+  } catch {
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 }
 
-export async function optionalViewerOrProviderAuth(req, res, next) {
+export async function optionalViewerOrProviderAuth(req, _res, next) {
   try {
     const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader?.startsWith("Bearer ")) {
       req.user = null;
       req.viewer = null;
       return next();
     }
 
-    const token = authHeader.split(" ")[1];
-    const payload = jwt.verify(token, process.env.AUTH_TOKEN_SECRET);
-
-    if (payload.role === "provider" || payload.role === "service_provider") {
-      req.user = payload;
-      req.viewer = null;
-      return next();
-    }
-
-    if (payload.role === "viewer" || payload.role === "light_user") {
-      const profile = await db("profiles")
-        .select("uuid", "role", "is_verified")
-        .where({ uuid: payload.uuid })
-        .where({ role: "light_user" })
-        .where({ is_verified: true })
-        .first();
-      req.user = null;
-      req.viewer = profile ? { ...payload, role: "light_user" } : null;
-      return next();
-    }
-
-    req.user = null;
-    req.viewer = null;
+    const profile = await profileForToken(authHeader.split(" ")[1]);
+    const identity = profile?.is_verified
+      ? { uuid: profile.uuid, email: profile.email, is_verified: true }
+      : null;
+    req.user = identity;
+    req.viewer = identity;
     return next();
-  } catch (err) {
+  } catch {
     req.user = null;
     req.viewer = null;
     return next();

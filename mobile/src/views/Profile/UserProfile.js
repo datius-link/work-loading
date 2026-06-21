@@ -9,22 +9,35 @@ import {
   TouchableOpacity,
   View,
   Dimensions,
-  FlatList,
   Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
-import { api, socialRequest } from "../../api/api";
+import { useMutation, useQuery } from "convex/react";
+import { api as convexApi } from "../../../convex/_generated/api";
+import { api, getFriendlyApiError, socialRequest, viewerRequest } from "../../api/api";
 import { getUserSession } from "../../utils/userSession";
+import { UploadManager } from "../../utils/UploadManager";
 import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
 import PostGridItem from "../postCard/PostGridItem";
+import OverallRating from "./OverallRating";
+import CreateJobModal from "../Jobs/MyJobs/CreateJobModal";
+import HiringNoticeModal from "../Jobs/HiringNoticeModal";
+import { cachedGet } from "../../utils/offlineCache";
+import { useLanguage } from "../../LanguageContext";
+import CachedDataNotice from "../../components/CachedDataNotice";
+import { isNetworkError } from "../../utils/network";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_COLUMNS = 3;
 const GRID_SPACING = 2;
 const GRID_ITEM_SIZE = (SCREEN_WIDTH - GRID_SPACING * (GRID_COLUMNS + 1)) / GRID_COLUMNS;
+const COPY = {
+  en: { followers:"Followers",following:"Following",follow:"Follow",hire:"Hire Me",edit:"Edit Profile",insights:"Insights",services:"Services",media:"Media",done:"Jobs Done",posted:"Jobs Posted",noPosts:"No posts yet",noPostsBody:"Media will appear here once shared",notFound:"Profile not found",retry:"Try again",noDone:"No completed jobs yet",noPosted:"No jobs posted yet" },
+  sw: { followers:"Followers",following:"Following",follow:"Fuata",hire:"Niajiri",edit:"Hariri Profaili",insights:"Maarifa",services:"Huduma",media:"Media",done:"Kazi Zilizofanyika",posted:"Kazi Zilizowekwa",noPosts:"Hakuna posts bado",noPostsBody:"Media itaonekana hapa ikishachapishwa",notFound:"Profaili haikupatikana",retry:"Jaribu tena",noDone:"Hakuna kazi zilizokamilika",noPosted:"Hakuna kazi zilizowekwa" },
+};
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -61,14 +74,14 @@ function StatPill({ label, value, onPress }) {
 
 const statPillStyles = StyleSheet.create({
   wrap: { alignItems: "center", flex: 1 },
-  value: { fontSize: 18, fontWeight: "800", color: "#FFFFFF", letterSpacing: 0 },
-  label: { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.7)", marginTop: 2, textTransform: "uppercase", letterSpacing: 0 },
+  value: { fontSize: 20, fontWeight: "800", color: "#FFFFFF", letterSpacing: 0 },
+  label: { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.65)", marginTop: 2, textTransform: "uppercase", letterSpacing: 0 },
 });
 
 function ServiceChip({ label, theme }) {
   return (
-    <View style={[chipStyles.wrap, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
-      <Text style={[chipStyles.text, { color: theme.colors.primary }]}>{label}</Text>
+    <View style={[chipStyles.wrap, { backgroundColor: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.08)" }]}>
+      <Text style={[chipStyles.text, { color: "#FFFFFF" }]}>{label}</Text>
     </View>
   );
 }
@@ -83,51 +96,6 @@ const chipStyles = StyleSheet.create({
     marginBottom: 8,
   },
   text: { fontSize: 12, fontWeight: "600", letterSpacing: 0 },
-});
-
-function JobCard({ item, badge, badgeColor, badgeTextColor, placeholderIcon, onPress, theme }) {
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={[jobCardStyles.card, { backgroundColor: theme.colors.surface }]}>
-      {item.media_url ? (
-        <Image source={{ uri: item.media_url }} style={jobCardStyles.image} />
-      ) : (
-        <LinearGradient colors={[theme.colors.primarySoft, theme.colors.surfaceSoft]} style={jobCardStyles.imagePlaceholder}>
-          <AppIcon name={placeholderIcon} size={26} color={theme.colors.primary} />
-        </LinearGradient>
-      )}
-      <View style={jobCardStyles.body}>
-        <Text style={[jobCardStyles.title, { color: theme.colors.text }]} numberOfLines={2}>{item.title || "Untitled"}</Text>
-        <View style={jobCardStyles.footer}>
-          <Text style={[jobCardStyles.price, { color: theme.colors.primary }]}>${item.budget || 0}</Text>
-          <View style={[jobCardStyles.badge, { backgroundColor: badgeColor }]}>
-            <Text style={[jobCardStyles.badgeText, { color: badgeTextColor }]}>{badge}</Text>
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-const jobCardStyles = StyleSheet.create({
-  card: {
-    flex: 1,
-    margin: 4,
-    borderRadius: 8,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  image: { width: "100%", height: 130, resizeMode: "cover" },
-  imagePlaceholder: { width: "100%", height: 130, alignItems: "center", justifyContent: "center" },
-  body: { padding: 10 },
-  title: { fontSize: 13, fontWeight: "700", lineHeight: 18, marginBottom: 8 },
-  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  price: { fontSize: 13, fontWeight: "800" },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0 },
 });
 
 function EmptyState({ icon, title, subtitle, theme }) {
@@ -162,6 +130,8 @@ export default function UserProfile() {
   const navigation = useNavigation();
   const route = useRoute();
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
+  const t = COPY[language] || COPY.en;
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -170,9 +140,18 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [showingCached, setShowingCached] = useState(false);
   const [isMine, setIsMine] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followSubmitting, setFollowSubmitting] = useState(false);
+  const [showHireModal, setShowHireModal] = useState(false);
+  const [hireSubmitting, setHireSubmitting] = useState(false);
+  const [hireNotice, setHireNotice] = useState(null);
+  const profileSignal = useQuery(
+    convexApi.realtimeEvents.latest,
+    profile?.uuid ? { channel: `profile:${profile.uuid}` } : "skip"
+  );
+  const publishRealtimeEvent = useMutation(convexApi.realtimeEvents.publish);
   const [activeTab, setActiveTab] = useState("media");
   const [jobsDone, setJobsDone] = useState([]);
   const [jobsPosted, setJobsPosted] = useState([]);
@@ -202,23 +181,24 @@ export default function UserProfile() {
       const myUuid = session.profile?.uuid || session.user?.uuid;
       setIsMine(uuid === myUuid);
 
-      const [profileRes, postsRes] = await Promise.all([
-        api.get(`/profiles/${uuid}`),
-        api.get(`/posts/provider/${uuid}`),
+      const [profileResult, postsResult] = await Promise.all([
+        cachedGet(`profile:${uuid}`, () => api.get(`/profiles/${uuid}`).then((res) => res.data)),
+        cachedGet(`posts:provider:${uuid}`, () => api.get(`/posts/provider/${uuid}`).then((res) => res.data)),
       ]);
-      const nextProfile = profileRes?.data?.profile || null;
+      const nextProfile = profileResult?.data?.profile || null;
       setProfile(nextProfile);
       setFollowing(!!nextProfile?.is_following || !!nextProfile?.is_followed_by_me);
-      setPosts(Array.isArray(postsRes?.data?.posts) ? postsRes.data.posts : []);
+      setPosts(Array.isArray(postsResult?.data?.posts) ? postsResult.data.posts : []);
+      setShowingCached(profileResult.fromCache || postsResult.fromCache);
       setJobsDone(Array.isArray(nextProfile?.completed_jobs) ? nextProfile.completed_jobs : []);
       setJobsPosted(Array.isArray(nextProfile?.posted_jobs) ? nextProfile.posted_jobs : []);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || "Failed to load profile");
+      setError(getFriendlyApiError(err, language));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [route.params?.uuid, route.params?.providerUuid, route.params?.providerId]);
+  }, [language, route.params?.uuid, route.params?.providerUuid, route.params?.providerId]);
 
   const fetchJobsDone = useCallback(async (uuid) => {
     if (!uuid) return;
@@ -252,6 +232,9 @@ export default function UserProfile() {
   }, [profile?.uuid, fetchJobsDone, fetchJobsPosted]);
 
   useFocusEffect(useCallback(() => { loadProfile(); }, [loadProfile]));
+  useEffect(() => {
+    if (profileSignal?._id) loadProfile();
+  }, [profileSignal?._id, loadProfile]);
 
   const onRefresh = useCallback(() => {
     loadProfile({ refresh: true });
@@ -285,6 +268,17 @@ export default function UserProfile() {
           is_followed_by_me: nextFollowing,
         };
       });
+      await publishRealtimeEvent({
+        channel: `profile:${profile.uuid}`,
+        event: nextFollowing ? "followed" : "unfollowed",
+      });
+      if (res?.data?.actor_uuid) {
+        await publishRealtimeEvent({
+          channel: `profile:${res.data.actor_uuid}`,
+          event: nextFollowing ? "following_added" : "following_removed",
+          count: Number(res?.data?.following_count) || 0,
+        });
+      }
     } catch (err) {
       console.log("follow error:", err?.message);
     } finally {
@@ -292,34 +286,65 @@ export default function UserProfile() {
     }
   };
 
-  const navigateToInsights = () =>
-    navigation.navigate("Insights", { profileUuid: profile?.uuid, username: profile?.username });
-
-  const navigateToRecommendations = () =>
-    navigation.navigate("ProfileRecommendations", {
-      profileUuid: profile?.uuid,
-      username: profile?.username,
-      count: Number(profile?.recommendations_count || profile?.ratings_count || 0),
-    });
-
-  const navigateToRatings = () =>
-    navigation.navigate("ProfileRatings", {
-      profileUuid: profile?.uuid,
-      username: profile?.username,
-      count: Number(profile?.ratings_count || 0),
-    });
+  const submitHireRequest = async (payload) => {
+    if (!profile?.uuid || hireSubmitting) return;
+    setHireSubmitting(true);
+    try {
+      const media = payload.images?.length
+        ? await UploadManager.startUpload(payload.images, "jobs")
+        : [];
+      await viewerRequest("post", "/hiring/direct-hire", {
+        target_provider_uuid: profile.uuid,
+        title: payload.title,
+        description: payload.description,
+        service_type: payload.service_type || services[0] || "Direct Hire",
+        location: payload.location || "Direct hire",
+        availability_required: payload.availability_required,
+        scheduled_for: payload.scheduled_for || null,
+        availability_notes: payload.availability_notes || null,
+        media,
+      });
+      setShowHireModal(false);
+      setHireNotice({
+        type: "success",
+        title: language === "sw" ? "Ombi limetumwa" : "Request sent",
+        body: language === "sw"
+          ? `@${profile.username || "user"} ataona direct hire hii kwenye Maombi.`
+          : `@${profile.username || "user"} will see this direct hire in Requests.`,
+      });
+    } catch (err) {
+      const mediaNetworkFailure = payload.images?.length && isNetworkError(err);
+      setHireNotice({
+        type: "error",
+        title: language === "sw" ? "Ombi halikutumwa" : "Could not send request",
+        body: mediaNetworkFailure
+          ? (language === "sw" ? "Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena." : "Media upload failed because of connection problem. Try again.")
+          : getFriendlyApiError(err, language),
+      });
+    } finally {
+      setHireSubmitting(false);
+    }
+  };
 
   const navigateToFollowers = () =>
-    navigation.navigate("ConnectionsScreen", { providerUuid: profile?.uuid, initialTab: "followers" });
+    navigation.navigate("ConnectionsScreen", {
+      initialTab: "followers",
+      profileUuid: profile?.uuid,
+      username: profile?.username,
+    });
 
   const navigateToFollowing = () =>
-    navigation.navigate("ConnectionsScreen", { providerUuid: profile?.uuid, initialTab: "following" });
+    navigation.navigate("ConnectionsScreen", {
+      initialTab: "following",
+      profileUuid: profile?.uuid,
+      username: profile?.username,
+    });
 
   // ── Tab Content ────────────────────────────────────────────────────────────
 
   const renderMediaTab = () => {
     if (!posts.length)
-      return <EmptyState icon="image" title="No posts yet" subtitle="Media will appear here once shared" theme={theme} />;
+      return <EmptyState icon="image" title={t.noPosts} subtitle={t.noPostsBody} theme={theme} />;
     return (
       <View style={styles.mediaGrid}>
         {posts.map((post) => (
@@ -345,35 +370,27 @@ export default function UserProfile() {
     if (!items.length)
       return <EmptyState icon={icon} title={emptyTitle} theme={theme} />;
     return (
-      <FlatList
-        data={items}
-        keyExtractor={(item) => String(item.id)}
-        numColumns={2}
-        scrollEnabled={false}
-        contentContainerStyle={{ paddingBottom: 8 }}
-        renderItem={({ item }) => (
-          <JobCard
-            item={item}
-            badge={badge}
-            badgeColor={badgeColor}
-            badgeTextColor={badgeTextColor}
-            placeholderIcon={icon}
-            onPress={() => navigation.navigate("JobDetails", { jobId: item.id })}
-            theme={theme}
-          />
-        )}
-      />
+      <View>
+        {items.map((item) => (
+          <TouchableOpacity key={String(item.id)} style={styles.profileJobRow} onPress={() => navigation.navigate("JobDetails", { jobId: item.id })}>
+            <View style={styles.profileJobIcon}><AppIcon name={icon} size={15} color={theme.colors.primary} /></View>
+            <Text style={styles.profileJobTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
+            <Text style={[styles.profileJobBadge, { color: badgeTextColor }]}>{badge}</Text>
+            <AppIcon name="chevron-right" size={14} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+        ))}
+      </View>
     );
   };
 
   const renderTabContent = () => {
     if (activeTab === "media") return renderMediaTab();
     if (activeTab === "jobsDone")
-      return renderJobsTab(jobsDone, loadingJobsDone, "check-circle", "No completed jobs yet", "Done", "#E8F5E9", "#2E7D32");
+      return renderJobsTab(jobsDone, loadingJobsDone, "check-circle", t.noDone, language === "sw" ? "Imekamilika" : "Done", "#E8F5E9", "#2E7D32");
     if (activeTab === "jobsPosted")
       return jobsPosted.length
-        ? renderJobsTab(jobsPosted, loadingJobsPosted, "briefcase", "No jobs posted yet", "Open", "#FFF3E0", "#E65100")
-        : <EmptyState icon="briefcase" title={postedJobsCount ? `${formatCount(postedJobsCount)} jobs posted` : "No jobs posted yet"} subtitle={postedJobsCount ? "Job post preview is not available yet" : null} theme={theme} />;
+        ? renderJobsTab(jobsPosted, loadingJobsPosted, "briefcase", t.noPosted, language === "sw" ? "Wazi" : "Open", "#FFF3E0", "#E65100")
+        : <EmptyState icon="briefcase" title={postedJobsCount ? `${formatCount(postedJobsCount)} ${language === "sw" ? "kazi zimewekwa" : "jobs posted"}` : t.noPosted} theme={theme} />;
   };
 
   // ── States ─────────────────────────────────────────────────────────────────
@@ -391,9 +408,9 @@ export default function UserProfile() {
     return (
       <View style={[styles.fullCenter, { paddingTop: insets.top, backgroundColor: theme.colors.bg }]}>
         <AppIcon name="alert-circle" size={48} color={theme.colors.primary} />
-        <Text style={styles.errorTitle}>{error || "Profile not found"}</Text>
+        <Text style={styles.errorTitle}>{error || t.notFound}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={() => loadProfile()}>
-          <Text style={styles.retryText}>Try again</Text>
+          <Text style={styles.retryText}>{t.retry}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -428,14 +445,16 @@ export default function UserProfile() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
       >
-        {/* ── Hero Banner ── */}
+        <CachedDataNotice visible={showingCached} />
+
+        {/* ─── DARK HEADER (avatar → services) ─── */}
         <LinearGradient
-          colors={[theme.colors.primary, theme.colors.primaryDark || theme.colors.primary, theme.colors.primary]}
+          colors={[theme.colors.primary, theme.colors.primaryDark || '#08544d']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.heroBanner}
+          style={styles.headerGradient}
         >
-          {/* Top nav row */}
+          {/* Top nav */}
           <View style={styles.heroNav}>
             <TouchableOpacity style={styles.heroNavBtn} onPress={() => navigation.goBack()}>
               <AppIcon name="arrowLeft" size={20} color={theme.colors.onPrimary} />
@@ -447,7 +466,7 @@ export default function UserProfile() {
             ) : <View style={styles.heroNavSpacer} />}
           </View>
 
-          {/* Avatar + name */}
+          {/* Avatar + name + rating */}
           <View style={styles.heroCenter}>
             <View style={styles.avatarRing}>
               <Image source={{ uri: avatarFor(profile) }} style={styles.avatar} />
@@ -455,118 +474,122 @@ export default function UserProfile() {
                 <View style={[styles.onlineDot, { backgroundColor: following ? "#4ADE80" : "#94A3B8" }]} />
               )}
             </View>
-
-            <Text style={styles.heroUsername}>@{profile.username || "user"}</Text>
-            {profile.full_name ? <Text style={styles.heroFullName}>{profile.full_name}</Text> : null}
-          </View>
-
-          {/* Stats row */}
-          <View style={styles.heroStats}>
-            <StatPill label="Followers" value={formatCount(followerCount)} onPress={navigateToFollowers} />
-            <View style={styles.statDivider} />
-            <StatPill label="Following" value={formatCount(followingCount)} onPress={navigateToFollowing} />
-            <View style={styles.statDivider} />
-            <StatPill label="Rating" value={profile.ratings || "0"} />
-          </View>
-
-          {/* Wave bottom */}
-          <View style={styles.heroWave} />
-        </LinearGradient>
-
-        {/* ── Action Buttons ── */}
-        <View style={styles.actionRow}>
-          {!isMine ? (
-            <TouchableOpacity
-              style={[styles.followBtn, following && styles.followingBtn, followSubmitting && styles.disabledBtn]}
-              onPress={toggleFollow}
-              disabled={followSubmitting}
-              activeOpacity={0.85}
-            >
-              {following ? (
-                <AppIcon name="user-check" size={16} color={theme.colors.primary} />
-              ) : (
-                <AppIcon name="user-plus" size={16} color={theme.colors.onPrimary} />
-              )}
-              <Text style={[styles.followText, following && styles.followingText]}>
-                {following ? "Following" : "Follow"}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
-          <TouchableOpacity style={styles.insightsBtn} onPress={navigateToInsights} activeOpacity={0.85}>
-            <AppIcon name="trending-up" size={16} color={theme.colors.primary} />
-            <Text style={styles.insightsBtnText}>Insights</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.recommendationsBtn} onPress={navigateToRecommendations} activeOpacity={0.86}>
-          <View style={styles.recommendationsIcon}>
-            <AppIcon name="star" size={18} color={theme.colors.primary} />
-          </View>
-          <View style={styles.recommendationsCopy}>
-            <Text style={styles.recommendationsTitle}>Recommendations</Text>
-            <Text style={styles.recommendationsMeta}>Coming soon as a list</Text>
-          </View>
-          <Text style={styles.recommendationsCount}>{formatCount(profile.recommendations_count || profile.ratings_count || 0)}</Text>
-          <AppIcon name="arrowRight" size={16} color={theme.colors.textMuted} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.recommendationsBtn} onPress={navigateToRatings} activeOpacity={0.86}>
-          <View style={styles.recommendationsIcon}>
-            <AppIcon name="star" size={18} color={theme.colors.primary} />
-          </View>
-          <View style={styles.recommendationsCopy}>
-            <Text style={styles.recommendationsTitle}>Ratings</Text>
-            <Text style={styles.recommendationsMeta}>Per completed job</Text>
-          </View>
-          <Text style={styles.recommendationsCount}>{formatCount(profile.ratings_count || 0)}</Text>
-          <AppIcon name="arrowRight" size={16} color={theme.colors.textMuted} />
-        </TouchableOpacity>
-
-        {/* ── Bio ── */}
-        {profile.bio ? (
-          <View style={styles.bioSection}>
-            <Text style={styles.bioText}>{profile.bio}</Text>
-          </View>
-        ) : null}
-
-        {/* ── Services ── */}
-        {services.length > 0 ? (
-          <View style={styles.servicesSection}>
-            <Text style={styles.sectionLabel}>Services</Text>
-            <View style={styles.chipsRow}>
-              {services.map((s) => <ServiceChip key={String(s)} label={String(s)} theme={theme} />)}
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroUsername}>@{profile.username || "user"}</Text>
+              {profile.full_name ? <Text style={styles.heroFullName}>{profile.full_name}</Text> : null}
+              <View style={styles.ratingContainer}>
+                <OverallRating value={profile.ratings} count={profile.ratings_count} theme={theme} compact textColor={theme.colors.onPrimary} mutedColor="rgba(255,255,255,0.68)" />
+              </View>
             </View>
           </View>
-        ) : null}
 
-        {/* ── Post Tabs ── */}
-        <View style={styles.tabContainer}>
-          {[
-            { id: "media",      icon: "image",     label: "Media"       },
-            { id: "jobsDone",   icon: "briefcase", label: "Jobs Done"   },
-            { id: "jobsPosted", icon: "upload",    label: "Jobs Posted" },
-          ].map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                style={[styles.tab, active && styles.activeTab]}
-                onPress={() => setActiveTab(tab.id)}
-                activeOpacity={0.8}
-              >
-                <AppIcon name={tab.icon} size={16} color={active ? theme.colors.primary : theme.colors.textMuted} />
-                <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{tab.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+          {/* Bio (centered) */}
+          {profile.bio ? <Text style={styles.bioText}>{profile.bio}</Text> : null}
 
-        {/* ── Tab Content ── */}
-        <View style={styles.tabContent}>
-          {renderTabContent()}
+          {/* Stats row (followers / following) – tight */}
+          <View style={styles.statsRow}>
+            <StatPill label={t.followers} value={formatCount(followerCount)} onPress={navigateToFollowers} />
+            <View style={styles.statDivider} />
+            <StatPill label={t.following} value={formatCount(followingCount)} onPress={navigateToFollowing} />
+          </View>
+
+          {/* Action buttons */}
+          <View style={styles.actionRow}>
+            {!isMine ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.followBtn, following && styles.followingBtn, followSubmitting && styles.disabledBtn]}
+                  onPress={toggleFollow}
+                  disabled={followSubmitting}
+                  activeOpacity={0.85}
+                >
+                  {following ? (
+                    <AppIcon name="check-circle" size={16} color={theme.colors.primary} />
+                  ) : (
+                    <AppIcon name="plusUser" size={16} color={theme.colors.onPrimary} />
+                  )}
+                  <Text style={[styles.followText, following && styles.followingText]}>
+                    {following ? t.following : t.follow}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.hireBtn} onPress={() => setShowHireModal(true)} activeOpacity={0.85}>
+                  <AppIcon name="briefcase" size={16} color={theme.colors.onPrimary} />
+                  <Text style={styles.hireBtnText}>{t.hire}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity style={styles.insightsBtn} onPress={() => navigation.navigate("EditProfile", { profile })} activeOpacity={0.85}>
+                  <AppIcon name="edit" size={16} color={theme.colors.primary} />
+                  <Text style={styles.insightsBtnText}>{t.edit}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.insightsBtn} onPress={() => navigation.navigate("Insights")} activeOpacity={0.85}>
+                  <AppIcon name="trending-up" size={16} color={theme.colors.primary} />
+                  <Text style={styles.insightsBtnText}>{t.insights}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+
+          {/* Services */}
+          {services.length > 0 ? (
+            <View style={styles.servicesSection}>
+              <Text style={styles.sectionLabel}>{t.services}</Text>
+              <View style={styles.chipsRow}>
+                {services.map((s) => <ServiceChip key={String(s)} label={String(s)} theme={theme} />)}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Wave divider */}
+          <View style={styles.waveDivider} />
+        </LinearGradient>
+
+        {/* ─── LIGHT SECTION (tabs + posts) ─── */}
+        <View style={styles.postsSection}>
+          <View style={styles.tabContainer}>
+            {[
+              { id: "media",      icon: "image",     label: t.media },
+              { id: "jobsDone",   icon: "briefcase", label: t.done },
+              { id: "jobsPosted", icon: "upload",    label: t.posted },
+            ].map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={[styles.tab, active && styles.activeTab]}
+                  onPress={() => setActiveTab(tab.id)}
+                  activeOpacity={0.8}
+                >
+                  <AppIcon name={tab.icon} size={16} color={active ? theme.colors.primary : theme.colors.textMuted} />
+                  <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{tab.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.tabContent}>
+            {renderTabContent()}
+          </View>
         </View>
       </Animated.ScrollView>
+
+      <CreateJobModal
+        visible={showHireModal}
+        onClose={() => setShowHireModal(false)}
+        mode="direct"
+        provider={{ uuid: profile?.uuid, username: profile?.username }}
+        onSubmit={submitHireRequest}
+        submitting={hireSubmitting}
+      />
+      <HiringNoticeModal
+        visible={!!hireNotice}
+        type={hireNotice?.type}
+        title={hireNotice?.title}
+        body={hireNotice?.body}
+        onPrimary={() => setHireNotice(null)}
+        onClose={() => setHireNotice(null)}
+      />
     </View>
   );
 }
@@ -605,118 +628,221 @@ const createStyles = (theme) => StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: theme.colors.surfaceSoft, alignItems: "center", justifyContent: "center" },
   headerSpacer: { width: 38, height: 38 },
 
-  // Hero
-  heroBanner: { paddingBottom: 22, position: "relative" },
-  heroNav: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2 },
-  heroNavBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
+  // Header gradient (dark)
+  headerGradient: {
+    paddingBottom: 0,
+    position: "relative",
+  },
+  heroNav: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 0,
+  },
+  heroNavBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   heroNavSpacer: { width: 38, height: 38 },
-  heroCenter: { alignItems: "center", paddingVertical: 10 },
-  avatarRing: { position: "relative", marginBottom: 10 },
+
+  heroCenter: {
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  avatarRing: {
+    position: "relative",
+    marginBottom: 0,
+  },
   avatar: {
-    width: 86, height: 86, borderRadius: 43,
-    borderWidth: 3.5, borderColor: "rgba(255,255,255,0.9)",
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
   },
   onlineDot: {
-    position: "absolute", bottom: 2, right: 2,
-    width: 16, height: 16, borderRadius: 8,
-    borderWidth: 2, borderColor: theme.colors.primary,
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
   },
-  heroUsername: { fontSize: 22, fontWeight: "800", color: "#FFFFFF", letterSpacing: 0 },
-  heroFullName: { fontSize: 14, color: "rgba(255,255,255,0.72)", fontWeight: "500", marginTop: 4 },
-  heroStats: {
+  heroUsername: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  heroFullName: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "700",
+    marginTop: 3,
+    textAlign: "center",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  ratingContainer: {
+    marginTop: 6,
+    alignItems: "center",
+  },
+  heroCopy: { width: "100%", alignItems: "center" },
+
+  // Bio – centred
+  bioText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    lineHeight: 21,
+    textAlign: "center",
+    paddingHorizontal: 30,
+    paddingBottom: 12,
+  },
+
+  // Stats row – tight
+  statsRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.18)",
-    marginHorizontal: 20,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    marginBottom: 4,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  statDivider: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.2)", marginHorizontal: 8 },
-  heroWave: {
-    position: "absolute",
-    bottom: -1, left: 0, right: 0,
-    height: 18,
-    backgroundColor: theme.colors.bg,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+  statDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginHorizontal: 20,
   },
 
-  // Actions
+  // Action row
   actionRow: {
     flexDirection: "row",
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 6,
+    paddingBottom: 12,
     gap: 8,
   },
   followBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    backgroundColor: theme.colors.primary, paddingVertical: 11, borderRadius: 8,
-    shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 4,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    minHeight: 48,
+    paddingVertical: 11,
+    borderRadius: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 1,
   },
   followingBtn: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1.5, borderColor: theme.colors.primary,
-    shadowOpacity: 0.06,
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    shadowOpacity: 0,
   },
   disabledBtn: { opacity: 0.62 },
-  followText: { color: theme.colors.onPrimary, fontWeight: "700", fontSize: 15 },
-  followingText: { color: theme.colors.primary },
+  followText: { color: theme.colors.primary, fontWeight: "700", fontSize: 15 },
+  followingText: { color: "#FFFFFF" },
   insightsBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    backgroundColor: theme.colors.surface, paddingVertical: 11, borderRadius: 8,
-    borderWidth: 1.5, borderColor: theme.colors.border,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    minHeight: 48,
+    paddingVertical: 11,
+    borderRadius: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     elevation: 2,
   },
   insightsBtnText: { color: theme.colors.primary, fontWeight: "700", fontSize: 15 },
-  recommendationsBtn: {
-    minHeight: 56,
-    marginHorizontal: 16,
-    marginTop: 6,
-    marginBottom: 6,
+  hireBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: theme.colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    minHeight: 48,
+    paddingVertical: 11,
+    borderRadius: 14,
   },
-  recommendationsIcon: { width: 36, height: 36, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primarySoft },
-  recommendationsCopy: { flex: 1, minWidth: 0 },
-  recommendationsTitle: { color: theme.colors.text, fontSize: 14, fontWeight: "900" },
-  recommendationsMeta: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "700", marginTop: 2 },
-  recommendationsCount: { color: theme.colors.primary, fontSize: 14, fontWeight: "900" },
-
-  // Bio
-  bioSection: { paddingHorizontal: 16, paddingVertical: 8 },
-  bioText: { fontSize: 14, color: theme.colors.textSecondary || theme.colors.text, lineHeight: 20, textAlign: "left" },
+  hireBtnText: { color: theme.colors.primary, fontWeight: "800", fontSize: 14 },
 
   // Services
-  servicesSection: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 2 },
-  sectionLabel: { fontSize: 11, fontWeight: "700", color: theme.colors.textMuted, textTransform: "uppercase", letterSpacing: 0, marginBottom: 8 },
-  chipsRow: { flexDirection: "row", flexWrap: "wrap" },
+  servicesSection: {
+    paddingHorizontal: 16,
+    paddingTop: 5,
+    paddingBottom: 8,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    color: "rgba(255,255,255,0.5)",
+    marginBottom: 8,
+  },
+  chipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+
+  // Wave divider
+  waveDivider: {
+    display: "none",
+    marginLeft: -20,
+    marginRight: -20,
+    marginBottom: -2,
+  },
+
+  // Posts section (light)
+  postsSection: {
+    backgroundColor: theme.colors.bg,
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 16,
+    marginTop: -2,
+  },
 
   // Tabs
   tabContainer: {
     flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 2,
-    marginBottom: 2,
     backgroundColor: theme.colors.surfaceSoft,
     borderRadius: 8,
     padding: 4,
+    marginBottom: 8,
   },
   tab: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 4, paddingVertical: 9, borderRadius: 6,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 9,
+    borderRadius: 6,
   },
   activeTab: {
     backgroundColor: theme.colors.surface,
@@ -730,8 +856,12 @@ const createStyles = (theme) => StyleSheet.create({
   activeTabLabel: { color: theme.colors.primary },
 
   // Tab content
-  tabContent: { paddingHorizontal: 12, paddingTop: 8 },
-  mediaGrid: { flexDirection: "row", flexWrap: "wrap", gap: GRID_SPACING },
+  tabContent: { paddingTop: 4 },
+  mediaGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: GRID_SPACING,
+  },
   mediaItem: {
     width: GRID_ITEM_SIZE,
     height: GRID_ITEM_SIZE,
@@ -739,5 +869,13 @@ const createStyles = (theme) => StyleSheet.create({
     overflow: "hidden",
     backgroundColor: theme.colors.surfaceSoft,
   },
-  centerLoader: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
+  centerLoader: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  profileJobRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 9, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  profileJobIcon: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primarySoft },
+  profileJobTitle: { flex: 1, color: theme.colors.text, fontSize: 13, fontWeight: "800" },
+  profileJobBadge: { fontSize: 10.5, fontWeight: "900" },
 });

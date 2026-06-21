@@ -13,6 +13,9 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { LanguageProvider, useLanguage } from "./src/LanguageContext";
 import { ThemeProvider, useAppTheme } from "./src/theme";
 import AppIcon from "./src/icons/AppIcon";
+import Txt from "./src/Txt";
+import NetworkBanner from "./src/components/NetworkBanner";
+import { initOfflineCache } from "./src/utils/offlineCache";
 
 /* ---------------------------
    MAIN USER SCREENS
@@ -26,9 +29,8 @@ import JobDetails from "./src/views/Jobs/MyRequests/JobDetails";
 import JobApplicantDetails from "./src/views/Jobs/MyRequests/JobApplicantDetails";
 import UserProfile from "./src/views/Profile/UserProfile";
 import ProfileFutureList from "./src/views/Profile/ProfileFutureList";
-import RecommendationsScreen from "./src/views/Profile/RecommendationsScreen";
-import RatingsScreen from "./src/views/Profile/RatingsScreen";
 import EditProfile from "./src/views/Profile/editProfile/EditProfile";
+import SearchResults from "./src/views/home/SearchResults";
 
 /* ---------------------------
    AUTH CHECK
@@ -146,6 +148,7 @@ function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
+    initOfflineCache();
     const timeout = setTimeout(() => setShowSplash(false), 900);
     return () => clearTimeout(timeout);
   }, []);
@@ -158,6 +161,7 @@ function AppShell() {
         translucent={false}
       />
       {showSplash ? <SplashScreen /> : <RootNavigator />}
+      <NetworkBanner />
     </View>
   );
 }
@@ -171,9 +175,7 @@ function SplashScreen() {
         <AppIcon name="logo" size={52} color={theme.colors.primary} />
       </View>
       <Text style={[rootStyles.splashTitle, { color: theme.colors.text }]}>e-kazi</Text>
-      <Text style={[rootStyles.splashSub, { color: theme.colors.textMuted }]}>
-        Work. Service. Trust.
-      </Text>
+      <Txt en="Work. Service. Trust." sw="Kazi. Huduma. Uaminifu." style={[rootStyles.splashSub, { color: theme.colors.textMuted }]} />
     </View>
   );
 }
@@ -201,9 +203,8 @@ function RootNavigator() {
 
         {/* -------- USER WORKFLOWS -------- */}
         <Stack.Screen name="UserProfile" component={UserProfile} />
-        <Stack.Screen name="ProfileRecommendations" component={RecommendationsScreen} />
-        <Stack.Screen name="ProfileRatings" component={RatingsScreen} />
         <Stack.Screen name="ProfileWorksDone" component={ProfileFutureList} />
+        <Stack.Screen name="SearchResults" component={SearchResults} />
         <Stack.Screen name="PostFeedView" component={PostFeedView} />
         <Stack.Screen name="JobDetails" component={JobDetails} />
         <Stack.Screen name="JobApplicantDetails" component={JobApplicantDetails} />

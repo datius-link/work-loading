@@ -242,12 +242,44 @@ export async function getEngagementSummary(req, res) {
     const workInterval     = timeRangeInterval(workRange);
 
     // ── Content / post metrics ──────────────────────────────────────────────
-    let postsQuery = db("posts as p")
-      .leftJoin("post_likes as pl",    "pl.post_id",  "p.id")
-      .leftJoin("post_comments as pc", "pc.post_id",  "p.id")
-      .leftJoin("post_views as pv",    "pv.post_id",  "p.id")
-      .leftJoin("post_shares as ps",   "ps.post_id",  "p.id")
-      .leftJoin("post_saves as sv",    "sv.post_id",  "p.id")
+    // Older databases may have migration 002 marked complete without all of
+    // these tracking tables. Keep Insights available while repair migration
+    // 019 creates the missing tables on the next server startup.
+    const engagementTables = {
+      likes: "post_likes",
+      comments: "post_comments",
+      views: "post_views",
+      shares: "post_shares",
+      saves: "post_saves",
+    };
+    const engagementAliases = {
+      likes: "pl",
+      comments: "pc",
+      views: "pv",
+      shares: "ps",
+      saves: "sv",
+    };
+    const engagementTableEntries = Object.entries(engagementTables);
+    const engagementTableChecks = await Promise.all(
+      engagementTableEntries.map(([, tableName]) => db.schema.hasTable(tableName))
+    );
+    const availableEngagement = Object.fromEntries(
+      engagementTableEntries.map(([metric], index) => [metric, engagementTableChecks[index]])
+    );
+    const countExpression = (metric) =>
+      availableEngagement[metric]
+        ? `COUNT(DISTINCT ${engagementAliases[metric]}.id)::int`
+        : "0::int";
+
+    let postsQuery = db("posts as p");
+    for (const [metric, tableName] of engagementTableEntries) {
+      if (availableEngagement[metric]) {
+        const alias = engagementAliases[metric];
+        postsQuery = postsQuery.leftJoin(`${tableName} as ${alias}`, `${alias}.post_id`, "p.id");
+      }
+    }
+
+    postsQuery = postsQuery
       .where("p.profile_uuid", profileUuid)
       .groupBy("p.id")
       .select(
@@ -255,14 +287,20 @@ export async function getEngagementSummary(req, res) {
         "p.caption",
         "p.type",
         "p.created_at",
-        db.raw("COUNT(DISTINCT pl.id)::int as likes"),
-        db.raw("COUNT(DISTINCT pc.id)::int as comments"),
-        db.raw("COUNT(DISTINCT pv.id)::int as views"),
-        db.raw("COUNT(DISTINCT ps.id)::int as shares"),
-        db.raw("COUNT(DISTINCT sv.id)::int as saves")
-      )
-      .orderByRaw("(COUNT(DISTINCT pl.id) + COUNT(DISTINCT pc.id) + COUNT(DISTINCT ps.id) + COUNT(DISTINCT sv.id)) DESC")
-      .limit(10);
+        db.raw(`${countExpression("likes")} as likes`),
+        db.raw(`${countExpression("comments")} as comments`),
+        db.raw(`${countExpression("views")} as views`),
+        db.raw(`${countExpression("shares")} as shares`),
+        db.raw(`${countExpression("saves")} as saves`)
+      );
+
+    const engagementOrderMetrics = ["likes", "comments", "shares", "saves"]
+      .filter((metric) => availableEngagement[metric])
+      .map((metric) => `COUNT(DISTINCT ${engagementAliases[metric]}.id)`);
+    postsQuery = engagementOrderMetrics.length
+      ? postsQuery.orderByRaw(`(${engagementOrderMetrics.join(" + ")}) DESC`)
+      : postsQuery.orderBy("p.created_at", "desc");
+    postsQuery = postsQuery.limit(10);
 
     if (contentInterval) {
       postsQuery = postsQuery.where("p.created_at", ">=", db.raw(`NOW() - INTERVAL '${contentInterval}'`));
@@ -499,7 +537,7 @@ export async function getEngagementSummary(req, res) {
         followers:         Number(followersRow?.count  || 0),
         followers_gained:  Number(followers7dRow?.count || 0),
         average_rating:    profile?.ratings     || 0,
-        recommendations:   Number(profile?.ratings_count || 0),
+        rating_count:      Number(profile?.ratings_count || 0),
 
         // Hiring (as poster)
         jobs_posted:               jobsPosted,
@@ -672,7 +710,7 @@ export async function lookupProviderByUsername(req, res) {
 
     const profile = await db("profiles")
       .select("uuid", "username", "profile_pic", "full_name")
-      .where({ username, role: "service_provider" })
+      .where({ username })
       .first();
 
     if (!profile) return res.status(404).json({ message: "Provider not found" });
@@ -701,9 +739,23 @@ export async function toggleFollow(req, res) {
     .where({ provider_uuid: providerUuid, follower_uuid: followerUuid })
     .first();
 
+  const followResponse = async (following) => {
+    const [followersRow, followingRow] = await Promise.all([
+      db("profile_followers").where({ provider_uuid: providerUuid }).count("* as count").first(),
+      db("profile_followers").where({ follower_uuid: followerUuid }).count("* as count").first(),
+    ]);
+    return res.json({
+      following,
+      actor_uuid: followerUuid,
+      target_uuid: providerUuid,
+      followers_count: Number(followersRow?.count || 0),
+      following_count: Number(followingRow?.count || 0),
+    });
+  };
+
   if (existing) {
     await db("profile_followers").where({ id: existing.id }).del();
-    return res.json({ following: false });
+    return followResponse(false);
   }
 
   await db.transaction(async (trx) => {
@@ -721,5 +773,5 @@ export async function toggleFollow(req, res) {
       meta: db.raw("?::jsonb", [JSON.stringify({ follower_uuid: followerUuid, show_follow_back: !receiverAlreadyFollows })]),
     });
   });
-  return res.json({ following: true });
+  return followResponse(true);
 }

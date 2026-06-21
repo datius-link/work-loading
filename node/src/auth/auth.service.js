@@ -14,7 +14,6 @@ export async function registerUser(email, password) {
     uuid,
     email,
     password: hashed,
-    role: "service_provider",
     is_verified: false,
   });
 
@@ -26,7 +25,7 @@ export async function registerUser(email, password) {
 
 export async function loginUser(identifier, password) {
   const value = String(identifier || "").trim().toLowerCase();
-  const query = db("profiles").where({ role: "service_provider" });
+  const query = db("profiles");
   if (value.includes("@")) query.where({ email: value });
   else query.whereRaw("LOWER(username) = ?", [value.replace(/^@/, "")]);
   const user = await query.first();
@@ -44,6 +43,6 @@ export async function loginUser(identifier, password) {
   }
 
   return {
-    token: generateAuthToken(user.uuid, user.role),
+    token: generateAuthToken(user.uuid, user.email, user.is_verified),
   };
 }

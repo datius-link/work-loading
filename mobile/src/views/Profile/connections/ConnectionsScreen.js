@@ -11,8 +11,10 @@ import {
 } from "react-native";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useMutation } from "convex/react";
+import { api as convexApi } from "../../../../convex/_generated/api";
 
-import { api, socialRequest, viewerRequest } from "../../../api/api";
+import { socialRequest, viewerRequest } from "../../../api/api";
 import AppIcon from "../../../icons/AppIcon";
 import { useLanguage } from "../../../LanguageContext";
 import { useAppTheme } from "../../../theme";
@@ -29,7 +31,9 @@ const T = {
     noFollowing: "Not following anyone yet",
     noFollowingBody: "Profiles followed from this account will appear here.",
     noMatches: "No matching users.",
+    follow: "Follow",
     followBack: "Follow Back",
+    followingUser: "Following",
     viewProfile: "View Profile",
   },
   sw: {
@@ -42,7 +46,9 @@ const T = {
     noFollowing: "Hufuati mtu bado",
     noFollowingBody: "Profaili unazofuata zitaonekana hapa.",
     noMatches: "Hakuna watumiaji wanaolingana.",
+    follow: "Follow",
     followBack: "Follow Back",
+    followingUser: "Following",
     viewProfile: "Ona Profaili",
   },
 };
@@ -60,8 +66,8 @@ export default function ConnectionsScreen({ navigation, route }) {
   const { language } = useLanguage();
   const t = T[language] || T.en;
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const providerUuid = route?.params?.providerUuid || route?.params?.providerId || "me";
-
+  const viewedProfileUuid =
+    route?.params?.profileUuid || route?.params?.providerUuid || route?.params?.providerId;
   return (
     <View style={styles.root}>
       <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
@@ -90,11 +96,11 @@ export default function ConnectionsScreen({ navigation, route }) {
           {() => (
             <ConnectionsList
               type="followers"
-              providerUuid={providerUuid}
               navigation={navigation}
               styles={styles}
               theme={theme}
               t={t}
+              profileUuid={viewedProfileUuid}
             />
           )}
         </Tab.Screen>
@@ -102,11 +108,11 @@ export default function ConnectionsScreen({ navigation, route }) {
           {() => (
             <ConnectionsList
               type="following"
-              providerUuid={providerUuid}
               navigation={navigation}
               styles={styles}
               theme={theme}
               t={t}
+              profileUuid={viewedProfileUuid}
             />
           )}
         </Tab.Screen>
@@ -115,28 +121,28 @@ export default function ConnectionsScreen({ navigation, route }) {
   );
 }
 
-function ConnectionsList({ type, providerUuid, navigation, styles, theme, t }) {
+function ConnectionsList({ type, navigation, styles, theme, t, profileUuid }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const publishRealtimeEvent = useMutation(convexApi.realtimeEvents.publish);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const endpoint =
-        providerUuid === "me"
-          ? `/profiles/me/connections?type=${type}`
-          : `/profiles/${providerUuid}/connections?type=${type}`;
-      const res = providerUuid === "me"
-        ? await viewerRequest("get", endpoint)
-        : await api.get(endpoint);
+      const endpoint = profileUuid
+        ? `/profiles/${encodeURIComponent(profileUuid)}/connections?type=${type}`
+        : `/profiles/me/connections?type=${type}`;
+      const res = profileUuid
+        ? await socialRequest("get", endpoint, undefined, { preferredAuthActor: "viewer" })
+        : await viewerRequest("get", endpoint);
       setData(res?.data?.users || []);
     } catch {
       setData([]);
     } finally {
       setLoading(false);
     }
-  }, [providerUuid, type]);
+  }, [profileUuid, type]);
 
   useEffect(() => {
     load();
@@ -157,6 +163,17 @@ function ConnectionsList({ type, providerUuid, navigation, styles, theme, t }) {
             : user
         )
       );
+      await publishRealtimeEvent({
+        channel: `profile:${targetUuid}`,
+        event: following ? "followed" : "unfollowed",
+      });
+      if (res?.data?.actor_uuid) {
+        await publishRealtimeEvent({
+          channel: `profile:${res.data.actor_uuid}`,
+          event: following ? "following_added" : "following_removed",
+          count: Number(res?.data?.following_count) || 0,
+        });
+      }
     } catch {
       // Login flow is handled elsewhere in the app.
     }
@@ -231,13 +248,17 @@ function ConnectionsList({ type, providerUuid, navigation, styles, theme, t }) {
               {item.username ? `@${item.username}` : item.email || "viewer"}
             </Text>
           </View>
-          {!!(item.provider_uuid || item.uuid) && (
+          {!!(item.provider_uuid || item.uuid) && !item.is_me && (
             <TouchableOpacity
-              style={[styles.followBtn, (type === "following" || item.is_following || item.is_followed_by_me) && styles.followingBtn]}
-              onPress={() => (type === "followers" && !(item.is_following || item.is_followed_by_me) ? toggleFollow(item) : navigation.navigate("UserProfile", { uuid: item.provider_uuid || item.uuid }))}
+              style={[styles.followBtn, (item.is_following || item.is_followed_by_me) && styles.followingBtn]}
+              onPress={() => toggleFollow(item)}
             >
-              <Text style={[styles.followText, (type === "following" || item.is_following || item.is_followed_by_me) && styles.followingText]}>
-                {type === "followers" && !(item.is_following || item.is_followed_by_me) ? t.followBack : t.viewProfile}
+              <Text style={[styles.followText, (item.is_following || item.is_followed_by_me) && styles.followingText]}>
+                {item.is_following || item.is_followed_by_me
+                  ? t.followingUser
+                  : type === "followers"
+                    ? t.followBack
+                    : t.follow}
               </Text>
             </TouchableOpacity>
           )}

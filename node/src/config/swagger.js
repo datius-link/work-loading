@@ -71,6 +71,10 @@ const options = {
         name: "Notifications",
         description: "Notification inbox endpoints",
       },
+      {
+        name: "Support",
+        description: "Authenticated contact, feedback, and problem reports",
+      },
     ],
 
     components: {
@@ -297,6 +301,7 @@ const options = {
     swaggerGlob(srcDir, "profiles", "*.js"),
     swaggerGlob(srcDir, "hiring", "*.js"),
     swaggerGlob(srcDir, "notifications", "*.js"),
+    swaggerGlob(srcDir, "support", "*.js"),
   ],
 };
 

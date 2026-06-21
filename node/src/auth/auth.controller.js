@@ -125,7 +125,7 @@ export async function register(req, res) {
 
   try {
     const result = await registerUser(email.trim().toLowerCase(), password);
-    await issueOtp(result.uuid, "verify_email", "provider email verification");
+    await issueOtp(result.uuid, "verify_email", "email verification");
     return res.status(201).json({ success: true, ...result });
   } catch (err) {
     if (err.message === "EMAIL_EXISTS") return res.status(409).json({ message: "Email already exists" });
@@ -144,7 +144,7 @@ export async function login(req, res) {
   try {
     const result = await loginUser(identifier, password);
     if (result.requireVerification) {
-      await issueOtp(result.uuid, "verify_email", "provider email verification");
+      await issueOtp(result.uuid, "verify_email", "email verification");
     }
     return res.json(result);
   } catch (err) {
@@ -173,7 +173,7 @@ export async function requestVerificationCode(req, res) {
   try {
     const payload = jwt.verify(verifyToken, process.env.VERIFY_TOKEN_SECRET);
     if (!payload || payload.type !== "verify") return res.status(400).json({ message: "Invalid token type" });
-    await issueOtp(payload.uuid, "verify_email", "provider email verification");
+    await issueOtp(payload.uuid, "verify_email", "email verification");
     return res.json({ success: true, message: "Verification code sent" });
   } catch (err) {
     console.error("requestVerificationCode error:", err);
@@ -189,7 +189,7 @@ export async function verifyProvider(req, res) {
     const payload = jwt.verify(verifyToken, process.env.VERIFY_TOKEN_SECRET);
     if (!payload || payload.type !== "verify") return res.status(400).json({ message: "Invalid token type" });
 
-    const profile = await db("profiles").where({ uuid: payload.uuid, role: "service_provider" }).first();
+    const profile = await db("profiles").where({ uuid: payload.uuid }).first();
     if (!profile) return res.status(404).json({ message: "User not found" });
 
     if (!profile.is_verified) {
@@ -201,7 +201,7 @@ export async function verifyProvider(req, res) {
       });
       if (!verified) return res.status(400).json({ message: "Invalid verification code" });
 
-      const username = profile.username || (await uniqueUsername(`e_kaziProvider_${Math.floor(100000 + Math.random() * 900000)}`));
+      const username = profile.username || (await uniqueUsername(`e_kaziUser_${Math.floor(100000 + Math.random() * 900000)}`));
       await db("profiles").where({ uuid: profile.uuid }).update({
         is_verified: true,
         username,
@@ -212,7 +212,7 @@ export async function verifyProvider(req, res) {
     }
 
     return res.json({
-      token: generateAuthToken(profile.uuid, profile.role),
+      token: generateAuthToken(profile.uuid, profile.email, true),
       username: profile.username || null,
       needsProfileSetup: !profile.full_name,
     });
@@ -234,7 +234,7 @@ export async function updateEmail(req, res) {
 
   try {
     await db("profiles").where({ uuid }).update({ email, updated_at: db.fn.now() });
-    await issueOtp(uuid, "change_email", "provider email change verification");
+    await issueOtp(uuid, "change_email", "email change verification");
     return res.json({ success: true });
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ message: "Email already exists" });
@@ -319,10 +319,6 @@ export async function requestViewerCode(req, res) {
     } else {
       profile = await db("profiles").where({ email }).first();
     }
-    if (profile && profile.role !== "light_user") {
-      return res.status(409).json({ message: "This email is already used by another account type" });
-    }
-
     if (!profile) {
       if (mode !== "register") return res.status(404).json({ message: "User not found. Please register first." });
       if (password !== confirmPassword) return res.status(400).json({ message: "Passwords do not match" });
@@ -331,10 +327,9 @@ export async function requestViewerCode(req, res) {
         uuid,
         email,
         password: await hashPassword(password),
-        role: "light_user",
         is_verified: false,
-        username: await uniqueUsername(fallbackUsername(email, "light_user")),
-        full_name: fallbackUsername(email, "light_user"),
+        username: await uniqueUsername(fallbackUsername(email, "user")),
+        full_name: fallbackUsername(email, "user"),
       });
       profile = await db("profiles").where({ uuid }).first();
     } else if (profile.is_verified) {
@@ -352,7 +347,7 @@ export async function requestViewerCode(req, res) {
       return res.json({
         success: true,
         verified: true,
-        token: generateViewerToken(profile.uuid),
+        token: generateViewerToken(profile.uuid, profile.email, true),
         viewer: viewerPayload(profile),
       });
     } else if (!profile.password) {
@@ -382,7 +377,6 @@ export async function verifyViewerCode(req, res) {
 
     const profile = await consumeOtp({ email, code, purpose: "verify_email" });
     if (!profile) return res.status(400).json({ message: "Invalid OTP" });
-    if (profile.role !== "light_user") return res.status(403).json({ message: "User account required" });
     if (!profile.password) return res.status(403).json({ message: "Password setup required" });
 
     await db("profiles").where({ uuid: profile.uuid }).update({ is_verified: true, updated_at: db.fn.now() });
@@ -391,7 +385,7 @@ export async function verifyViewerCode(req, res) {
     console.log(`[USER LOGIN] success uuid=${updated.uuid} email=${updated.email} verified_by_otp=true`);
     return res.json({
       success: true,
-      token: generateViewerToken(updated.uuid),
+      token: generateViewerToken(updated.uuid, updated.email, true),
       viewer: viewerPayload(updated),
     });
   } catch (err) {
@@ -417,8 +411,6 @@ export async function completeViewerSignup(req, res) {
 
     const profile = await consumeOtp({ email, code, purpose: "verify_email" });
     if (!profile) return res.status(400).json({ message: "Invalid OTP" });
-    if (profile.role !== "light_user") return res.status(403).json({ message: "User account required" });
-
     const hashed = await hashPassword(password);
     await db("profiles").where({ uuid: profile.uuid }).update({
       password: hashed,
@@ -433,7 +425,7 @@ export async function completeViewerSignup(req, res) {
     console.log(`[USER LOGIN] success uuid=${updated.uuid} email=${updated.email} completed_signup=true`);
     return res.json({
       success: true,
-      token: generateViewerToken(updated.uuid),
+      token: generateViewerToken(updated.uuid, updated.email, true),
       viewer: viewerPayload(updated),
     });
   } catch (err) {

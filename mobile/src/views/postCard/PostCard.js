@@ -21,8 +21,10 @@ import {
 
 import { VideoView, useVideoPlayer } from "expo-video";
 import { LinearGradient } from "expo-linear-gradient";
+import { useMutation, useQuery } from "convex/react";
+import { api as convexApi } from "../../../convex/_generated/api";
 
-import { api, socialRequest, viewerRequest } from "../../api/api";
+import { api, getFriendlyApiError, socialRequest, viewerRequest } from "../../api/api";
 import { useAppTheme } from "../../theme";
 import { MentionText } from "./commentUtils";
 import AppIcon from "../../icons/AppIcon";
@@ -33,6 +35,8 @@ import CreateJobModal from "../Jobs/MyJobs/CreateJobModal";
 import HiringNoticeModal from "../Jobs/HiringNoticeModal";
 import { UploadManager } from "../../utils/UploadManager";
 import { getUserSession } from "../../utils/userSession";
+import { useLanguage } from "../../LanguageContext";
+import { isNetworkError } from "../../utils/network";
 
 const { width } = Dimensions.get("window");
 const CAPTION_PREVIEW = 120;
@@ -193,6 +197,7 @@ export default function PostCard({
   onPostStateChange,
 }) {
   const { theme: liveTheme } = useAppTheme();
+  const { language } = useLanguage();
   const styles = useMemo(() => createStyles(liveTheme), [liveTheme]);
 
   const media = useMemo(() => normalizePostMedia(post), [post]);
@@ -215,6 +220,11 @@ export default function PostCard({
   const [followSubmitting, setFollowSubmitting] = useState(false);
   const [muted, setMuted] = useState(true);
   const [captionMentions, setCaptionMentions] = useState([]);
+  const postSignal = useQuery(
+    convexApi.realtimeEvents.latest,
+    post?.id ? { channel: `post:${post.id}` } : "skip"
+  );
+  const publishRealtimeEvent = useMutation(convexApi.realtimeEvents.publish);
 
   const CARD_HEIGHT = height ?? 640;
   const MEDIA_HEIGHT = Math.max(260, CARD_HEIGHT - BOTTOM_PANEL_HEIGHT);
@@ -231,6 +241,12 @@ export default function PostCard({
     setCommentsCount(Number(post?.comments_count) || 0);
     setFollowing(!!post?.is_following);
   }, [post?.id, post?.is_liked, post?.likes_count, post?.comments_count, post?.is_following]);
+  useEffect(() => {
+    if (postSignal?.event === "likes_changed" && Number.isFinite(postSignal?.count)) {
+      setLikesCount(postSignal.count);
+      onPostStateChange?.(post.id, { likes_count: postSignal.count });
+    }
+  }, [postSignal?._id, postSignal?.count, postSignal?.event, post?.id, onPostStateChange]);
 
   useEffect(() => {
     if (active) {
@@ -286,6 +302,11 @@ export default function PostCard({
       setLiked(likedNow);
       setLikesCount(nextCount);
       onPostStateChange?.(post.id, { is_liked: likedNow, likes_count: nextCount });
+      await publishRealtimeEvent({
+        channel: `post:${post.id}`,
+        event: "likes_changed",
+        count: nextCount,
+      });
     } catch (err) {
       setLiked(previousLiked);
       setLikesCount(previousCount);
@@ -306,6 +327,17 @@ export default function PostCard({
         preferredAuthActor: socialAuthActor,
       });
       setFollowing(!!res.data.following);
+      await publishRealtimeEvent({
+        channel: `profile:${providerUuid}`,
+        event: res.data.following ? "followed" : "unfollowed",
+      });
+      if (res?.data?.actor_uuid) {
+        await publishRealtimeEvent({
+          channel: `profile:${res.data.actor_uuid}`,
+          event: res.data.following ? "following_added" : "following_removed",
+          count: Number(res?.data?.following_count) || 0,
+        });
+      }
     } catch (err) {
       if (err.response?.status === 401 && err.config?.authActor !== "provider") {
         setShowLogin(true);
@@ -359,7 +391,14 @@ export default function PostCard({
       setShowHireModal(false);
       setHireNotice({ type: "success", title: "Request sent", body: `${displayUsername} will see this in Requests.` });
     } catch (err) {
-      setHireNotice({ type: "error", title: "Could not send request", body: err?.response?.data?.message || "Please try again." });
+      const mediaNetworkFailure = payload.images?.length && isNetworkError(err);
+      setHireNotice({
+        type: "error",
+        title: language === "sw" ? "Ombi halikutumwa" : "Could not send request",
+        body: mediaNetworkFailure
+          ? (language === "sw" ? "Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena." : "Media upload failed because of connection problem. Try again.")
+          : getFriendlyApiError(err, language),
+      });
     } finally {
       setHireSubmitting(false);
     }

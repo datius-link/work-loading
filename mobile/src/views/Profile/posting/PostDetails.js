@@ -20,8 +20,9 @@ import { useIsFocused } from "@react-navigation/native";
 import Icon from "../../../icons/MaterialIcon";
 import VideoPlayer from "./VideoPlayer";
 import { useAppTheme } from "../../../theme";
-import { socialRequest } from "../../../api/api";
+import { getFriendlyApiError, socialRequest } from "../../../api/api";
 import { UploadManager } from "../../../utils/UploadManager";
+import { useLanguage } from "../../../LanguageContext";
 
 const { width, height } = Dimensions.get("window");
 const MEDIA_HEIGHT = 400;
@@ -35,6 +36,7 @@ const UPLOAD_STATUS = {
 
 export default function PostDetails({ route, navigation }) {
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
   const styles = createStyles(theme);
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
@@ -168,7 +170,12 @@ export default function PostDetails({ route, navigation }) {
       console.log("Upload error:", err);
       if (!isMounted.current) return;
       setUploadStatus(UPLOAD_STATUS.ERROR);
-      Alert.alert("Upload failed", "Please check connection and try again.");
+      Alert.alert(
+        language==="sw"?"Media haijapakiwa":"Media upload failed",
+        language==="sw"
+          ?"Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena."
+          :"Media upload failed because of connection problem. Try again."
+      );
     };
 
     // FIX 2: Replace empty catch with real error logging
@@ -238,9 +245,8 @@ export default function PostDetails({ route, navigation }) {
       );
 
       Alert.alert(
-        "Post Failed",
-        err?.response?.data?.message ||
-          "Could not share post."
+        language === "sw" ? "Post haikutumwa" : "Post failed",
+        getFriendlyApiError(err, language)
       );
     }
   };
@@ -419,7 +425,7 @@ export default function PostDetails({ route, navigation }) {
       [UPLOAD_STATUS.ERROR]: {
         icon: "error",
         color: theme.colors.error,
-        text: "Upload failed. Try again.",
+        text: language==="sw"?"Media haijapakiwa. Jaribu tena.":"Media upload failed. Try again.",
       },
     };
 
@@ -430,6 +436,11 @@ export default function PostDetails({ route, navigation }) {
       <View style={[styles.statusBar, { borderColor: cfg.color + "44" }]}>
         <Icon name={cfg.icon} size={20} color={cfg.color} />
         <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.text}</Text>
+        {uploadStatus === UPLOAD_STATUS.ERROR && (
+          <TouchableOpacity style={styles.retryUploadBtn} onPress={startUpload}>
+            <Text style={styles.retryUploadText}>{language==="sw"?"Jaribu tena":"Retry"}</Text>
+          </TouchableOpacity>
+        )}
         {uploadStatus === UPLOAD_STATUS.UPLOADING && (
           <View style={styles.progress}>
             <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
@@ -740,6 +751,17 @@ const createStyles = (theme) => StyleSheet.create({
     marginLeft: 10, 
     fontWeight: "600",
     fontSize: 14,
+  },
+  retryUploadBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: theme.colors.primary,
+  },
+  retryUploadText: {
+    color: theme.colors.onPrimary,
+    fontSize: 11,
+    fontWeight: "900",
   },
   progress: {
     height: 3,

@@ -22,23 +22,14 @@ export function generatePasswordResetToken(uuid) {
   );
 }
 
-export function generateAuthToken(uuid, role = "service_provider") {
+export function generateAuthToken(uuid, email = null, isVerified = true, expiresIn = "7d") {
   return jwt.sign(
-    { uuid, role },
+    { uuid, email, is_verified: !!isVerified },
     requiredSecret("AUTH_TOKEN_SECRET"),
-    { expiresIn: "7d" }
+    { expiresIn }
   );
 }
 
-export function generateViewerToken(uuid) {
-  return jwt.sign(
-    {
-      uuid,
-      role: "light_user",
-    },
-    requiredSecret("AUTH_TOKEN_SECRET"),
-    {
-      expiresIn: "90d",
-    }
-  );
+export function generateViewerToken(uuid, email = null, isVerified = true) {
+  return generateAuthToken(uuid, email, isVerified, "90d");
 }

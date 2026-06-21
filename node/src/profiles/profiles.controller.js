@@ -27,7 +27,6 @@ function publicProfile(profile, owner = false) {
   if (!profile) return null;
   const payload = {
     uuid: profile.uuid,
-    role: profile.role,
     username: profile.username || "",
     full_name: profile.full_name || "",
     bio: profile.bio || "",
@@ -48,7 +47,7 @@ function publicProfile(profile, owner = false) {
   return payload;
 }
 
-function connectionUser(row, isFollowedByMe = false) {
+function connectionUser(row, isFollowedByMe = false, isMe = false) {
   return {
     uuid: row.uuid,
     provider_uuid: row.uuid,
@@ -57,6 +56,7 @@ function connectionUser(row, isFollowedByMe = false) {
     profile_pic: row.profile_pic || "",
     is_followed_by_me: !!isFollowedByMe,
     is_following: !!isFollowedByMe,
+    is_me: !!isMe,
   };
 }
 
@@ -82,7 +82,7 @@ async function listProfileConnections(profileUuid, type, viewerUuid) {
     : [];
   const followed = new Set(followedRows);
 
-  return rows.map((row) => connectionUser(row, followed.has(row.uuid)));
+  return rows.map((row) => connectionUser(row, followed.has(row.uuid), viewerUuid === row.uuid));
 }
 
 export async function getProfile(req, res) {

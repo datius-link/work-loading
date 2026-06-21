@@ -23,19 +23,21 @@
     },
     "android": {
       "adaptiveIcon": {
-          "foregroundImage": "./assets/adaptive-icon.png",
-          "backgroundColor": "#0B6B63",
-        "usesCleartextTraffic": true,
-        "package": "com.dmcaltd.ekazi"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B6B63"
       },
-      "edgeToEdgeEnabled": true
+      "usesCleartextTraffic": true,
+      "package": "com.dmcaltd.ekazi",
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-audio",
-      "expo-video"
+      "expo-video",
+      "expo-sqlite"
     ]
   }
 }

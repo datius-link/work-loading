@@ -150,14 +150,12 @@ export async function rateJobProvider(req, res) {
     const providerUuid = String(req.body.provider_uuid || req.body.providerUuid || "").trim();
     const score = Number(req.body.score);
     const comment = String(req.body.comment || "").trim();
-    const recommend = !!req.body.recommend && score > 6;
-    const reason = String(req.body.reason || "").trim();
-    const recommenderVisible = !!(req.body.recommender_visible || req.body.recommenderVisible);
 
     if (!Number.isInteger(jobId)) return res.status(400).json({ message: "Valid job id required" });
     if (!providerUuid) return res.status(400).json({ message: "Provider is required" });
-    if (!Number.isInteger(score) || score < 1 || score > 10) return res.status(400).json({ message: "Rating must be between 1 and 10" });
-    if (recommend && reason.length < 8) return res.status(400).json({ message: "Recommendation reason is required" });
+    if (!Number.isInteger(score) || score < 1 || score > 5) {
+      return res.status(400).json({ message: "Rating must be between 1 and 5" });
+    }
 
     const job = await db("jobs").where({ id: jobId }).first();
     if (!job) return res.status(404).json({ message: "Job not found" });
@@ -168,56 +166,88 @@ export async function rateJobProvider(req, res) {
     const existing = await db("job_ratings")
       .where({ job_id: jobId, provider_uuid: providerUuid, rater_uuid: me.uuid })
       .first();
+    if (existing) return res.status(409).json({ message: "Rating has already been submitted" });
 
     let rating;
-    if (existing) {
-      const [updated] = await db("job_ratings")
-        .where({ id: existing.id })
-        .update({ score, comment, updated_at: db.fn.now() })
-        .returning("*");
-      rating = updated;
-    } else {
-      const [created] = await db("job_ratings")
-        .insert({ job_id: jobId, provider_uuid: providerUuid, rater_uuid: me.uuid, score, comment })
-        .returning("*");
-      rating = created;
-    }
+    const [created] = await db("job_ratings")
+      .insert({ job_id: jobId, provider_uuid: providerUuid, rater_uuid: me.uuid, score, comment })
+      .returning("*");
+    rating = created;
+
+    await refreshProviderRating(providerUuid);
+    return res.json({
+      success: true,
+      rating,
+      rating_label: score <= 2 ? "low" : score <= 4 ? "good" : "best",
+      recommendation_required: score === 5,
+    });
+  } catch (err) {
+    console.error("rateJobProvider error:", err);
+    return res.status(500).json({ message: "Failed to save rating" });
+  }
+}
+
+export async function recommendJobProvider(req, res) {
+  try {
+    const me = actor(req);
+    if (!me?.uuid) return res.status(401).json({ message: "Authorization required" });
+
+    const jobId = Number(req.params.jobId);
+    const providerUuid = String(req.body.provider_uuid || req.body.providerUuid || "").trim();
+    const shouldRecommend = !!req.body.recommend;
+    const reason = String(req.body.reason || "").trim();
+    const recommenderVisible = !!(req.body.recommender_visible || req.body.recommenderVisible);
+
+    if (!Number.isInteger(jobId)) return res.status(400).json({ message: "Valid job id required" });
+    if (!providerUuid) return res.status(400).json({ message: "Provider is required" });
+
+    const job = await db("jobs").where({ id: jobId }).first();
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (job.created_by !== me.uuid) return res.status(403).json({ message: "Only the hirer can recommend this job" });
+    if (job.assigned_provider_uuid !== providerUuid) return res.status(409).json({ message: "This provider was not assigned to the job" });
+    if (job.status !== "completed") return res.status(409).json({ message: "Recommendation is available after completion and rating" });
+
+    const rating = await db("job_ratings")
+      .where({ job_id: jobId, provider_uuid: providerUuid, rater_uuid: me.uuid })
+      .first();
+    if (!rating) return res.status(409).json({ message: "Submit rating before recommendation" });
 
     const existingRecommendation = await db("job_recommendations")
       .where({ job_id: jobId, provider_uuid: providerUuid, recommender_uuid: me.uuid })
       .first();
+    if (existingRecommendation) return res.status(409).json({ message: "Recommendation decision has already been submitted" });
 
-    if (recommend) {
-      const payload = {
-        rating_id: rating.id,
-        job_title: job.title,
-        job_code: job.job_code,
-        service_type: job.service_type || null,
-        started_at: job.started_at || null,
-        completed_at: job.completed_at || null,
-        reason,
-        recommender_visible: recommenderVisible,
-        status: "closed",
-        updated_at: db.fn.now(),
-      };
-      if (existingRecommendation) {
-        await db("job_recommendations").where({ id: existingRecommendation.id }).update(payload);
-      } else {
-        await db("job_recommendations").insert({
+    let recommendation = null;
+    if (shouldRecommend) {
+      if (Number(rating.score || 0) <= 6) return res.status(409).json({ message: "Ratings 6 and below cannot create recommendations" });
+      if (reason.length < 8) return res.status(400).json({ message: "Recommendation reason is required" });
+      const [created] = await db("job_recommendations")
+        .insert({
           job_id: jobId,
+          rating_id: rating.id,
           provider_uuid: providerUuid,
           recommender_uuid: me.uuid,
-          ...payload,
-        });
-      }
-    } else if (existingRecommendation) {
-      await db("job_recommendations").where({ id: existingRecommendation.id }).del();
+          job_title: job.title,
+          job_code: job.job_code,
+          service_type: job.service_type || null,
+          started_at: job.started_at || null,
+          completed_at: job.completed_at || null,
+          reason,
+          recommender_visible: recommenderVisible,
+          status: "closed",
+        })
+        .returning("*");
+      recommendation = created;
     }
 
-    await refreshProviderRating(providerUuid);
-    return res.json({ success: true, rating });
+    const [updatedJob] = await db("jobs")
+      .where({ id: jobId })
+      .update({ status: "closed", updated_at: db.fn.now() })
+      .returning("*");
+
+    return res.json({ success: true, recommendation, job: updatedJob });
   } catch (err) {
-    console.error("rateJobProvider error:", err);
-    return res.status(500).json({ message: "Failed to save rating" });
+    console.error("recommendJobProvider error:", err);
+    return res.status(500).json({ message: "Failed to save recommendation" });
   }
 }

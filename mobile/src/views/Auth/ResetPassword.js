@@ -4,10 +4,12 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import Txt from "../../Txt";
 import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
-import { api } from "../../api/api";
+import { api, getFriendlyApiError } from "../../api/api";
+import { useLanguage } from "../../LanguageContext";
 
 export default function ResetPassword({ navigation, route }) {
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [email] = useState(route?.params?.email || "");
@@ -35,7 +37,7 @@ export default function ResetPassword({ navigation, route }) {
       });
       navigation.navigate("Login");
     } catch (err) {
-      setMessage(err?.response?.data?.message || "Could not reset password.");
+      setMessage(getFriendlyApiError(err, language));
     } finally {
       setLoading(false);
     }

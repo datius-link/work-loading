@@ -82,7 +82,7 @@ router.post("/login", login);
  * @swagger
  * /api/auth/verify-provider:
  *   post:
- *     summary: Verify provider account
+ *     summary: Verify user account
  *     tags: [Auth]
  *     requestBody:
  *       required: true

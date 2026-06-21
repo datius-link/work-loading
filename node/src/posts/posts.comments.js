@@ -52,7 +52,7 @@ async function commentAuthor(profileUuid) {
     username,
     profile_pic: profile?.profile_pic || avatar(username),
     author_id: profileUuid,
-    author_type: profile?.role || "light_user",
+    author_type: "user",
   };
 }
 

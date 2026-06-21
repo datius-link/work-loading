@@ -18,10 +18,13 @@ import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/nativ
 import * as ImagePicker from "expo-image-picker";
 import Txt from "../../../Txt";
 import { useAppTheme } from "../../../theme";
-import { viewerRequest } from "../../../api/api";
+import { getFriendlyApiError, viewerRequest } from "../../../api/api";
 import { getUserSession, saveUserSession } from "../../../utils/userSession";
 import { UploadManager } from "../../../utils/UploadManager";
 import AppIcon from "../../../icons/AppIcon";
+import { isNetworkError } from "../../../utils/network";
+import { cachedGet } from "../../../utils/offlineCache";
+import CachedDataNotice from "../../../components/CachedDataNotice";
 
 const SOCIAL_PLATFORMS = [
   { id: "instagram", label: "Instagram", icon: "instagram", placeholder: "@username" },
@@ -114,6 +117,7 @@ export default function EditProfile() {
   const [skillDraft, setSkillDraft] = useState("");
   const [socials, setSocials] = useState(() => parseSocials([]));
   const [notice, setNotice] = useState(null);
+  const [showingCached, setShowingCached] = useState(false);
 
   const e164Phone = toE164(dialCode, localPhone);
   const phoneChanged = e164Phone !== originalPhone;
@@ -140,8 +144,9 @@ export default function EditProfile() {
         applyProfile(route.params.profile);
         return;
       }
-      const res = await viewerRequest("get", "/profiles/me");
-      applyProfile(res?.data?.profile || {});
+      const result = await cachedGet("profile:me", () => viewerRequest("get", "/profiles/me").then((res) => res.data));
+      applyProfile(result?.data?.profile || {});
+      setShowingCached(result.fromCache);
     } catch (_err) {
       const session = await getUserSession();
       applyProfile(session?.profile || session?.user || {});
@@ -190,7 +195,7 @@ export default function EditProfile() {
       setOtpCode("");
       setNotice({ type: "otp", en: `Enter the OTP sent to ${e164Phone}.`, sw: `Weka OTP iliyotumwa ${e164Phone}.` });
     } catch (err) {
-      setNotice({ type: "error", en: err?.response?.data?.message || "Could not send phone OTP.", sw: err?.response?.data?.message || "Imeshindikana kutuma OTP ya simu." });
+      setNotice({ type: "error", en: getFriendlyApiError(err, "en"), sw: getFriendlyApiError(err, "sw") });
     }
   };
 
@@ -204,7 +209,7 @@ export default function EditProfile() {
       setOriginalPhone(e164Phone);
       setNotice({ type: "success", en: "Phone number verified.", sw: "Namba ya simu imethibitishwa." });
     } catch (err) {
-      setNotice({ type: "error", en: err?.response?.data?.message || "Invalid OTP. Please try again.", sw: err?.response?.data?.message || "OTP si sahihi. Jaribu tena." });
+      setNotice({ type: "error", en: getFriendlyApiError(err, "en"), sw: getFriendlyApiError(err, "sw") });
     }
   };
 
@@ -259,7 +264,12 @@ export default function EditProfile() {
         onClose: () => navigation.goBack(),
       });
     } catch (err) {
-      setNotice({ type: "error", en: err?.response?.data?.message || "Could not save profile.", sw: err?.response?.data?.message || "Imeshindikana kuhifadhi." });
+      const mediaNetworkFailure=tempImage?.uri&&isNetworkError(err);
+      setNotice({
+        type: "error",
+        en: mediaNetworkFailure?"Media upload failed because of connection problem. Try again.":getFriendlyApiError(err,"en"),
+        sw: mediaNetworkFailure?"Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena.":getFriendlyApiError(err,"sw"),
+      });
     } finally {
       setSaving(false);
     }
@@ -286,6 +296,7 @@ export default function EditProfile() {
             {saving ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Txt en="Save" sw="Hifadhi" style={styles.saveText} />}
           </TouchableOpacity>
         </View>
+        <CachedDataNotice visible={showingCached} />
 
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <View style={styles.identity}>

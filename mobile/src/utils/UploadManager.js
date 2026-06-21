@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api as convexApi } from "../../convex/_generated/api";
+import { isNetworkError } from "./network";
 
 const convex = new ConvexHttpClient(
   process.env.EXPO_PUBLIC_CONVEX_URL
@@ -81,6 +82,10 @@ export const UploadManager = {
       return uploadedMedia;
     } catch (error) {
       console.log("UPLOAD ERROR:", error);
+      if (isNetworkError(error) || /fetch|network|upload failed/i.test(String(error?.message || ""))) {
+        error.code = "MEDIA_NETWORK_ERROR";
+        error.isNetworkError = true;
+      }
 
       if (this.callbacks.onError) {
         this.callbacks.onError(error);

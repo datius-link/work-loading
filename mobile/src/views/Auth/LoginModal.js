@@ -12,13 +12,17 @@ import {
 import Txt from "../../Txt";
 import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
-import { api } from "../../api/api";
+import { api, getFriendlyApiError } from "../../api/api";
 import { saveUserSession } from "../../utils/userSession";
 import { useNavigation } from "@react-navigation/native";
+import PrivacyPolicy from "../Settings/PrivacyPolicy";
+import TermsOfService from "../Settings/TermsOfService";
+import { useLanguage } from "../../LanguageContext";
 
 export default function LoginModal({ visible, onClose, onSuccess, initialMode = "login" }) {
   const navigation = useNavigation();
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [mode, setMode] = useState(initialMode);
@@ -29,6 +33,8 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [legalScreen, setLegalScreen] = useState(null);
   const dragStartY = React.useRef(0);
 
   const emailValue = email.trim();
@@ -36,7 +42,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
   const identifierValid = mode === "login" ? emailValue.length >= 3 : emailValid;
   const codeValid = code.trim().length >= 4;
   const passwordValid = password.length >= 4 && (mode === "login" || password === confirmPassword);
-  const authValid = identifierValid && passwordValid;
+  const authValid = identifierValid && passwordValid && (mode !== "register" || agreedToTerms);
 
   const reset = () => {
     setMode(initialMode);
@@ -46,6 +52,8 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
     setPassword("");
     setConfirmPassword("");
     setErrorMessage("");
+    setAgreedToTerms(false);
+    setLegalScreen(null);
     setLoading(false);
   };
 
@@ -57,6 +65,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
     setPassword("");
     setConfirmPassword("");
     setErrorMessage("");
+    setAgreedToTerms(false);
   };
 
   const closeModal = () => {
@@ -97,7 +106,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
       }
       if (res?.data?.requiresOtp) setStep("otp");
     } catch (err) {
-      setErrorMessage(err?.response?.data?.message || "Could not continue. Please try again.");
+      setErrorMessage(getFriendlyApiError(err, language));
       console.log("request code error:", err?.response?.data || err?.message);
     } finally {
       setLoading(false);
@@ -125,7 +134,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
       await onSuccess?.({ token, viewer: res?.data?.viewer, session });
       closeModal();
     } catch (err) {
-      setErrorMessage(err?.response?.data?.message || "Verification failed. Please try again.");
+      setErrorMessage(getFriendlyApiError(err, language));
       console.log("verify error:", err?.response?.data || err?.message);
     } finally {
       setLoading(false);
@@ -133,6 +142,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
   };
 
   return (
+    <>
     <Modal visible={visible} transparent animationType="slide" onRequestClose={closeModal}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.overlay}>
         <View style={styles.modal}>
@@ -174,7 +184,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
               <View style={styles.inputRow}>
                 <AppIcon name="mail" size={18} color={theme.colors.textMuted} />
                 <TextInput
-                  placeholder={mode === "login" ? "Email or username" : "Email address"}
+                  placeholder={language === "sw" ? (mode === "login" ? "Email au username" : "Anwani ya email") : (mode === "login" ? "Email or username" : "Email address")}
                   placeholderTextColor={theme.colors.textVeryMuted}
                   keyboardType={mode === "login" ? "default" : "email-address"}
                   autoCapitalize="none"
@@ -186,7 +196,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
               <View style={styles.inputRow}>
                 <AppIcon name="lock" size={18} color={theme.colors.textMuted} />
                 <TextInput
-                  placeholder="Password"
+                  placeholder={language === "sw" ? "Nywila" : "Password"}
                   placeholderTextColor={theme.colors.textVeryMuted}
                   secureTextEntry
                   value={password}
@@ -198,7 +208,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
                 <View style={styles.inputRow}>
                   <AppIcon name="lock" size={18} color={theme.colors.textMuted} />
                   <TextInput
-                    placeholder="Confirm password"
+                    placeholder={language === "sw" ? "Thibitisha nywila" : "Confirm password"}
                     placeholderTextColor={theme.colors.textVeryMuted}
                     secureTextEntry
                     value={confirmPassword}
@@ -210,6 +220,28 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
               {mode === "register" && !!confirmPassword && password !== confirmPassword ? (
                 <Txt en="Passwords do not match" sw="Nywila hazifanani" style={styles.errorText} />
               ) : null}
+              {mode === "register" ? (
+                <View style={styles.consentRow}>
+                  <TouchableOpacity
+                    onPress={() => setAgreedToTerms(!agreedToTerms)}
+                    style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: agreedToTerms }}
+                  >
+                    {agreedToTerms ? <AppIcon name="check" size={14} color={theme.colors.onPrimary} strokeWidth={2.5} /> : null}
+                  </TouchableOpacity>
+                  <View style={styles.consentTextWrap}>
+                    <Txt en="I agree to the " sw="Nakubali " style={styles.consentText} />
+                    <TouchableOpacity onPress={() => setLegalScreen("terms")}>
+                      <Txt en="Terms of Service" sw="Masharti ya Huduma" style={styles.legalLink} />
+                    </TouchableOpacity>
+                    <Txt en=" and " sw=" na " style={styles.consentText} />
+                    <TouchableOpacity onPress={() => setLegalScreen("privacy")}>
+                      <Txt en="Privacy Policy" sw="Sera ya Faragha" style={styles.legalLink} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
               {!!errorMessage ? (
                 <Txt en={errorMessage} sw={errorMessage} style={styles.errorText} />
               ) : null}
@@ -219,7 +251,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
                 style={[styles.continueBtn, (!authValid || loading) && styles.continueDisabled]}
               >
                 {loading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={theme.colors.onPrimary} />
                 ) : (
                   <Txt
                     en={mode === "login" ? "Login" : "Register"}
@@ -244,7 +276,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
               <View style={styles.inputRow}>
                 <AppIcon name="shield" size={18} color={theme.colors.textMuted} />
                 <TextInput
-                  placeholder="OTP code"
+                  placeholder={language === "sw" ? "Code ya OTP" : "OTP code"}
                   placeholderTextColor={theme.colors.textVeryMuted}
                   keyboardType="number-pad"
                   value={code}
@@ -257,7 +289,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
                 disabled={!codeValid || loading}
                 style={[styles.continueBtn, (!codeValid || loading) && styles.continueDisabled]}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Txt en="Verify & Continue" sw="Thibitisha" style={styles.continueText} />}
+                {loading ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Txt en="Verify & Continue" sw="Thibitisha" style={styles.continueText} />}
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setStep("email")} style={styles.resendBtn}>
                 <Txt en="Change email" sw="Badili email" style={styles.resendText} />
@@ -270,12 +302,20 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    <Modal visible={!!legalScreen} animationType="slide" onRequestClose={() => setLegalScreen(null)}>
+      {legalScreen === "terms" ? (
+        <TermsOfService onBack={() => setLegalScreen(null)} />
+      ) : (
+        <PrivacyPolicy onBack={() => setLegalScreen(null)} />
+      )}
+    </Modal>
+    </>
   );
 }
 
 const createStyles = (theme) =>
   StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.35)", justifyContent: "flex-end" },
+    overlay: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: "flex-end" },
     modal: { width: "100%", maxWidth: 560, alignSelf: "center", backgroundColor: theme.colors.surface, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
     handle: { width: 42, height: 4, borderRadius: 2, alignSelf: "center", backgroundColor: theme.colors.border, marginBottom: 12 },
     iconWrap: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", marginBottom: 14, backgroundColor: theme.colors.primarySoft },
@@ -289,9 +329,15 @@ const createStyles = (theme) =>
     inputRow: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, paddingHorizontal: 12, height: 54, marginTop: 20, backgroundColor: theme.colors.surfaceSoft },
     input: { flex: 1, fontSize: 15, color: theme.colors.text },
     errorText: { marginTop: 10, color: theme.colors.danger, fontSize: 12, fontWeight: "700" },
+    consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, marginTop: 14 },
+    checkbox: { width: 21, height: 21, borderRadius: 5, borderWidth: 1.5, borderColor: theme.colors.border, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.surfaceSoft },
+    checkboxChecked: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+    consentTextWrap: { flex: 1, flexDirection: "row", flexWrap: "wrap", alignItems: "center" },
+    consentText: { color: theme.colors.textMuted, fontSize: 12, lineHeight: 18 },
+    legalLink: { color: theme.colors.primary, fontSize: 12, lineHeight: 18, fontWeight: "900" },
     continueBtn: { marginTop: 18, minHeight: 54, backgroundColor: theme.colors.primary, borderRadius: 16, alignItems: "center", justifyContent: "center" },
     continueDisabled: { opacity: 0.5 },
-    continueText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+    continueText: { color: theme.colors.onPrimary, fontSize: 15, fontWeight: "800" },
     forgotBtn: { alignSelf: "center", paddingVertical: 14, paddingHorizontal: 8 },
     forgotText: { color: theme.colors.primary, fontSize: 14, fontWeight: "800" },
     resendBtn: { marginTop: 16, alignSelf: "center" },
