@@ -102,12 +102,13 @@ export async function getProfile(req, res) {
         .count("* as count")
         .first(),
     ]);
-    const [followersRow, followingRow, mediaRow, attainedRow, directHiresRow, completedJobs, followedByViewer] = await Promise.all([
+    const [followersRow, followingRow, mediaRow, attainedRow, directHiresRow, recommendationsRow, completedJobs, followedByViewer] = await Promise.all([
       db("profile_followers").where({ provider_uuid: uuid }).count("* as count").first(),
       db("profile_followers").where({ follower_uuid: uuid }).count("* as count").first(),
       db("posts").where({ profile_uuid: uuid }).count("* as count").first(),
       db("job_applications").where({ profile_uuid: uuid, status: "approved" }).count("* as count").first(),
       db("jobs").where({ target_provider_uuid: uuid, hire_type: "direct" }).count("* as count").first(),
+      db("job_recommendations").where({ provider_uuid: uuid }).count("* as count").first(),
       db("jobs")
         .where((qb) => {
           qb.where({ created_by: uuid }).orWhere({ assigned_provider_uuid: uuid });
@@ -131,7 +132,7 @@ export async function getProfile(req, res) {
         media_posts_count: Number(mediaRow?.count || 0),
         jobs_attained_count: Number(attainedRow?.count || 0),
         direct_hires_count: Number(directHiresRow?.count || 0),
-        recommendations_count: Number(profile.ratings_count || 0),
+        recommendations_count: Number(recommendationsRow?.count || 0),
         completed_jobs: completedJobs,
         is_following: !!followedByViewer,
         is_followed_by_me: !!followedByViewer,

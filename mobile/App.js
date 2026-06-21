@@ -35,7 +35,7 @@ import SearchResults from "./src/views/home/SearchResults";
 /* ---------------------------
    AUTH CHECK
 --------------------------- */
-import AuthLoading from "./src/AuthLoading";
+import AuthLoading from "./src/views/Auth/AuthLoading.js";
 import Login from "./src/views/Auth/Login";
 import Register from "./src/views/Auth/Register";
 import ForgotPassword from "./src/views/Auth/ForgotPassword";

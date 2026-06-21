@@ -322,7 +322,7 @@ export default function RequestDetails() {
   const contacts           = job.contact_details || null;
   const otherParty         = contacts?.viewer_role === "hirer" ? contacts?.service_provider : contacts?.hirer;
   const assignedProviderUuid = job.assigned_provider_uuid || contacts?.service_provider?.uuid || otherParty?.uuid;
-  const canRateProvider    = isOwnJob && assignedProviderUuid && ["filled", "closed", "completed"].includes(jobStatus.toLowerCase());
+  const canRateProvider    = isOwnJob && assignedProviderUuid && jobStatus.toLowerCase() === "completed" && !job.rating_submitted_at && !job.rating;
 
   // Can this provider see the claim panel?
   const canClaimDirect = isDirectHire && !isOwnJob && !gotJob && !alreadyApplied && !closed && !declined && job.can_accept_direct_hire;
@@ -338,22 +338,39 @@ export default function RequestDetails() {
   // ── Rating submit ──────────────────────────────────────────────────────────
   const submitRating = async () => {
     if (!canRateProvider || ratingSaving) return;
+    if (ratingScore === 5 && recommendProvider && recommendReason.trim().length < 8) {
+      setRatingMessage("Please explain your recommendation in at least 8 characters.");
+      return;
+    }
     try {
       setRatingSaving(true);
       setRatingMessage("");
-      await viewerRequest("post", `/recommendations/jobs/${job.id}/rate`, {
+      const ratingResponse = await viewerRequest("post", `/recommendations/jobs/${job.id}/rate`, {
         provider_uuid: assignedProviderUuid,
         score: ratingScore,
-        recommend: ratingScore === 5 && recommendProvider,
-        reason: recommendProvider ? recommendReason : "",
-        recommender_visible: false,
+        comment: "",
       });
+      setDetailJob((current) => ({
+        ...(current || job),
+        rating: ratingResponse?.data?.rating || { score: ratingScore },
+        rating_submitted_at: ratingResponse?.data?.rating?.created_at || new Date().toISOString(),
+      }));
+      let recommendationSaved = false;
+      if (ratingScore === 5 && recommendProvider) {
+        await viewerRequest("post", `/recommendations/jobs/${job.id}/recommend`, {
+          provider_uuid: assignedProviderUuid,
+          recommend: true,
+          reason: recommendReason,
+          recommender_visible: false,
+        });
+        recommendationSaved = true;
+      }
       await publishRealtimeEvent({
         channel: `profile:${assignedProviderUuid}`,
         actorUuid: myUuid || undefined,
         event: "rating_submitted",
       });
-      setRatingMessage(ratingScore === 5 && recommendProvider ? "Rating and recommendation saved." : "Rating saved.");
+      setRatingMessage(recommendationSaved ? "Rating and recommendation saved." : "Rating saved.");
     } catch (err) {
       setRatingMessage(getFriendlyApiError(err, language));
     } finally {
@@ -551,24 +568,37 @@ export default function RequestDetails() {
             <SectionHeading label="Rate this provider" />
             <View style={s.starsRow}>
               {[1, 2, 3, 4, 5].map((n) => (
-                <TouchableOpacity key={n} style={[s.scoreBtn, n <= ratingScore && s.scoreBtnActive]} onPress={() => setRatingScore(n)}>
-                  <Text style={[s.scoreTxt, n <= ratingScore && s.scoreTxtActive]}>{n}</Text>
+                <TouchableOpacity
+                  key={n}
+                  style={s.scoreBtn}
+                  onPress={() => {
+                    setRatingScore(n);
+                    if (n !== 5) setRecommendProvider(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${n} star rating`}
+                >
+                  <AppIcon name="star" size={31} color="#F5B301" filled={n <= ratingScore} />
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={s.recommendToggle} onPress={() => setRecommendProvider(!recommendProvider)}>
-              <AppIcon name={recommendProvider ? "check-circle" : "plus-circle"} size={18} color={C.teal} />
-              <Text style={s.recommendTxt}>Add a recommendation</Text>
-            </TouchableOpacity>
-            {recommendProvider ? (
-              <TextInput
-                value={recommendReason}
-                onChangeText={setRecommendReason}
-                placeholder="Why do you recommend this provider?"
-                placeholderTextColor={C.slate}
-                multiline
-                style={s.recommendInput}
-              />
+            {ratingScore === 5 ? (
+              <>
+                <TouchableOpacity style={s.recommendToggle} onPress={() => setRecommendProvider(!recommendProvider)}>
+                  <AppIcon name={recommendProvider ? "check-circle" : "plus-circle"} size={18} color={C.teal} />
+                  <Text style={s.recommendTxt}>Add a recommendation</Text>
+                </TouchableOpacity>
+                {recommendProvider ? (
+                  <TextInput
+                    value={recommendReason}
+                    onChangeText={setRecommendReason}
+                    placeholder="Why do you recommend this provider?"
+                    placeholderTextColor={C.slate}
+                    multiline
+                    style={s.recommendInput}
+                  />
+                ) : null}
+              </>
             ) : null}
             {ratingMessage ? <Text style={s.ratingMsg}>{ratingMessage}</Text> : null}
             <TouchableOpacity style={[s.saveRatingBtn, ratingSaving && { opacity: 0.6 }]} onPress={submitRating} disabled={ratingSaving}>
@@ -785,10 +815,7 @@ const createStyles = (theme) => StyleSheet.create({
 
   // Rating
   starsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
-  scoreBtn: { width: 38, height: 36, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.surface },
-  scoreBtnActive: { backgroundColor: C.teal, borderColor: C.teal },
-  scoreTxt: { color: C.slate, fontWeight: "800", fontSize: 13 },
-  scoreTxtActive: { color: C.white },
+  scoreBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   recommendToggle: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10 },
   recommendTxt: { color: theme.colors.text, fontSize: 14, fontWeight: "700" },
   recommendInput: { minHeight: 88, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, padding: 12, color: theme.colors.text, textAlignVertical: "top", backgroundColor: theme.colors.surface, marginBottom: 8 },

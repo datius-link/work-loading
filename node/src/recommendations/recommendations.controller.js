@@ -219,7 +219,9 @@ export async function recommendJobProvider(req, res) {
 
     let recommendation = null;
     if (shouldRecommend) {
-      if (Number(rating.score || 0) <= 6) return res.status(409).json({ message: "Ratings 6 and below cannot create recommendations" });
+      if (Number(rating.score || 0) !== 5) {
+        return res.status(409).json({ message: "Only a 5-star rating can create a recommendation" });
+      }
       if (reason.length < 8) return res.status(400).json({ message: "Recommendation reason is required" });
       const [created] = await db("job_recommendations")
         .insert({

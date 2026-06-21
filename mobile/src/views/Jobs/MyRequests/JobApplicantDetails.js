@@ -104,7 +104,12 @@ export default function JobApplicantDetails(){
             <Text style={s.provFull}>{provider.fullName||provider.full_name||""}</Text>
             <View style={s.ratingRow}>
               {provider.rating
-                ?<><AppIcon name="star" size={13} color={theme.colors.warning} filled/><Text style={s.ratingTxt}>{provider.rating}</Text></>
+                ?<>
+                  {[1,2,3,4,5].map((star)=>(
+                    <AppIcon key={star} name="star" size={13} color="#F5B301" filled={star<=Math.round(Math.max(0,Math.min(5,Number(provider.rating)||0)))}/>
+                  ))}
+                  <Text style={s.ratingTxt}>{Math.max(0,Math.min(5,Number(provider.rating)||0)).toFixed(1)}</Text>
+                </>
                 :<Text style={s.ratingTxt}>{t.noRating}</Text>}
             </View>
           </View>

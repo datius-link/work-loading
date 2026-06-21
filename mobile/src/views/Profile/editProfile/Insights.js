@@ -82,7 +82,6 @@ function useRangedSummary(ranges) {
           rating_count: Number(
             res.data.summary.rating_count ??
             res.data.summary.ratings_count ??
-            res.data.summary.recommendations ??
             0
           ),
           top_posts: res.data.summary.top_posts || [],
@@ -236,6 +235,25 @@ function Stat({ label, value, sub, accent }) {
         {value ?? "—"}
       </Text>
       {sub ? <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 2 }}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+function RatingStat({ value, count }) {
+  const { theme } = useAppTheme();
+  const rating = Math.max(0, Math.min(5, Number(value) || 0));
+  const filledStars = Math.round(rating);
+  return (
+    <View style={{ flex: 1, minWidth: (SCREEN_W - 64) / 3 }}>
+      <Text style={{ fontSize: 11, color: theme.colors.textMuted, marginBottom: 5 }}>Rating</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <AppIcon key={star} name="star" size={15} color="#F5B301" filled={star <= filledStars} />
+        ))}
+      </View>
+      <Text style={{ fontSize: 11, color: theme.colors.textMuted, marginTop: 4 }}>
+        {rating.toFixed(1)} · {Number(count) || 0} ratings
+      </Text>
     </View>
   );
 }
@@ -500,7 +518,7 @@ export default function Insights({ navigation }) {
           <Stat label="Comments" value={formatCount(s.comments)} />
           <Stat label={tx("Shares", "Shares")} value={formatCount(s.shares)} />
           <Stat label={tx("Saves", "Saved")} value={formatCount(s.saves)} />
-          <Stat label={tx("Rating", "Rating")} value={s.average_rating ? `${s.average_rating}★` : "—"} sub={`${s.rating_count} ${tx("ratings", "ratings")}`} />
+          <RatingStat value={s.average_rating} count={s.rating_count} />
           <Stat label={tx("Profile visits", "Waliotembelea profaili")} value="—" sub={tx("Coming soon", "Inakuja")} />
         </StatGrid>
 
