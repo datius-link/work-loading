@@ -1,4 +1,5 @@
 import db from "../db/index.js";
+import { insertNotification } from "../notifications/notificationSettings.js";
 import { extractMentions } from "./posts.utils.js";
 import { findUsersByUsername, findServices } from "./posts.service.js";
 import { buildCommentTree, enrichCommentRow, fetchCommentById } from "./posts.comments.js";
@@ -764,7 +765,7 @@ export async function toggleFollow(req, res) {
     const receiverAlreadyFollows = await trx("profile_followers")
       .where({ provider_uuid: followerUuid, follower_uuid: providerUuid })
       .first();
-    await trx("notifications").insert({
+    await insertNotification(trx, {
       profile_uuid: providerUuid,
       system: "profile",
       type: "follow",

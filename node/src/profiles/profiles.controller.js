@@ -23,6 +23,15 @@ function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function profilePhotos(value, primary) {
+  const photos = Array.isArray(value) ? value : [];
+  return [primary, ...photos]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.indexOf(item) === index)
+    .slice(0, 2);
+}
+
 function publicProfile(profile, owner = false) {
   if (!profile) return null;
   const payload = {
@@ -31,6 +40,7 @@ function publicProfile(profile, owner = false) {
     full_name: profile.full_name || "",
     bio: profile.bio || "",
     profile_pic: profile.profile_pic || "",
+    profile_photos: profilePhotos(profile.profile_photos, profile.profile_pic),
     services: Array.isArray(profile.services) ? profile.services : [],
     ratings: profile.ratings,
     ratings_count: Number(profile.ratings_count || 0),
@@ -245,6 +255,8 @@ export async function updateMyProfile(req, res) {
       fullName,
       profile_pic,
       profilePic,
+      profile_photos,
+      profilePhotos: profilePhotosBody,
       bio,
       phone_numbers,
       phoneNumbers,
@@ -274,6 +286,10 @@ export async function updateMyProfile(req, res) {
     if (typeof bio === "string") payload.bio = bio.trim();
     if (typeof profile_pic === "string" || typeof profilePic === "string") {
       payload.profile_pic = String(profile_pic || profilePic).trim();
+    }
+    const incomingProfilePhotos = Array.isArray(profile_photos) ? profile_photos : profilePhotosBody;
+    if (Array.isArray(incomingProfilePhotos) && await db.schema.hasColumn("profiles", "profile_photos")) {
+      payload.profile_photos = db.raw("?::jsonb", [JSON.stringify(profilePhotos(incomingProfilePhotos, payload.profile_pic))]);
     }
     if (Array.isArray(phone_numbers) || Array.isArray(phoneNumbers)) {
       const phones = normalizePhoneList(phone_numbers || phoneNumbers || []);
