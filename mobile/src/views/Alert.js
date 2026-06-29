@@ -20,35 +20,115 @@ import CachedDataNotice from "../components/CachedDataNotice";
 
 const T = {
   en: {
-    title: "Alerts",
-    subtitle: "Job requests, applications, approvals, and provider responses.",
+    title: "Notifications",
+    subtitle: "Messages, follows, job activity, post updates, and mentions.",
+    unread: "unread",
+    allRead: "All caught up",
+    settings: "Notification settings",
     loginTitle: "Login to your account",
-    loginBody: "Sign in to follow what is happening with your jobs.",
+    loginBody: "Sign in to follow messages, jobs, posts, and community activity.",
     login: "Login",
-    emptyTitle: "No activities yet",
-    emptyBody: "Updates about posted jobs, direct hires, applications, and job progress will appear here.",
+    emptyTitle: "No notifications yet",
+    emptyBody: "Messages, follows, likes, comments, mentions, job updates, applications, and followed posts will appear here.",
     retry: "Try again",
+    unreadLabel: "Unread",
   },
   sw: {
-    title: "Shughuli",
-    subtitle: "Maombi ya kazi, waombaji, majibu, na hatua za kazi.",
+    title: "Notifications",
+    subtitle: "Ujumbe, follows, kazi, posts, comments na mentions.",
+    unread: "hazijasomwa",
+    allRead: "Umesoma zote",
+    settings: "Mipangilio ya notifications",
     loginTitle: "Ingia kwenye akaunti yako",
-    loginBody: "Ingia kufuatilia kinachoendelea kwenye kazi zako.",
+    loginBody: "Ingia kufuatilia ujumbe, kazi, posts, na shughuli za jamii.",
     login: "Ingia",
-    emptyTitle: "Hakuna shughuli bado",
-    emptyBody: "Taarifa za kazi ulizochapisha, direct hire, maombi, na maendeleo ya kazi zitaonekana hapa.",
+    emptyTitle: "Hakuna notifications bado",
+    emptyBody: "Ujumbe, follows, likes, comments, mentions, updates za kazi, maombi na posts za unaowafuata zitaonekana hapa.",
     retry: "Jaribu tena",
+    unreadLabel: "Haijasomwa",
   },
 };
 
-function typeIcon(type) {
-  if (String(type || "").includes("accepted") || String(type || "").includes("assigned")) return "check";
-  if (String(type || "").includes("declined") || String(type || "").includes("cancelled")) return "warning";
-  if (String(type || "").includes("application")) return "users";
-  if (String(type || "").includes("direct")) return "send";
-  return "activity";
+const TYPE_STYLES = {
+  message: { icon: "message", color: "#1683C7", label: "Message" },
+  follow: { icon: "plusUser", color: "#0B6B63", label: "Follow" },
+  like: { icon: "heart", color: "#E63946", label: "Like" },
+  comment: { icon: "comment", color: "#7C3AED", label: "Comment" },
+  mention: { icon: "tag", color: "#D97706", label: "Mention" },
+  directHire: { icon: "direct-hire", color: "#0F766E", label: "Direct hire" },
+  application: { icon: "users", color: "#2563EB", label: "Application" },
+  jobStatus: { icon: "briefcase", color: "#16A34A", label: "Job update" },
+  followedPost: { icon: "posts", color: "#0891B2", label: "Followed post" },
+  warning: { icon: "warning", color: "#F59E0B", label: "Attention" },
+  general: { icon: "bell", color: "#64748B", label: "e-kazi" },
+};
+
+function typeTone(item) {
+  const raw = `${item?.type || ""} ${item?.system || ""} ${item?.title || ""}`.toLowerCase();
+  const metaAction = String(item?.meta?.action || "").toLowerCase();
+
+  if (raw.includes("message")) return TYPE_STYLES.message;
+  if (raw.includes("follow")) return raw.includes("post") ? TYPE_STYLES.followedPost : TYPE_STYLES.follow;
+  if (raw.includes("like") || raw.includes("reaction")) return TYPE_STYLES.like;
+  if (raw.includes("comment") || raw.includes("reply")) return TYPE_STYLES.comment;
+  if (raw.includes("mention") || raw.includes("tag")) return TYPE_STYLES.mention;
+  if (raw.includes("direct")) return TYPE_STYLES.directHire;
+  if (raw.includes("application") || raw.includes("applicant") || raw.includes("provider_withdrew")) return TYPE_STYLES.application;
+  if (
+    raw.includes("accepted") ||
+    raw.includes("assigned") ||
+    raw.includes("confirmed") ||
+    raw.includes("completed") ||
+    raw.includes("start_") ||
+    raw.includes("completion_") ||
+    raw.includes("filled") ||
+    metaAction.includes("workspace") ||
+    metaAction.includes("confirm")
+  ) return TYPE_STYLES.jobStatus;
+  if (raw.includes("declined") || raw.includes("cancelled") || raw.includes("warning")) return TYPE_STYLES.warning;
+  if (raw.includes("post") || item?.post_id) return TYPE_STYLES.followedPost;
+  return TYPE_STYLES.general;
 }
 
+
+function notificationDestination(item) {
+  const raw = `${item?.type || ""} ${item?.system || ""} ${item?.title || ""}`.toLowerCase();
+  const action = String(item?.meta?.action || "").toLowerCase();
+  const jobId = item?.job_id || item?.meta?.job_id;
+  const post = item?.meta?.post || null;
+  const postId = item?.post_id || item?.meta?.post_id;
+
+  const isMessage = raw.includes("message") || action.includes("message");
+  const isProgress =
+    raw.includes("start_") ||
+    raw.includes("completion_") ||
+    raw.includes("completed") ||
+    raw.includes("confirmed") ||
+    raw.includes("rejected") ||
+    raw.includes("cancelled") ||
+    raw.includes("filled") ||
+    action.includes("progress") ||
+    action.includes("confirm") ||
+    action.includes("rate");
+
+  if (jobId && isMessage) {
+    return { name: "JobWorkspace", params: { jobId, tab: "chat", unreadMessageId: item?.meta?.message_id } };
+  }
+
+  if (jobId && isProgress) {
+    return { name: "JobWorkspace", params: { jobId, tab: "progress", notificationId: item?.id } };
+  }
+
+  if (post) {
+    return { name: "PostFeedView", params: { posts: [post], initialPostId: post.id || postId, preferredAuthActor: "viewer" } };
+  }
+
+  if (jobId) {
+    return { name: "JobDetails", params: { jobId } };
+  }
+
+  return null;
+}
 function formatDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -70,6 +150,7 @@ export default function Alerts() {
   const [error, setError] = useState("");
   const [showLogin, setShowLogin] = useState(false);
   const [showingCached, setShowingCached] = useState(false);
+  const unreadCount = useMemo(() => notifications.filter((item) => !item?.read).length, [notifications]);
 
   const loadAlerts = useCallback(async ({ refresh = false } = {}) => {
     if (refresh) setRefreshing(true);
@@ -111,32 +192,49 @@ export default function Alerts() {
         // keep navigation responsive even if read state fails
       }
     }
-    if (item?.job_id) {
-      navigation.navigate("JobDetails", { jobId: item.job_id });
+    const destination = notificationDestination(item);
+    if (destination) {
+      navigation.navigate(destination.name, destination.params);
     }
   };
 
-  const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={[styles.item, !item.read && styles.itemUnread]}
-      activeOpacity={0.86}
-      onPress={() => openActivity(item)}
-    >
-      <View style={[styles.iconWrap, !item.read && styles.iconWrapUnread]}>
-        <AppIcon name={typeIcon(item.type)} size={18} color={theme.colors.primary} />
-      </View>
-      <View style={styles.itemBody}>
-        <View style={styles.itemTop}>
-          <Text style={styles.itemTitle} numberOfLines={1}>
-            {item.title || "e-kazi"}
-          </Text>
-          <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
+  const renderItem = ({ item, index }) => {
+    const tone = typeTone(item);
+    const isUnread = !item?.read;
+    return (
+      <TouchableOpacity
+        style={[styles.timelineRow, isUnread && styles.timelineRowUnread]}
+        activeOpacity={0.82}
+        onPress={() => openActivity(item)}
+      >
+        <View style={styles.timelineColumn}>
+          <View style={[styles.timelineRail, index === 0 && styles.timelineRailTop]} />
+          <View style={[styles.typeNode, { borderColor: tone.color, backgroundColor: `${tone.color}14` }, isUnread && { backgroundColor: `${tone.color}22` }]}>
+            <AppIcon name={tone.icon} size={17} color={tone.color} />
+          </View>
         </View>
-        <Text style={styles.itemText} numberOfLines={2}>{item.body}</Text>
-      </View>
-      <AppIcon name="chevron-right" size={16} color={theme.colors.textMuted} />
-    </TouchableOpacity>
-  );
+        <View style={styles.itemBody}>
+          <View style={styles.itemMeta}>
+            <Text style={[styles.typeLabel, { color: tone.color }]} numberOfLines={1}>{tone.label}</Text>
+            <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
+          </View>
+          <View style={styles.titleLine}>
+            {isUnread ? <View style={[styles.unreadDot, { backgroundColor: tone.color }]} /> : null}
+            <Text style={[styles.itemTitle, isUnread && styles.itemTitleUnread]} numberOfLines={1}>
+              {item.title || "e-kazi"}
+            </Text>
+          </View>
+          <Text style={[styles.itemText, isUnread && styles.itemTextUnread]} numberOfLines={3}>{item.body}</Text>
+          {isUnread ? (
+            <View style={styles.unreadPill}>
+              <Text style={styles.unreadPillText}>{t.unreadLabel}</Text>
+            </View>
+          ) : null}
+        </View>
+        <AppIcon name="chevron-right" size={15} color={theme.colors.textVeryMuted} />
+      </TouchableOpacity>
+    );
+  };
 
   const empty = () => {
     if (loading) {
@@ -167,7 +265,7 @@ export default function Alerts() {
     }
     return (
       <View style={styles.center}>
-        <View style={styles.emptyIcon}><AppIcon name="activity" size={30} color={theme.colors.primary} /></View>
+        <View style={styles.emptyIcon}><AppIcon name="bell" size={30} color={theme.colors.primary} /></View>
         <Text style={styles.emptyTitle}>{t.emptyTitle}</Text>
         <Text style={styles.emptyText}>{t.emptyBody}</Text>
       </View>
@@ -177,8 +275,18 @@ export default function Alerts() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t.title}</Text>
-        <Text style={styles.subtitle}>{t.subtitle}</Text>
+        <View style={styles.headerTop}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>{t.title}</Text>
+            <Text style={styles.subtitle}>{t.subtitle}</Text>
+          </View>
+        </View>
+        <View style={styles.summaryLine}>
+          <View style={[styles.summaryDot, unreadCount ? styles.summaryDotUnread : styles.summaryDotRead]} />
+          <Text style={styles.summaryText}>
+            {unreadCount ? `${unreadCount} ${t.unread}` : t.allRead}
+          </Text>
+        </View>
       </View>
       <CachedDataNotice visible={showingCached} />
       <FlatList
@@ -218,36 +326,67 @@ const createStyles = (theme) =>
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
     },
+    headerTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+    headerText: { flex: 1, minWidth: 0 },
     title: { color: theme.colors.text, fontSize: 24, fontWeight: "900" },
     subtitle: { color: theme.colors.textMuted, fontSize: 13, lineHeight: 18, marginTop: 4 },
-    list: { padding: theme.spacing.md, paddingBottom: theme.spacing.xxl, gap: 10 },
+
+    summaryLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
+    summaryDot: { width: 8, height: 8, borderRadius: 4 },
+    summaryDotUnread: { backgroundColor: theme.colors.primary },
+    summaryDotRead: { backgroundColor: theme.colors.textVeryMuted },
+    summaryText: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "800" },
+    list: { paddingHorizontal: theme.spacing.md, paddingVertical: 8, paddingBottom: theme.spacing.xxl },
     listEmpty: { flexGrow: 1 },
-    item: {
+    timelineRow: {
       flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      padding: theme.spacing.md,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.surface,
-      ...theme.shadow.soft,
+      alignItems: "flex-start",
+      gap: 10,
+      minHeight: 92,
+      paddingVertical: 13,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.borderLight,
     },
-    itemUnread: { borderColor: theme.colors.primary + "66" },
-    iconWrap: {
-      width: 42,
-      height: 42,
-      borderRadius: 8,
+    timelineRowUnread: { backgroundColor: theme.colors.primarySoft + "55" },
+    timelineColumn: { width: 34, alignItems: "center", alignSelf: "stretch" },
+    timelineRail: {
+      position: "absolute",
+      top: -14,
+      bottom: -14,
+      width: 2,
+      backgroundColor: theme.colors.border,
+    },
+    timelineRailTop: { top: 16 },
+    typeNode: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: theme.colors.primarySoft,
+      borderWidth: 1.5,
+      marginTop: 1,
     },
-    iconWrapUnread: { backgroundColor: theme.colors.accentSoft || theme.colors.primarySoft },
-    itemBody: { flex: 1, minWidth: 0 },
-    itemTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-    itemTitle: { flex: 1, color: theme.colors.text, fontSize: 14, fontWeight: "900" },
+    itemBody: { flex: 1, minWidth: 0, paddingRight: 2 },
+    itemMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
+    typeLabel: { flex: 1, fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
     itemDate: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "700" },
+    titleLine: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 4 },
+    unreadDot: { width: 7, height: 7, borderRadius: 4 },
+    itemTitle: { flex: 1, color: theme.colors.text, fontSize: 14, fontWeight: "800" },
+    itemTitleUnread: { fontWeight: "900" },
     itemText: { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 4 },
+    itemTextUnread: { color: theme.colors.text },
+    unreadPill: {
+      alignSelf: "flex-start",
+      marginTop: 7,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+      backgroundColor: theme.colors.bgElevated,
+      borderWidth: 1,
+      borderColor: theme.colors.primary + "44",
+    },
+    unreadPillText: { color: theme.colors.primary, fontSize: 10, fontWeight: "900" },
     center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28, paddingBottom: 48 },
     emptyIcon: {
       width: 68,
