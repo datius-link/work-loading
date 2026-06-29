@@ -38,6 +38,7 @@ export const createTheme = (mode = "light") => ({
     ...palette[mode],
 
     primary: "#0B6B63",
+    primaryDark: mode === "dark" ? "#073F3A" : "#08544D",
     onPrimary: "#FFFFFF",
     primarySoft: mode === "dark" ? "#0F3E3B" : "#E6F4F2",
     accent: "#1683C7",
@@ -50,6 +51,7 @@ export const createTheme = (mode = "light") => ({
     danger: "#E63946",
     error: "#E63946",
     success: "#16A34A",
+    successSoft: mode === "dark" ? "#10351F" : "#DCFCE7",
     warning: "#F59E0B",
   },
 
