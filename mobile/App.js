@@ -69,7 +69,6 @@ function MainTabs() {
   const insets = useSafeAreaInsets();
   const labels = {
     Home: language === "sw" ? "Gundua" : "Explore",
-    Alerts: language === "sw" ? "Taarifa" : "Alerts",
     Jobs: language === "sw" ? "Kazi" : "Jobs",
     Profile: language === "sw" ? "Profaili" : "Profile",
     Settings: language === "sw" ? "Mipangilio" : "Settings",
@@ -106,7 +105,6 @@ function MainTabs() {
         },
         tabBarIcon: ({ color, size }) => {
           let icon = "home";
-          if (route.name === "Alerts") icon = "activity";
           if (route.name === "Jobs") icon = "briefcase";
           if (route.name === "Profile") icon = "user";
           if (route.name === "Settings") icon = "settings";
@@ -116,7 +114,6 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={Home} />
-      <Tab.Screen name="Alerts" component={Alerts} />
       <Tab.Screen name="Jobs" component={Jobs} />
       <Tab.Screen name="Profile" component={Profile} />
       <Tab.Screen name="Settings" component={Settings} />
@@ -193,6 +190,7 @@ function RootNavigator() {
 
         {/* -------- MAIN USER -------- */}
         <Stack.Screen name="MainTabs" component={MainTabs} />
+        <Stack.Screen name="Alerts" component={Alerts} />
 
         {/* -------- AUTH -------- */}
         <Stack.Screen name="Login" component={Login} />
