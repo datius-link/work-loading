@@ -285,7 +285,7 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
       onJobUpdate(res?.data?.job || job);
       await onRealtimeChange?.("dispute_submitted");
       setDisputeNote("");
-      onNotice({ type: "success", title: "Report submitted", body: "Your dispute has been recorded." });
+      onNotice({ type: "success", title: isHirer && jobStatus === "completion_pending" ? "Completion rejected" : "Report submitted", body: isHirer && jobStatus === "completion_pending" ? "The provider has been notified and can submit completion again when ready." : "Your dispute has been recorded." });
     } catch (e) {
       onNotice({
         type: "error",
@@ -449,6 +449,26 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
               loading={submitting}
             />
           </View>
+          {isHirer ? (
+            <View style={st.rejectBox}>
+              <Text style={st.rejectTitle}>{tx("Not finished yet?", "Bado hajamaliza?")}</Text>
+              <Text style={st.hint}>{tx("Explain what is missing. The job will return to Working and the provider can submit completion again when ready.", "Eleza kilichobaki. Kazi itarudi Working na mtoa huduma ataweza kuwasilisha tena akikamilisha.")}</Text>
+              <TextInput
+                style={st.textarea}
+                placeholder={tx("What still needs to be finished?", "Nini bado hakijakamilika?")}
+                placeholderTextColor={C.slate}
+                value={disputeNote}
+                onChangeText={setDisputeNote}
+                multiline
+              />
+              <OutlineButton
+                label={tx("Reject Completion", "Kataa Kukamilika")}
+                onPress={reportDispute}
+                loading={disputing}
+                color={C.red}
+              />
+            </View>
+          ) : null}
         </Section>
       )}
 
@@ -721,6 +741,15 @@ const createStyles = (theme) => StyleSheet.create({
     fontSize: 14,
     textAlignVertical: "top",
   },
+
+  rejectBox: {
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  rejectTitle: { fontSize: 14, fontWeight: "900", color: C.red },
 
   // Waiting banner
   waitingBanner: {
