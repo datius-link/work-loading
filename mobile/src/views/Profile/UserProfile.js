@@ -8,13 +8,14 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Linking,
   Dimensions,
   Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api as convexApi } from "../../../convex/_generated/api";
 import { api, getFriendlyApiError, socialRequest, viewerRequest } from "../../api/api";
 import { getUserSession } from "../../utils/userSession";
@@ -41,11 +42,42 @@ const COPY = {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function profilePhotosFor(profile) {
+  const photos = listFrom(profile?.profile_photos || profile?.profilePhotos || profile?.profile_pictures || profile?.profilePictures);
+  const primary = profile?.profile_pic || profile?.profilePic;
+  return [primary, ...photos].filter(Boolean).filter((item, index, arr) => arr.indexOf(item) === index).slice(0, 2);
+}
+
 function avatarFor(profile) {
-  if (profile?.profile_pic) return profile.profile_pic;
+  const primary = profilePhotosFor(profile)[0];
+  if (primary) return primary;
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
     profile?.username || profile?.full_name || "User"
   )}&background=0B6B63&color=fff&bold=true&length=2&fontsize=0.33&rounded=true`;
+}
+
+function parseSocialItem(item) {
+  const str = String(item || "").toLowerCase();
+  if (str.includes("instagram")) return "instagram";
+  if (str.includes("facebook")) return "facebook";
+  if (str.includes("twitter") || str.includes("x.com")) return "twitter";
+  if (str.includes("github")) return "github";
+  if (str.includes("linkedin")) return "linkedin";
+  if (str.includes("youtube")) return "youtube";
+  if (str.includes("tiktok")) return "music";
+  return "globe";
+}
+
+function openSocialUrl(platform, rawString) {
+  const username = String(rawString || "").replace(/^(instagram|facebook|twitter|github|linkedin|youtube|tiktok):\s*/i, "").trim();
+  let url = username.startsWith("http") ? username : (username.includes(".") ? `https://${username}` : "");
+  if (platform === "instagram") url = `https://instagram.com/${username.replace(/^@/, "")}`;
+  if (platform === "facebook") url = `https://facebook.com/${username.replace(/\s/g, "")}`;
+  if (platform === "twitter") url = `https://twitter.com/${username.replace(/^@/, "")}`;
+  if (platform === "github") url = `https://github.com/${username}`;
+  if (platform === "linkedin") url = `https://linkedin.com/in/${username}`;
+  if (platform === "youtube") url = `https://youtube.com/@${username}`;
+  if (url) Linking.openURL(url).catch(() => {});
 }
 
 function listFrom(value) {
@@ -98,6 +130,16 @@ const chipStyles = StyleSheet.create({
   text: { fontSize: 12, fontWeight: "600", letterSpacing: 0 },
 });
 
+function PublicStatBlock({ label, value, onPress, styles }) {
+  const Container = onPress ? TouchableOpacity : View;
+  return (
+    <Container onPress={onPress} style={styles.publicStatBlock} activeOpacity={0.72}>
+      <Text style={styles.publicStatValue}>{value}</Text>
+      <Text style={styles.publicStatLabel}>{label}</Text>
+    </Container>
+  );
+}
+
 function EmptyState({ icon, title, subtitle, theme }) {
   return (
     <View style={emptyStyles.wrap}>
@@ -147,10 +189,6 @@ export default function UserProfile() {
   const [showHireModal, setShowHireModal] = useState(false);
   const [hireSubmitting, setHireSubmitting] = useState(false);
   const [hireNotice, setHireNotice] = useState(null);
-  const profileSignal = useQuery(
-    convexApi.realtimeEvents.latest,
-    profile?.uuid ? { channel: `profile:${profile.uuid}` } : "skip"
-  );
   const publishRealtimeEvent = useMutation(convexApi.realtimeEvents.publish);
   const [activeTab, setActiveTab] = useState("media");
   const [jobsDone, setJobsDone] = useState([]);
@@ -232,9 +270,6 @@ export default function UserProfile() {
   }, [profile?.uuid, fetchJobsDone, fetchJobsPosted]);
 
   useFocusEffect(useCallback(() => { loadProfile(); }, [loadProfile]));
-  useEffect(() => {
-    if (profileSignal?._id) loadProfile();
-  }, [profileSignal?._id, loadProfile]);
 
   const onRefresh = useCallback(() => {
     loadProfile({ refresh: true });
@@ -258,19 +293,21 @@ export default function UserProfile() {
       setProfile((current) => {
         if (!current) return current;
         const currentFollowers = Number(current.followers_count || current.follower_count || 0);
-        const delta = nextFollowing ? 1 : -1;
-        const nextFollowers = Math.max(0, currentFollowers + delta);
+        const fallbackFollowers = Math.max(0, currentFollowers + (nextFollowing ? 1 : -1));
+        const nextFollowers = Number.isFinite(Number(res?.data?.followers_count))
+          ? Number(res.data.followers_count)
+          : fallbackFollowers;
+        const nextFollowingCount = Number.isFinite(Number(res?.data?.profile_following_count))
+          ? Number(res.data.profile_following_count)
+          : Number(current.following_count || 0);
         return {
           ...current,
           followers_count: nextFollowers,
           follower_count: nextFollowers,
+          following_count: nextFollowingCount,
           is_following: nextFollowing,
           is_followed_by_me: nextFollowing,
         };
-      });
-      await publishRealtimeEvent({
-        channel: `profile:${profile.uuid}`,
-        event: nextFollowing ? "followed" : "unfollowed",
       });
       if (res?.data?.actor_uuid) {
         await publishRealtimeEvent({
@@ -422,22 +459,12 @@ export default function UserProfile() {
   const followerCount = profile.followers_count || profile.follower_count || 0;
   const followingCount = profile.following_count || 0;
 
+  const socialsRaw = listFrom(profile.socials);
+  const phoneNumber = profile.phone_number || profile.phone_numbers?.[0]?.number || profile.phone_numbers?.[0] || "";
+  const coverPhoto = profilePhotosFor(profile)[0] || avatarFor(profile);
+
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
-
-      {/* ── Sticky floating header (fades in on scroll) ── */}
-      <Animated.View style={[styles.floatingHeader, { opacity: headerOpacity, paddingTop: insets.top }]}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-          <AppIcon name="arrowLeft" size={20} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.floatingHeaderTitle}>@{profile.username || "user"}</Text>
-        {isMine ? (
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate("EditProfile", { profile })}>
-            <AppIcon name="edit" size={18} color={theme.colors.text} />
-          </TouchableOpacity>
-        ) : <View style={styles.headerSpacer} />}
-      </Animated.View>
-
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 24, 40) }}
@@ -446,106 +473,86 @@ export default function UserProfile() {
         scrollEventThrottle={16}
       >
         <CachedDataNotice visible={showingCached} />
+        <View style={styles.publicTopBar}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+            <AppIcon name="arrowLeft" size={22} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.publicNavTitle}>@{profile.username || "user"}</Text>
+          <View style={styles.headerSpacer} />
+        </View>
 
-        {/* ─── DARK HEADER (avatar → services) ─── */}
-        <LinearGradient
-          colors={[theme.colors.primary, theme.colors.primaryDark || '#08544d']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          {/* Top nav */}
-          <View style={styles.heroNav}>
-            <TouchableOpacity style={styles.heroNavBtn} onPress={() => navigation.goBack()}>
-              <AppIcon name="arrowLeft" size={20} color={theme.colors.onPrimary} />
-            </TouchableOpacity>
-            {isMine ? (
-              <TouchableOpacity style={styles.heroNavBtn} onPress={() => navigation.navigate("EditProfile", { profile })}>
-                <AppIcon name="edit" size={18} color={theme.colors.onPrimary} />
-              </TouchableOpacity>
-            ) : <View style={styles.heroNavSpacer} />}
+        <View style={styles.publicCoverWrap}>
+          <Image source={{ uri: coverPhoto }} style={styles.publicCoverImage} blurRadius={16} />
+          <LinearGradient colors={["rgba(11,107,99,0.12)", "rgba(11,107,99,0.52)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.publicCover} />
+          <View style={styles.publicAvatarRing}>
+            <Image source={{ uri: avatarFor(profile) }} style={styles.publicAvatar} />
           </View>
+        </View>
 
-          {/* Avatar + name + rating */}
-          <View style={styles.heroCenter}>
-            <View style={styles.avatarRing}>
-              <Image source={{ uri: avatarFor(profile) }} style={styles.avatar} />
-              {!isMine && (
-                <View style={[styles.onlineDot, { backgroundColor: following ? "#4ADE80" : "#94A3B8" }]} />
-              )}
+        <View style={styles.publicInfo}>
+          <View style={styles.publicInfoHeader}>
+            <View style={styles.publicNameBlock}>
+              <Text style={styles.publicUsername}>@{profile.username || "user"}</Text>
+              {profile.full_name ? <Text style={styles.publicFullName}>{profile.full_name}</Text> : null}
+              <OverallRating value={profile.ratings} count={profile.ratings_count} theme={theme} compact textColor={theme.colors.warning} mutedColor={theme.colors.textMuted} />
             </View>
-            <View style={styles.heroCopy}>
-              <Text style={styles.heroUsername}>@{profile.username || "user"}</Text>
-              {profile.full_name ? <Text style={styles.heroFullName}>{profile.full_name}</Text> : null}
-              <View style={styles.ratingContainer}>
-                <OverallRating value={profile.ratings} count={profile.ratings_count} theme={theme} compact textColor={theme.colors.onPrimary} mutedColor="rgba(255,255,255,0.68)" />
-              </View>
-            </View>
-          </View>
-
-          {/* Bio (centered) */}
-          {profile.bio ? <Text style={styles.bioText}>{profile.bio}</Text> : null}
-
-          {/* Stats row (followers / following) – tight */}
-          <View style={styles.statsRow}>
-            <StatPill label={t.followers} value={formatCount(followerCount)} onPress={navigateToFollowers} />
-            <View style={styles.statDivider} />
-            <StatPill label={t.following} value={formatCount(followingCount)} onPress={navigateToFollowing} />
-          </View>
-
-          {/* Action buttons */}
-          <View style={styles.actionRow}>
             {!isMine ? (
-              <>
+              <View style={styles.publicActionStack}>
                 <TouchableOpacity
-                  style={[styles.followBtn, following && styles.followingBtn, followSubmitting && styles.disabledBtn]}
+                  style={[styles.publicFollowBtn, following && styles.publicFollowingBtn, followSubmitting && styles.disabledBtn]}
                   onPress={toggleFollow}
                   disabled={followSubmitting}
                   activeOpacity={0.85}
                 >
-                  {following ? (
-                    <AppIcon name="check-circle" size={16} color={theme.colors.primary} />
-                  ) : (
-                    <AppIcon name="plusUser" size={16} color={theme.colors.onPrimary} />
-                  )}
-                  <Text style={[styles.followText, following && styles.followingText]}>
-                    {following ? t.following : t.follow}
-                  </Text>
+                  <AppIcon name={following ? "check-circle" : "plusUser"} size={15} color={following ? theme.colors.primary : theme.colors.onPrimary} />
+                  <Text style={[styles.publicFollowText, following && styles.publicFollowingText]}>{following ? t.following : t.follow}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.hireBtn} onPress={() => setShowHireModal(true)} activeOpacity={0.85}>
-                  <AppIcon name="briefcase" size={16} color={theme.colors.onPrimary} />
-                  <Text style={styles.hireBtnText}>{t.hire}</Text>
+                <TouchableOpacity style={styles.publicHireBtn} onPress={() => setShowHireModal(true)} activeOpacity={0.85}>
+                  <AppIcon name="briefcase" size={15} color={theme.colors.text} />
+                  <Text style={styles.publicHireText}>{t.hire}</Text>
                 </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity style={styles.insightsBtn} onPress={() => navigation.navigate("EditProfile", { profile })} activeOpacity={0.85}>
-                  <AppIcon name="edit" size={16} color={theme.colors.primary} />
-                  <Text style={styles.insightsBtnText}>{t.edit}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.insightsBtn} onPress={() => navigation.navigate("Insights")} activeOpacity={0.85}>
-                  <AppIcon name="trending-up" size={16} color={theme.colors.primary} />
-                  <Text style={styles.insightsBtnText}>{t.insights}</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-          {/* Services */}
-          {services.length > 0 ? (
-            <View style={styles.servicesSection}>
-              <Text style={styles.sectionLabel}>{t.services}</Text>
-              <View style={styles.chipsRow}>
-                {services.map((s) => <ServiceChip key={String(s)} label={String(s)} theme={theme} />)}
               </View>
-            </View>
-          ) : null}
+            ) : null}
+          </View>
+          {profile.bio ? <Text style={styles.publicBio}>{profile.bio}</Text> : null}
+          <View style={styles.publicStatsRow}>
+            <PublicStatBlock label={t.followers} value={formatCount(followerCount)} onPress={navigateToFollowers} styles={styles} />
+            <PublicStatBlock label={t.following} value={formatCount(followingCount)} onPress={navigateToFollowing} styles={styles} />
+            <PublicStatBlock label={t.done} value={formatCount(worksDoneCount)} styles={styles} />
+          </View>
+        </View>
 
-          {/* Wave divider */}
-          <View style={styles.waveDivider} />
-        </LinearGradient>
+        {(phoneNumber || socialsRaw.length || services.length) ? (
+          <View style={styles.publicDetails}>
+            {phoneNumber ? (
+              <View style={styles.publicContactItem}>
+                <AppIcon name="phone" size={17} color={theme.colors.primary} />
+                <Text style={styles.publicContactText}>{phoneNumber}</Text>
+              </View>
+            ) : null}
+            {socialsRaw.length ? (
+              <View style={styles.publicSocialRow}>
+                {socialsRaw.map((raw, index) => {
+                  const platform = parseSocialItem(raw);
+                  return (
+                    <TouchableOpacity key={String(raw) + index} style={styles.publicSocialBtn} onPress={() => openSocialUrl(platform, raw)}>
+                      <AppIcon name={platform} size={17} color={theme.colors.primary} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
+            {services.length ? (
+              <View style={styles.publicServicesGroup}>
+                <Text style={styles.publicDetailLabel}>{t.services}</Text>
+                <View style={styles.publicChipsRow}>
+                  {services.map((s) => <View key={String(s)} style={styles.publicServiceChip}><Text style={styles.publicServiceText}>{String(s)}</Text></View>)}
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
-        {/* ─── LIGHT SECTION (tabs + posts) ─── */}
         <View style={styles.postsSection}>
           <View style={styles.tabContainer}>
             {[
@@ -567,13 +574,9 @@ export default function UserProfile() {
               );
             })}
           </View>
-
-          <View style={styles.tabContent}>
-            {renderTabContent()}
-          </View>
+          <View style={styles.tabContent}>{renderTabContent()}</View>
         </View>
       </Animated.ScrollView>
-
       <CreateJobModal
         visible={showHireModal}
         onClose={() => setShowHireModal(false)}
@@ -607,6 +610,40 @@ const createStyles = (theme) => StyleSheet.create({
   },
   retryText: { color: theme.colors.onPrimary, fontWeight: "700", fontSize: 14 },
 
+  publicTopBar: { minHeight: 54, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: theme.colors.border, backgroundColor: theme.colors.bg },
+  publicNavTitle: { flex: 1, color: theme.colors.text, fontSize: 18, fontWeight: "900", textAlign: "center" },
+  publicCoverWrap: { position: "relative", minHeight: 203, overflow: "hidden" },
+  publicCover: { height: 150, width: "100%" },
+  publicCoverImage: { position: "absolute", top: 0, left: 0, right: 0, height: 150, width: "100%", opacity: 0.82 },
+  publicAvatarRing: { position: "absolute", left: 20, bottom: 6, borderRadius: 30, borderWidth: 4, borderColor: theme.colors.bg, backgroundColor: theme.colors.bg },
+  publicAvatar: { width: 112, height: 112, borderRadius: 24, backgroundColor: theme.colors.surfaceSoft },
+  publicInfo: { paddingHorizontal: 20, paddingBottom: 10 },
+  publicInfoHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
+  publicNameBlock: { flex: 1, minWidth: 0 },
+  publicUsername: { color: theme.colors.text, fontSize: 25, lineHeight: 30, fontWeight: "900" },
+  publicFullName: { color: theme.colors.textMuted, fontSize: 13, fontWeight: "800", marginTop: 2 },
+  publicActionStack: { width: 112, gap: 8 },
+  publicFollowBtn: { minHeight: 38, borderRadius: theme.radius.xs, backgroundColor: theme.colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  publicFollowingBtn: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
+  publicFollowText: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: "900" },
+  publicFollowingText: { color: theme.colors.primary },
+  publicHireBtn: { minHeight: 38, borderRadius: theme.radius.xs, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  publicHireText: { color: theme.colors.text, fontSize: 13, fontWeight: "900" },
+  publicBio: { color: theme.colors.textSecondary, fontSize: 14.5, lineHeight: 21, marginTop: 14 },
+  publicStatsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 18, paddingVertical: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.colors.border },
+  publicStatBlock: { flex: 1, alignItems: "center" },
+  publicStatValue: { color: theme.colors.text, fontSize: 24, fontWeight: "900" },
+  publicStatLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "800", marginTop: 2 },
+  publicDetails: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, gap: 10 },
+  publicContactItem: { flexDirection: "row", alignItems: "center", gap: 8 },
+  publicContactText: { flex: 1, color: theme.colors.text, fontSize: 13, fontWeight: "800" },
+  publicSocialRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  publicSocialBtn: { width: 34, height: 34, borderRadius: theme.radius.xs, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primarySoft },
+  publicServicesGroup: { gap: 8 },
+  publicDetailLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
+  publicChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  publicServiceChip: { borderRadius: theme.radius.xs, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.primarySoft, paddingHorizontal: 10, minHeight: 32, justifyContent: "center" },
+  publicServiceText: { color: theme.colors.primary, fontSize: 12, fontWeight: "900" },
   // Floating header
   floatingHeader: {
     position: "absolute",
