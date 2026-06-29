@@ -39,7 +39,7 @@ import { useLanguage } from "../../LanguageContext";
 import { isNetworkError } from "../../utils/network";
 
 const { width } = Dimensions.get("window");
-const CAPTION_PREVIEW = 120;
+const CAPTION_PREVIEW = 140;
 const BOTTOM_PANEL_HEIGHT = 148;
 
 function normalizePostMedia(post) {
@@ -126,62 +126,38 @@ function MediaItem({ item, active: isActive, muted: isMuted, onToggleMute, onLik
 
 function PostCaption({ caption, username, mentions, onMentionPress, onUsernamePress, styles, theme }) {
   const [expanded, setExpanded] = useState(false);
-  const isLong = (caption?.length || 0) > CAPTION_PREVIEW || caption?.includes("\n");
+  const lineBreaks = (caption?.match(/\n/g) || []).length;
+  const isLong = (caption?.length || 0) > CAPTION_PREVIEW || lineBreaks > 1;
 
   if (!caption) return null;
 
   return (
     <View style={styles.captionWrap}>
-      <View style={styles.captionLine}>
-        <Text style={styles.captionName} onPress={onUsernamePress}>
+      <View style={styles.captionHeaderRow}>
+        <Text style={styles.captionName} onPress={onUsernamePress} numberOfLines={1}>
           {username}
         </Text>
-        <View style={styles.captionTextWrap}>
-          <MentionText
-            text={caption}
-            mentions={mentions}
-            onMentionPress={onMentionPress}
-            style={styles.captionInline}
-            mentionStyle={styles.captionMention}
-            numberOfLines={2}
-            ellipsizeMode="tail"
-          />
-        </View>
-        {isLong && (
-          <TouchableOpacity
-            onPress={() => setExpanded(true)}
-            style={styles.captionMoreBtn}
-            hitSlop={8}
-          >
-            <AppIcon name="dots" size={21} color={theme.colors.textMuted} />
-          </TouchableOpacity>
-        )}
       </View>
-
-      <Modal visible={expanded} animationType="slide" transparent onRequestClose={() => setExpanded(false)}>
-        <View style={styles.captionModalRoot}>
-          <View style={styles.captionSheet}>
-            <View style={styles.captionSheetHeader}>
-              <Text style={styles.captionSheetTitle}>Caption</Text>
-              <TouchableOpacity onPress={() => setExpanded(false)} style={styles.captionSheetClose}>
-                <AppIcon name="close" size={22} color={theme.colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={styles.captionSheetScroll}>
-              <Text style={styles.captionName} onPress={onUsernamePress}>
-                {username}
-              </Text>
-              <MentionText
-                text={caption}
-                mentions={mentions}
-                onMentionPress={onMentionPress}
-                style={styles.captionSheetBody}
-                mentionStyle={styles.captionMention}
-              />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <MentionText
+        text={caption}
+        mentions={mentions}
+        onMentionPress={onMentionPress}
+        style={styles.captionInline}
+        mentionStyle={styles.captionMention}
+        numberOfLines={expanded ? undefined : 3}
+        ellipsizeMode="tail"
+      />
+      {isLong && (
+        <TouchableOpacity
+          onPress={() => setExpanded((value) => !value)}
+          style={styles.captionMoreBtn}
+          hitSlop={8}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.captionMoreText}>{expanded ? "See less" : "See more"}</Text>
+          <AppIcon name={expanded ? "chevron-right" : "dots"} size={15} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -729,55 +705,30 @@ const createStyles = (theme) =>
     followingBtnText: { color: theme.colors.bg },
     actionSpacer: { marginLeft: "auto" },
 
-    captionWrap: { marginTop: 4, minHeight: 44 },
-    captionLine: {
-      flexDirection: "row",
-      alignItems: "flex-start",
+    captionWrap: {
+      marginTop: 2,
+      paddingTop: 2,
     },
-    captionTextWrap: {
-      flex: 1,
-      minWidth: 0,
-      marginLeft: 6,
+    captionHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      minHeight: 20,
+      marginBottom: 2,
     },
     captionInline: { color: theme.colors.text, fontSize: 14.5, lineHeight: 20 },
-    captionName: { fontWeight: "800", color: theme.colors.text },
+    captionName: { fontWeight: "900", color: theme.colors.text, maxWidth: "92%" },
     captionMention: { color: theme.colors.primary, fontWeight: "800" },
     captionMoreBtn: {
-      width: 28,
-      height: 28,
-      alignItems: "center",
-      justifyContent: "center",
-      marginLeft: 4,
-      marginTop: -2,
-    },
-
-    captionModalRoot: {
-      flex: 1,
-      justifyContent: "flex-end",
-      backgroundColor: theme.colors.overlay,
-    },
-    captionSheet: {
-      backgroundColor: theme.colors.surface,
-      borderTopLeftRadius: 22,
-      borderTopRightRadius: 22,
-      maxHeight: "70%",
-      minHeight: "40%",
-    },
-    captionSheetHeader: {
+      alignSelf: "flex-start",
+      minHeight: 28,
       flexDirection: "row",
-      justifyContent: "space-between",
       alignItems: "center",
-      padding: 18,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
+      gap: 5,
+      paddingTop: 2,
+      paddingRight: 8,
     },
-    captionSheetTitle: { fontSize: 17, fontWeight: "800", color: theme.colors.text },
-    captionSheetClose: {
-      width: 36,
-      height: 36,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    captionSheetScroll: { padding: 18, paddingBottom: 40 },
-    captionSheetBody: { marginTop: 8, fontSize: 15, lineHeight: 24, color: theme.colors.text },
-  });
+    captionMoreText: {
+      color: theme.colors.textMuted,
+      fontSize: 13,
+      fontWeight: "800",
+    },  });
