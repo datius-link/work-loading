@@ -202,6 +202,17 @@ export default function JobDetails() {
                 </View>
               ) : null}
 
+              {!isDirect && workspaceReady ? (
+                <TouchableOpacity style={[styles.directBtn, styles.acceptBtn, styles.workspaceBtn]} onPress={() => navigation.navigate("JobWorkspace", {
+                  jobId: job.id,
+                  jobCode: job.job_code,
+                  tab: "progress",
+                })}>
+                  <AppIcon name="briefcase" size={16} color={theme.colors.onPrimary} />
+                  <Text style={styles.acceptText}>Open Assigned Workspace</Text>
+                </TouchableOpacity>
+              ) : null}
+
               {job.can_accept_direct_hire ? (
                 <View style={styles.directBox}>
                   <Text style={styles.directHint}>Accept the offer and add how you will perform the job.</Text>
@@ -420,6 +431,7 @@ const createStyles = (theme) =>
     acceptText: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: "900" },
     declineText: { color: theme.colors.text, fontSize: 13, fontWeight: "900" },
     directProviderRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    workspaceBtn: { flexDirection: "row", gap: 8, marginBottom: 12 },
     directAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.colors.surfaceSoft },
     section: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
     sectionTitle: { color: theme.colors.text, fontSize: 17, fontWeight: "900", marginBottom: 9 },
