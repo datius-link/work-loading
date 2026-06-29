@@ -9,6 +9,10 @@ export default defineSchema({
     senderFullName: v.optional(v.string()),
     senderProfilePic: v.optional(v.string()),
     message: v.string(),
+    media: v.optional(v.array(v.any())),
+    messageType: v.optional(v.string()),
+    deliveredAt: v.optional(v.number()),
+    readAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_job_created", ["jobId", "createdAt"])

@@ -7,6 +7,10 @@ function toClientMessage(row) {
     job_id: row.jobId,
     sender_uuid: row.senderUuid,
     message: row.message,
+    media: Array.isArray(row.media) ? row.media : [],
+    message_type: row.messageType || (Array.isArray(row.media) && row.media.length ? "mixed" : "text"),
+    delivered_at: row.deliveredAt ? new Date(row.deliveredAt).toISOString() : null,
+    read_at: row.readAt ? new Date(row.readAt).toISOString() : null,
     created_at: new Date(row.createdAt).toISOString(),
     sender: {
       uuid: row.senderUuid,
@@ -37,10 +41,13 @@ export const send = mutation({
     senderFullName: v.optional(v.string()),
     senderProfilePic: v.optional(v.string()),
     message: v.string(),
+    media: v.optional(v.array(v.any())),
+    messageType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const text = args.message.trim();
-    if (!text) throw new Error("Message is required");
+    const media = Array.isArray(args.media) ? args.media : [];
+    if (!text && !media.length) throw new Error("Message is required");
 
     const id = await ctx.db.insert("jobMessages", {
       jobId: args.jobId,
@@ -49,6 +56,9 @@ export const send = mutation({
       senderFullName: args.senderFullName,
       senderProfilePic: args.senderProfilePic,
       message: text,
+      media,
+      messageType: args.messageType || (media.length ? "mixed" : "text"),
+      deliveredAt: Date.now(),
       createdAt: Date.now(),
     });
 
