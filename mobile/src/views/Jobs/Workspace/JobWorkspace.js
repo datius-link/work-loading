@@ -8,6 +8,7 @@ import { useAppTheme } from "../../../theme";
 import AppIcon from "../../../icons/AppIcon";
 import { getFriendlyApiError, viewerRequest } from "../../../api/api";
 import { getUserSession } from "../../../utils/userSession";
+import { UploadManager } from "../../../utils/UploadManager";
 import HiringNoticeModal from "../HiringNoticeModal";
 import { C, NavHeader } from "../jobsUI";
 import { StyleSheet } from "react-native";
@@ -42,11 +43,10 @@ export default function JobWorkspace() {
   const [role,       setRole]       = useState("provider");
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab,        setTab]        = useState("chat");
+  const [tab,        setTab]        = useState(route.params?.tab || "chat");
   const [notice,     setNotice]     = useState(null);
   const [sending,    setSending]    = useState(false);
   const liveMessages = useQuery(convexApi.jobMessages.list, jobId ? { jobId: String(jobId) } : "skip");
-  const sendLiveMessage = useMutation(convexApi.jobMessages.send);
   const workspaceSignal = useQuery(
     convexApi.realtimeEvents.latest,
     jobId ? { channel: `workspace:${jobId}` } : "skip"
@@ -87,6 +87,11 @@ export default function JobWorkspace() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
+    if (["chat", "progress", "details"].includes(route.params?.tab)) {
+      setTab(route.params.tab);
+    }
+  }, [route.params?.tab]);
+  useEffect(() => {
     if (workspaceSignal?._id) load();
   }, [workspaceSignal?._id, load]);
 
@@ -113,34 +118,73 @@ export default function JobWorkspace() {
   );
 
   // ── Send message ──────────────────────────────────────────────────────────
-  const sendMessage = async (text) => {
-    if (!text || sending) return;
+  const sendMessage = async ({ text = "", mediaAssets = [] } = {}) => {
+    const cleanText = String(text || "").trim();
+    if ((!cleanText && !mediaAssets.length) || sending) return false;
     if (!myUuid) {
       setNotice({ type: "error", title: "Sign in required", body: "Please sign in again before sending messages." });
-      return;
+      return false;
     }
+
     setSending(true);
     const tempId = `pending-${Date.now()}`;
+    const optimisticMedia = mediaAssets.map((asset) => ({
+      url: asset.uri,
+      type: asset.type === "video" ? "video" : "image",
+      width: asset.width || null,
+      height: asset.height || null,
+      duration: asset.duration || null,
+      name: asset.fileName || asset.name || null,
+      mimeType: asset.mimeType || null,
+    }));
     const optimistic = {
       id: tempId,
       job_id: jobId,
       sender_uuid: myUuid,
-      message: text,
+      message: cleanText,
+      media: optimisticMedia,
+      message_type: optimisticMedia.length ? "mixed" : "text",
       created_at: new Date().toISOString(),
-      sender: { uuid: myUuid },
+      sender: {
+        uuid: myUuid,
+        username: myProfile?.username,
+        full_name: myProfile?.full_name || myProfile?.fullName,
+        profile_pic: myProfile?.profile_pic || myProfile?.profilePic,
+      },
       _pending: true,
     };
     setPendingMessages((prev) => [...prev, optimistic]);
+
     try {
-      await sendLiveMessage({
-        jobId: String(jobId),
-        senderUuid: myUuid,
-        senderUsername: myProfile?.username,
-        senderFullName: myProfile?.full_name || myProfile?.fullName,
-        senderProfilePic: myProfile?.profile_pic || myProfile?.profilePic,
-        message: text,
+      const uploadedMedia = mediaAssets.length
+        ? await UploadManager.startUpload(mediaAssets, "workspace_messages")
+        : [];
+      const messageType = uploadedMedia.some((item) => item.type === "video")
+        ? uploadedMedia.some((item) => item.type === "image") || cleanText
+          ? "mixed"
+          : "video"
+        : uploadedMedia.length
+          ? cleanText ? "mixed" : "image"
+          : "text";
+      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/messages`, {
+        message: cleanText,
+        media: uploadedMedia,
+        message_type: messageType,
       });
+      const saved = res?.data?.message;
       setPendingMessages((prev) => prev.filter((item) => item.id !== tempId));
+      if (saved?.id) {
+        setInitialMessages((prev) => {
+          const nextMessages = prev.filter((item) => String(item.id) !== String(saved.id));
+          return [...nextMessages, saved];
+        });
+      }
+      try {
+        await notifyWorkspaceChanged("message_sent");
+      } catch (eventError) {
+        console.log("workspace message realtime error", eventError?.message);
+      }
+      return true;
     } catch (e) {
       setPendingMessages((prev) =>
         prev.map((item) => (item.id === tempId ? { ...item, _pending: false, _failed: true } : item))
@@ -150,12 +194,14 @@ export default function JobWorkspace() {
         title: language === "sw" ? "Ujumbe haukutumwa" : "Message not sent",
         body: getFriendlyApiError(e, language),
       });
+      return false;
     } finally {
       setSending(false);
+      UploadManager.reset();
     }
   };
 
-  // ── States ────────────────────────────────────────────────────────────────
+  // States
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={["top"]}>
