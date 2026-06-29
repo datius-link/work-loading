@@ -140,7 +140,7 @@ function RangePicker({ value, onChange, theme }) {
         activeOpacity={0.7}
       >
         <Text style={{ fontSize: 12, color: c.textSecondary, fontWeight: "500" }}>{label}</Text>
-        <Text style={{ fontSize: 9, color: c.textMuted, marginTop: 1 }}>▾</Text>
+        <Text style={{ fontSize: 9, color: c.textMuted, marginTop: 1 }}>v</Text>
       </TouchableOpacity>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -186,7 +186,7 @@ function RangePicker({ value, onChange, theme }) {
                     color: active ? c.primary : c.text,
                     fontWeight: active ? "600" : "400",
                   }}>{opt.label}</Text>
-                  {active && <Text style={{ fontSize: 16, color: c.primary }}>✓</Text>}
+                  {active && <Text style={{ fontSize: 16, color: c.primary }}>?</Text>}
                 </TouchableOpacity>
               );
             })}
@@ -232,7 +232,7 @@ function Stat({ label, value, sub, accent }) {
         fontSize: 22, fontWeight: "600", lineHeight: 26,
         color: accent ? (c.success || "#2e7d32") : c.text,
       }}>
-        {value ?? "—"}
+        {value ?? "-"}
       </Text>
       {sub ? <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 2 }}>{sub}</Text> : null}
     </View>
@@ -252,7 +252,7 @@ function RatingStat({ value, count }) {
         ))}
       </View>
       <Text style={{ fontSize: 11, color: theme.colors.textMuted, marginTop: 4 }}>
-        {rating.toFixed(1)} · {Number(count) || 0} ratings
+        {rating.toFixed(1)} - {Number(count) || 0} ratings
       </Text>
     </View>
   );
@@ -314,7 +314,7 @@ function BigScore({ value }) {
         {formatCount(value)}
       </Text>
       <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
-        Likes · comments · posts · applications combined
+        Likes - comments - posts - applications combined
       </Text>
     </View>
   );
@@ -332,11 +332,11 @@ function TopPostRow({ post, rank }) {
       <Text style={{ fontSize: 11, color: c.textMuted, fontWeight: "600", minWidth: 18 }}>{rank}</Text>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 13, fontWeight: "500", color: c.text, marginBottom: 3 }} numberOfLines={2}>
-          {post.caption ? (post.caption.length > 70 ? post.caption.slice(0,70)+"…" : post.caption) : "(no caption)"}
+          {post.caption ? (post.caption.length > 70 ? post.caption.slice(0,70)+"..." : post.caption) : "(no caption)"}
         </Text>
         <Text style={{ fontSize: 11, color: c.textMuted }}>
-          {post.likes || 0} likes · {post.comments || 0} comments · {post.views || 0} views
-          {post.engagement_rate ? ` · ${post.engagement_rate}%` : ""}
+          {post.likes || 0} likes - {post.comments || 0} comments - {post.views || 0} views
+          {post.engagement_rate ? ` - ${post.engagement_rate}%` : ""}
         </Text>
       </View>
       <View style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: c.primarySoft, borderRadius: 6 }}>
@@ -361,7 +361,7 @@ function TopJobRow({ job, rank }) {
       <Text style={{ fontSize: 11, color: c.textMuted, fontWeight: "600", minWidth: 18 }}>{rank}</Text>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 13, fontWeight: "500", color: c.text }} numberOfLines={1}>
-          {job.title ? (job.title.length > 44 ? job.title.slice(0,44)+"…" : job.title) : "Untitled"}
+          {job.title ? (job.title.length > 44 ? job.title.slice(0,44)+"..." : job.title) : "Untitled"}
         </Text>
         <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
           <Text style={{ fontSize: 11, color: c.textMuted }}>{job.job_code}</Text>
@@ -409,23 +409,6 @@ function SuggestionsList({ items }) {
       <Text style={{ flex: 1, fontSize: 13, color: c.textSecondary, lineHeight: 20 }}>{item}</Text>
     </View>
   ));
-}
-
-// ------------------------------------------------------------------
-// Footer note
-// ------------------------------------------------------------------
-function FooterNote() {
-  const { theme } = useAppTheme();
-  const c = theme.colors;
-  return (
-    <View style={{ flexDirection: "row", gap: 8, padding: 14, backgroundColor: c.surfaceSoft, borderRadius: 12, marginTop: 8 }}>
-      <Text style={{ fontSize: 13, color: c.textMuted }}>ⓘ</Text>
-      <Text style={{ flex: 1, fontSize: 12, color: c.textMuted, lineHeight: 18 }}>
-        Profile visits and job views aren‘t tracked yet. Average time metrics need at least one completed job cycle.
-        Each section uses its own time filter.
-      </Text>
-    </View>
-  );
 }
 
 // ------------------------------------------------------------------
@@ -519,7 +502,7 @@ export default function Insights({ navigation }) {
           <Stat label={tx("Shares", "Shares")} value={formatCount(s.shares)} />
           <Stat label={tx("Saves", "Saved")} value={formatCount(s.saves)} />
           <RatingStat value={s.average_rating} count={s.rating_count} />
-          <Stat label={tx("Profile visits", "Waliotembelea profaili")} value="—" sub={tx("Coming soon", "Inakuja")} />
+
         </StatGrid>
 
         <View style={{ height: 0.5, backgroundColor: c.border, marginVertical: 28 }} />
@@ -527,7 +510,16 @@ export default function Insights({ navigation }) {
         {/* ───────── Content performance ───────── */}
         <SectionHeader title={tx("Content performance", "Matokeo ya maudhui")} range={ranges.content} onRangeChange={setRange("content")} theme={theme} />
         {s.top_posts.length === 0 ? (
-          <Text style={{ fontSize: 13, color: c.textMuted, paddingVertical: 8 }}>No posts in this time window yet.</Text>
+          <TouchableOpacity onPress={() => navigation.navigate("CreatePost")} activeOpacity={0.82} style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: c.primarySoft }}>
+              <AppIcon name="plus" size={17} color={c.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, color: c.text, fontWeight: "800" }}>{tx("Create your first post", "Tengeneza post yako ya kwanza")}</Text>
+              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{tx("Posts you publish will appear here by engagement.", "Posts utakazochapisha zitaonekana hapa kwa engagement.")}</Text>
+            </View>
+            <AppIcon name="arrowRight" size={16} color={c.textMuted} />
+          </TouchableOpacity>
         ) : (
           <>
             <Text style={{ fontSize: 11, color: c.textMuted, fontWeight: "500", letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 4, marginTop: 4 }}>
@@ -549,8 +541,8 @@ export default function Insights({ navigation }) {
           <Stat label="Applicants received" value={s.applicants_received} />
           <Stat label="Avg / job" value={s.average_applicants_per_job} />
           <Stat label="Direct hires made" value={s.direct_hires_made} />
-          <Stat label="Time to first applicant" value={s.average_time_to_first_applicant ?? "—"} sub={!s.average_time_to_first_applicant ? "Not enough data" : undefined} />
-          <Stat label="Time to fill" value={s.average_time_to_fill ?? "—"} sub={!s.average_time_to_fill ? "Not enough data" : undefined} />
+          <Stat label="Time to first applicant" value={s.average_time_to_first_applicant ?? "-"} sub={!s.average_time_to_first_applicant ? "Not enough data" : undefined} />
+          <Stat label="Time to fill" value={s.average_time_to_fill ?? "-"} sub={!s.average_time_to_fill ? "Not enough data" : undefined} />
         </StatGrid>
         {s.top_jobs.length > 0 && (
           <>
@@ -571,7 +563,7 @@ export default function Insights({ navigation }) {
           <Stat label="Pending review" value={s.pending_applications} />
           <Stat label="Not selected" value={s.rejected_applications} />
           <Stat label="Direct hires received" value={s.direct_hires_received} />
-          <Stat label="Success rate" value={s.jobs_applied ? `${s.application_success_rate}%` : "—"} accent={s.application_success_rate >= 50} />
+          <Stat label="Success rate" value={s.jobs_applied ? `${s.application_success_rate}%` : "-"} accent={s.application_success_rate >= 50} />
         </StatGrid>
         {s.jobs_applied > 0 && (
           <View style={{ marginTop: 20 }}>
@@ -593,7 +585,7 @@ export default function Insights({ navigation }) {
         <View style={{ marginBottom: 20 }}>
           <Text style={{ fontSize: 15, fontWeight: "600", color: c.text, marginBottom: 12 }}>Achievements</Text>
           <AchievementsList items={s.achievements} />
-          <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 8 }}>Earned by reaching milestones like first job, 100 profile visits, 10 applications.</Text>
+          <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 8 }}>Earned by reaching milestones like first job, filled jobs and applications.</Text>
         </View>
 
         {/* ───────── Smart suggestions ───────── */}
@@ -602,8 +594,11 @@ export default function Insights({ navigation }) {
           <SuggestionsList items={s.suggestions} />
         </View>
 
-        <FooterNote />
+
       </ScrollView>
     </View>
   );
 }
+
+
+
