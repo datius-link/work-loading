@@ -25,14 +25,16 @@ export function formatCommentTime(createdAt) {
   });
 }
 
-const MENTION_REGEX = /@([a-zA-Z0-9_]+)/g;
+const TOKEN_REGEX = /([@#])([a-zA-Z0-9_]+)/g;
 
 export function MentionText({
   text,
   mentions = [],
   onMentionPress,
+  onHashtagPress,
   style,
   mentionStyle,
+  hashtagStyle,
   numberOfLines,
   ellipsizeMode,
 }) {
@@ -45,17 +47,17 @@ export function MentionText({
   const parts = [];
   let lastIndex = 0;
   let match;
-  const regex = new RegExp(MENTION_REGEX.source, "g");
+  const regex = new RegExp(TOKEN_REGEX.source, "g");
 
   while ((match = regex.exec(text)) !== null) {
-    const [, username] = match;
+    const [, prefix, value] = match;
     const start = match.index;
 
     if (start > lastIndex) {
       parts.push({ type: "text", value: text.slice(lastIndex, start) });
     }
 
-    parts.push({ type: "mention", username });
+    parts.push({ type: prefix === "@" ? "mention" : "hashtag", value });
     lastIndex = start + match[0].length;
   }
 
@@ -70,15 +72,27 @@ export function MentionText({
           return <Text key={`t-${index}`}>{part.value}</Text>;
         }
 
-        const mention = mentionMap.get(part.username.toLowerCase());
+        if (part.type === "hashtag") {
+          return (
+            <Text
+              key={`h-${index}`}
+              style={[style, hashtagStyle || mentionStyle]}
+              onPress={() => onHashtagPress?.(part.value)}
+            >
+              #{part.value}
+            </Text>
+          );
+        }
+
+        const mention = mentionMap.get(part.value.toLowerCase());
 
         return (
           <Text
             key={`m-${index}`}
             style={[style, mentionStyle]}
-            onPress={() => onMentionPress?.(part.username, mention)}
+            onPress={() => onMentionPress?.(part.value, mention)}
           >
-            @{part.username}
+            @{part.value}
           </Text>
         );
       })}
@@ -92,6 +106,7 @@ export function CommentBody(props) {
       {...props}
       style={[styles.commentText, props.style]}
       mentionStyle={[styles.mention, props.mentionStyle]}
+      hashtagStyle={[styles.mention, props.hashtagStyle || props.mentionStyle]}
     />
   );
 }
