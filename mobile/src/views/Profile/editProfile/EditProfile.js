@@ -68,6 +68,12 @@ function normalizeList(value) {
   return value.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
+function normalizeProfilePhotos(profile) {
+  const photos = normalizeList(profile?.profile_photos || profile?.profilePhotos || profile?.profile_pictures || profile?.profilePictures);
+  const primary = profile?.profile_pic || profile?.profilePic;
+  return [primary, ...photos].filter(Boolean).filter((item, index, arr) => arr.indexOf(item) === index).slice(0, 2);
+}
+
 function parseSocials(value) {
   const result = Object.fromEntries(SOCIAL_PLATFORMS.map((item) => [item.id, ""]));
   if (!Array.isArray(value)) return result;
@@ -104,7 +110,8 @@ export default function EditProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profilePic, setProfilePic] = useState("");
-  const [tempImage, setTempImage] = useState(null);
+  const [profilePhotos, setProfilePhotos] = useState([""]);
+  const [tempImages, setTempImages] = useState({});
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
   const [bio, setBio] = useState("");
@@ -128,7 +135,10 @@ export default function EditProfile() {
     setUsername(profile?.username || "");
     setFullName(profile?.full_name || "");
     setBio(profile?.bio || "");
-    setProfilePic(profile?.profile_pic || profile?.profilePic || "");
+    const photos = normalizeProfilePhotos(profile);
+    setProfilePic(photos[0] || "");
+    setProfilePhotos([photos[0] || ""]);
+    setTempImages({});
     setDialCode(split.dialCode);
     setLocalPhone(split.localPhone);
     setOriginalPhone(phone || "");
@@ -169,8 +179,10 @@ export default function EditProfile() {
       quality: 0.85,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      setTempImage(result.assets[0]);
-      setProfilePic(result.assets[0].uri);
+      const asset = result.assets[0];
+      setTempImages({ 0: asset });
+      setProfilePhotos([asset.uri]);
+      setProfilePic(asset.uri);
     }
   };
 
@@ -230,11 +242,16 @@ export default function EditProfile() {
 
     setSaving(true);
     try {
-      let finalProfilePic = profilePic;
-      if (tempImage?.uri) {
-        const uploaded = await UploadManager.startUpload([{ ...tempImage, type: "image" }], "profiles");
-        finalProfilePic = uploaded?.[0]?.url || finalProfilePic;
+      let finalPhotos = [...profilePhotos].slice(0, 1);
+      const uploadEntries = Object.entries(tempImages).filter(([, image]) => image?.uri);
+      if (uploadEntries.length) {
+        const uploaded = await UploadManager.startUpload(uploadEntries.map(([, image]) => ({ ...image, type: "image" })), "profiles");
+        uploadEntries.forEach(([slot], index) => {
+          finalPhotos[Number(slot)] = uploaded?.[index]?.url || finalPhotos[Number(slot)];
+        });
       }
+      finalPhotos = finalPhotos.map((item) => String(item || "").trim()).filter(Boolean).filter((item, index, arr) => arr.indexOf(item) === index).slice(0, 1);
+      const finalProfilePic = finalPhotos[0] || "";
       const cleanUsername = username.trim().replace(/^@/, "").toLowerCase();
       const cleanSocials = socialsToArray(socials);
       const cleanSkills = normalizeList(skills);
@@ -247,6 +264,7 @@ export default function EditProfile() {
         services: cleanSkills,
         socials: cleanSocials,
         profile_pic: finalProfilePic || "",
+        profile_photos: finalPhotos,
       };
       const res = await viewerRequest("put", "/profiles/me", payload);
       const session = await getUserSession();
@@ -264,7 +282,7 @@ export default function EditProfile() {
         onClose: () => navigation.goBack(),
       });
     } catch (err) {
-      const mediaNetworkFailure=tempImage?.uri&&isNetworkError(err);
+      const mediaNetworkFailure=Object.values(tempImages).some((image) => image?.uri)&&isNetworkError(err);
       setNotice({
         type: "error",
         en: mediaNetworkFailure?"Media upload failed because of connection problem. Try again.":getFriendlyApiError(err,"en"),
@@ -300,12 +318,16 @@ export default function EditProfile() {
 
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <View style={styles.identity}>
-            <TouchableOpacity onPress={pickImage} style={styles.avatarButton} activeOpacity={0.88}>
+            <TouchableOpacity onPress={pickImage} style={styles.photoHero} activeOpacity={0.9}>
+              {profilePic ? <Image source={{ uri: profilePic }} style={styles.photoBackdrop} blurRadius={18} /> : null}
+              <View style={styles.photoShade} />
               <Image source={{ uri: profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(username || "U")}&background=0B6B63&color=fff` }} style={styles.avatar} />
               <View style={styles.cameraBadge}>
-                <AppIcon name="camera" size={14} color="#fff" />
+                <AppIcon name="camera" size={15} color="#fff" />
               </View>
             </TouchableOpacity>
+            <Txt en="Profile photo" sw="Picha ya profaili" style={styles.photoTitle} />
+            <Txt en="This single photo also styles your profile header background." sw="Picha hii moja pia inapamba background ya header yako." style={styles.photoHint} />
             <View style={styles.identityFields}>
               <TextInput value={username} onChangeText={(text) => setUsername(text.replace(/\s/g, "").toLowerCase())} placeholder="username" placeholderTextColor={theme.colors.textMuted} autoCapitalize="none" style={styles.input} />
               <TextInput value={fullName} onChangeText={setFullName} placeholder="Full name" placeholderTextColor={theme.colors.textMuted} style={styles.input} />
@@ -455,11 +477,15 @@ const createStyles = (theme) => StyleSheet.create({
   saveText: { color: theme.colors.onPrimary, fontWeight: "900", fontSize: 14 },
   disabled: { opacity: 0.55 },
   content: { padding: 16, paddingBottom: 34 },
-  identity: { flexDirection: "row", gap: 14, alignItems: "flex-start", marginBottom: 18 },
-  avatarButton: { width: 92, height: 92 },
-  avatar: { width: 92, height: 92, borderRadius: 46, backgroundColor: theme.colors.surfaceSoft },
-  cameraBadge: { position: "absolute", right: 0, bottom: 0, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primary, borderWidth: 2, borderColor: theme.colors.bg },
-  identityFields: { flex: 1, gap: 10 },
+  identity: { gap: 10, marginBottom: 18 },
+  photoHero: { height: 168, borderRadius: 10, overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.surfaceSoft, borderWidth: 1, borderColor: theme.colors.border },
+  photoBackdrop: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%", opacity: 0.55 },
+  photoShade: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.18)" },
+  avatar: { width: 104, height: 104, borderRadius: 52, backgroundColor: theme.colors.surfaceSoft, borderWidth: 4, borderColor: theme.colors.bg },
+  cameraBadge: { position: "absolute", right: 16, bottom: 16, width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primary, borderWidth: 2, borderColor: theme.colors.bg },
+  photoTitle: { color: theme.colors.text, fontSize: 15, fontWeight: "900", textAlign: "center", marginTop: 2 },
+  photoHint: { color: theme.colors.textMuted, fontSize: 12, lineHeight: 17, textAlign: "center", marginBottom: 8 },
+  identityFields: { gap: 10 },
   input: {
     minHeight: 46,
     borderWidth: 1,
@@ -501,3 +527,8 @@ const createStyles = (theme) => StyleSheet.create({
   noticeBtn: { minWidth: 128, minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primary, marginTop: 16 },
   noticeBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: "900" },
 });
+
+
+
+
+
