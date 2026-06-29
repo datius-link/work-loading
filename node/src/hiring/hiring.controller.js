@@ -1,10 +1,12 @@
 import crypto from "crypto";
 import db from "../db/index.js";
+import { insertNotification, notificationAllowed } from "../notifications/notificationSettings.js";
 
 const ACTIVE_STATUSES = ["open", "applied"];
 const DIRECT_HIRE_STATUSES = ["pending"];
 const CONTACT_VISIBLE_STATUSES = ["closed", "filled", "completed", "active", "start_pending", "started", "working", "submitted", "completion_pending"];
 let jobsColumnSet = null;
+let jobMessagesColumnSet = null;
 
 async function jobsColumns() {
   if (jobsColumnSet) return jobsColumnSet;
@@ -13,6 +15,15 @@ async function jobsColumns() {
     .pluck("column_name");
   jobsColumnSet = new Set(names);
   return jobsColumnSet;
+}
+
+async function jobMessagesColumns() {
+  if (jobMessagesColumnSet) return jobMessagesColumnSet;
+  const names = await db("information_schema.columns")
+    .where({ table_schema: "public", table_name: "job_messages" })
+    .pluck("column_name");
+  jobMessagesColumnSet = new Set(names);
+  return jobMessagesColumnSet;
 }
 
 function setIfColumn(payload, columns, key, value) {
@@ -43,6 +54,40 @@ function normalizeMedia(value, folder = "jobs") {
       name: item.name || null,
       mimeType: item.mimeType || null,
     }));
+}
+
+function normalizeMessageMedia(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item?.url || item?.storageId)
+    .slice(0, 8)
+    .map((item) => {
+      const type = item.type === "video" ? "video" : "image";
+      return {
+        url: item.url || null,
+        storageId: item.storageId || null,
+        type,
+        thumbnail: item.thumbnail || item.poster || null,
+        fit: item.fit || "cover",
+        folder: item.folder || "workspace_messages",
+        name: item.name || item.fileName || null,
+        mimeType: item.mimeType || (type === "video" ? "video/mp4" : "image/jpeg"),
+        width: item.width || null,
+        height: item.height || null,
+        duration: item.duration || null,
+      };
+    });
+}
+
+function messageTypeFor(message, media, requestedType) {
+  const type = String(requestedType || "").toLowerCase();
+  if (["text", "image", "video", "mixed"].includes(type)) return type;
+  const hasVideo = media.some((item) => item.type === "video");
+  const hasImage = media.some((item) => item.type === "image");
+  if (hasVideo && hasImage) return "mixed";
+  if (hasVideo) return message ? "mixed" : "video";
+  if (hasImage) return message ? "mixed" : "image";
+  return "text";
 }
 
 function makeCode() {
@@ -219,14 +264,19 @@ function baseJobsQuery() {
     .count("active_apps.id as applicant_count");
 }
 
+function notificationJobTitle(job) {
+  if (!job?.job_code) return "e-kazi";
+  return job?.title ? `Job ${job.job_code} - ${job.title}` : `Job ${job.job_code}`;
+}
+
 async function addNotification(trx, profile_uuid, type, body, job, meta = {}, system = "hiring", title = null) {
-  await trx("notifications").insert({
+  await insertNotification(trx, {
     profile_uuid,
     actor_uuid: meta.actor_uuid || meta.profile_uuid || null,
     job_code: job?.job_code || null,
     system,
     type,
-    title: title || (job?.job_code ? `Job ${job.job_code}` : "e-kazi"),
+    title: title || notificationJobTitle(job),
     body,
     job_id: job?.id || null,
     meta: db.raw("?::jsonb", [JSON.stringify(meta)]),
@@ -284,28 +334,34 @@ export async function createJob(req, res) {
       .select("uuid");
 
     if (providers.length) {
-      await db("notifications").insert(
-        providers.map((provider) => ({
-          profile_uuid: provider.uuid,
-          system: "hiring",
-          type: "new_relevant_job",
-          title: `Job ${job.job_code}`,
-          body: `You received a relevant job ${job.job_code}. Open to view and apply.`,
-          job_id: job.id,
-          meta: db.raw("?::jsonb", [JSON.stringify({ job_code: job.job_code })]),
-        }))
-      );
+      const allowedProviders = [];
+      for (const provider of providers) {
+        if (await notificationAllowed(provider.uuid, "new_relevant_job", "hiring")) allowedProviders.push(provider);
+      }
+      if (allowedProviders.length) {
+        await db("notifications").insert(
+          allowedProviders.map((provider) => ({
+            profile_uuid: provider.uuid,
+            system: "hiring",
+            type: "new_relevant_job",
+            title: notificationJobTitle(job),
+            body: `You received a relevant job ${job.job_code}, ${job.title}. Open to view and apply.`,
+            job_id: job.id,
+            meta: db.raw("?::jsonb", [JSON.stringify({ job_code: job.job_code, action: "open_job_post" })]),
+          }))
+        );
+      }
     }
 
     try {
-      await db("notifications").insert({
+      await insertNotification(db, {
         profile_uuid: me.uuid,
         system: "hiring",
         type: "job_posted",
-        title: `Job ${job.job_code}`,
+        title: notificationJobTitle(job),
         body: `Your job ${job.job_code}, ${job.title}, has been posted. Applications will appear in My Jobs.`,
         job_id: job.id,
-        meta: db.raw("?::jsonb", [JSON.stringify({ job_code: job.job_code })]),
+        meta: db.raw("?::jsonb", [JSON.stringify({ job_code: job.job_code, action: "open_job_post" })]),
       });
     } catch (notificationErr) {
       console.error("createJob light-user notification error:", notificationErr);
@@ -599,33 +655,52 @@ function routeJobId(req) {
   return req.params.jobId || req.params.id;
 }
 
-async function listMessagesForJob(jobId) {
+async function listMessagesForJob(jobId, viewerUuid = null) {
   const hasMessagesTable = await db.schema.hasTable("job_messages");
   if (!hasMessagesTable) return [];
 
   const safeJobId = Number(jobId);
   if (!Number.isInteger(safeJobId) || safeJobId < 1) return [];
+  const columns = await jobMessagesColumns();
+
+  if (viewerUuid && columns.has("read_at")) {
+    await db("job_messages")
+      .where({ job_id: safeJobId })
+      .whereNot("sender_uuid", viewerUuid)
+      .whereNull("read_at")
+      .update({ read_at: db.fn.now() });
+  }
+
+  const selectColumns = [
+    "jm.id",
+    "jm.job_id",
+    "jm.sender_uuid",
+    "jm.message",
+    "jm.created_at",
+    "sender.username as sender_username",
+    "sender.full_name as sender_full_name",
+    "sender.profile_pic as sender_profile_pic",
+  ];
+  if (columns.has("media")) selectColumns.push("jm.media");
+  if (columns.has("message_type")) selectColumns.push("jm.message_type");
+  if (columns.has("delivered_at")) selectColumns.push("jm.delivered_at");
+  if (columns.has("read_at")) selectColumns.push("jm.read_at");
 
   const rows = await db("job_messages as jm")
     .leftJoin("profiles as sender", "sender.uuid", "jm.sender_uuid")
     .where("jm.job_id", safeJobId)
     .orderBy("jm.created_at", "asc")
-    .select(
-      "jm.id",
-      "jm.job_id",
-      "jm.sender_uuid",
-      "jm.message",
-      "jm.created_at",
-      "sender.username as sender_username",
-      "sender.full_name as sender_full_name",
-      "sender.profile_pic as sender_profile_pic"
-    );
+    .select(selectColumns);
 
   return rows.map((row) => ({
     id: row.id,
     job_id: row.job_id,
     sender_uuid: row.sender_uuid,
     message: row.message || "",
+    media: Array.isArray(row.media) ? row.media : [],
+    message_type: row.message_type || (Array.isArray(row.media) && row.media.length ? "mixed" : "text"),
+    delivered_at: row.delivered_at || null,
+    read_at: row.read_at || null,
     created_at: row.created_at,
     sender: {
       uuid: row.sender_uuid,
@@ -692,7 +767,7 @@ export async function getJobWorkspace(req, res) {
     if (!me) return res.status(401).json({ message: "User account required" });
     const result = await workspaceJob(routeJobId(req), me);
     if (result.error) return res.status(result.error.status).json({ message: result.error.message });
-    const messages = await listMessagesForJob(result.row.id);
+    const messages = await listMessagesForJob(result.row.id, me.uuid);
     return res.json({ job: result.job, role: result.role, messages });
   } catch (err) {
     console.error("getJobWorkspace error:", err);
@@ -706,7 +781,7 @@ export async function listJobMessages(req, res) {
     if (!me) return res.status(401).json({ message: "User account required" });
     const result = await workspaceJob(routeJobId(req), me);
     if (result.error) return res.status(result.error.status).json({ message: result.error.message });
-    const messages = await listMessagesForJob(result.row.id);
+    const messages = await listMessagesForJob(result.row.id, me.uuid);
     return res.json({ messages });
   } catch (err) {
     console.error("listJobMessages error:", err);
@@ -721,11 +796,21 @@ export async function sendJobMessage(req, res) {
     const result = await workspaceJob(routeJobId(req), me);
     if (result.error) return res.status(result.error.status).json({ message: result.error.message });
     const message = String(req.body?.message || "").trim();
-    if (message.length < 1) return res.status(400).json({ message: "Message is required" });
+    const media = normalizeMessageMedia(req.body?.media || req.body?.attachments);
+    if (message.length < 1 && media.length < 1) return res.status(400).json({ message: "Message or media is required" });
     if (message.length > 1000) return res.status(400).json({ message: "Message is too long" });
+    const columns = await jobMessagesColumns();
+    const payload = {
+      job_id: result.row.id,
+      sender_uuid: me.uuid,
+      message,
+    };
+    setIfColumn(payload, columns, "media", db.raw("?::jsonb", [JSON.stringify(media)]));
+    setIfColumn(payload, columns, "message_type", messageTypeFor(message, media, req.body?.message_type));
+    setIfColumn(payload, columns, "delivered_at", db.fn.now());
 
     const [created] = await db("job_messages")
-      .insert({ job_id: result.row.id, sender_uuid: me.uuid, message })
+      .insert(payload)
       .returning("*");
 
     const recipientUuid = result.role === "hirer" ? result.row.assigned_provider_uuid : result.row.created_by;
@@ -735,7 +820,7 @@ export async function sendJobMessage(req, res) {
       });
     }
 
-    const [serialized] = await listMessagesForJob(result.row.id).then((items) => items.filter((item) => item.id === created.id));
+    const [serialized] = await listMessagesForJob(result.row.id, me.uuid).then((items) => items.filter((item) => item.id === created.id));
     return res.status(201).json({ success: true, message: serialized || created });
   } catch (err) {
     console.error("sendJobMessage error:", err);
@@ -864,14 +949,45 @@ export async function disputeJobCloseout(req, res) {
     if (result.error) return res.status(result.error.status).json({ message: result.error.message });
     const reason = String(req.body?.reason || req.body?.dispute_reason || "").trim();
     if (reason.length < 8) return res.status(400).json({ message: "Please explain the dispute" });
-    const [updated] = await db("jobs").where({ id: result.row.id }).update({
-      status: "disputed",
-      disputed_by_uuid: me.uuid,
-      dispute_reason: reason,
-      dispute_created_at: db.fn.now(),
-      updated_at: db.fn.now(),
-    }).returning("*");
+
+    const completionRejected = result.role === "hirer" && String(result.row.status) === "completion_pending";
+    const updatePayload = completionRejected
+      ? {
+          status: "working",
+          provider_suggested_completed_at: null,
+          provider_completion_note: null,
+          completion_requested_at: null,
+          disputed_by_uuid: me.uuid,
+          dispute_reason: reason,
+          dispute_created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        }
+      : {
+          status: "disputed",
+          disputed_by_uuid: me.uuid,
+          dispute_reason: reason,
+          dispute_created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        };
+
+    const [updated] = await db("jobs").where({ id: result.row.id }).update(updatePayload).returning("*");
     updated.contact_details = await assignedJobContactDetails(updated, me);
+
+    if (completionRejected && result.row.assigned_provider_uuid) {
+      const hirer = await db("profiles").where({ uuid: me.uuid }).first();
+      const hirerName = hirer?.full_name || hirer?.username || "The hirer";
+      await db.transaction(async (trx) => {
+        await addNotification(
+          trx,
+          result.row.assigned_provider_uuid,
+          "job_completion_rejected",
+          `${hirerName} has not accepted your completion submission for job ${result.row.job_code}, ${result.row.title}. Reason: ${reason}`,
+          updated,
+          { actor_uuid: me.uuid, action: "open_workspace_progress", reason }
+        );
+      });
+    }
+
     return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
   } catch (err) {
     console.error("disputeJobCloseout error:", err);
@@ -915,14 +1031,14 @@ export async function acceptDirectHire(req, res) {
       .update(updatePayload)
       .returning("*");
 
-    await db("notifications").insert({
+    await insertNotification(db, {
       profile_uuid: job.created_by,
       system: "hiring",
       type: "direct_job_accepted",
-      title: `Job ${job.job_code}`,
+      title: notificationJobTitle(job),
       body: `${provider?.full_name || provider?.username || "Provider"} has accepted job ${job.job_code} of ${job.title}.`,
       job_id: job.id,
-      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid, actor_uuid: me.uuid, action: "open_workspace" })]),
+      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid, actor_uuid: me.uuid, action: "open_job_details" })]),
     });
 
     return res.json({ success: true, message: "Direct hire accepted", job: serializeJob({ ...updated, applicant_count: 0 }), workspace: { job_id: updated.id } });
@@ -957,11 +1073,11 @@ export async function declineDirectHire(req, res) {
       .update(updatePayload)
       .returning("*");
 
-    await db("notifications").insert({
+    await insertNotification(db, {
       profile_uuid: job.created_by,
       system: "hiring",
       type: "direct_job_declined",
-      title: `Job ${job.job_code}`,
+      title: notificationJobTitle(job),
       body: `${provider?.full_name || provider?.username || "Provider"} has declined job ${job.job_code} of ${job.title}.`,
       job_id: job.id,
       meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid, actor_uuid: me.uuid, action: "publish_publicly" })]),
