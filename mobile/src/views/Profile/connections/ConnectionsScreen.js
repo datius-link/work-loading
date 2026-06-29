@@ -60,6 +60,27 @@ function avatarFor(user) {
   )}&background=0B6B63&color=fff`;
 }
 
+function connectionSearchText(user) {
+  return [
+    user?.username,
+    user?.full_name,
+    user?.user?.username,
+    user?.user?.full_name,
+    user?.profile?.username,
+    user?.profile?.full_name,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function normalizeConnectionUser(user) {
+  return {
+    ...user,
+    _searchText: connectionSearchText(user),
+  };
+}
+
 export default function ConnectionsScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
@@ -82,6 +103,7 @@ export default function ConnectionsScreen({ navigation, route }) {
       </View>
 
       <Tab.Navigator
+        style={styles.navigator}
         initialRouteName={route?.params?.initialTab === "following" ? t.following : t.followers}
         screenOptions={{
           tabBarStyle: styles.tabBar,
@@ -136,7 +158,8 @@ function ConnectionsList({ type, navigation, styles, theme, t, profileUuid }) {
       const res = profileUuid
         ? await socialRequest("get", endpoint, undefined, { preferredAuthActor: "viewer" })
         : await viewerRequest("get", endpoint);
-      setData(res?.data?.users || []);
+      const users = Array.isArray(res?.data?.users) ? res.data.users : [];
+      setData(users.map(normalizeConnectionUser));
     } catch {
       setData([]);
     } finally {
@@ -179,6 +202,12 @@ function ConnectionsList({ type, navigation, styles, theme, t, profileUuid }) {
     }
   };
 
+  const filteredData = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((item) => item._searchText.includes(q));
+  }, [data, search]);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -186,13 +215,6 @@ function ConnectionsList({ type, navigation, styles, theme, t, profileUuid }) {
       </View>
     );
   }
-
-  const filteredData = data.filter((item) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return String(item.username || "").toLowerCase().includes(q) ||
-      String(item.full_name || "").toLowerCase().includes(q);
-  });
 
   if (!data.length) {
     return (
@@ -211,6 +233,7 @@ function ConnectionsList({ type, navigation, styles, theme, t, profileUuid }) {
 
   return (
     <FlatList
+      style={styles.list}
       data={filteredData}
       keyExtractor={(item) => String(item.provider_uuid || item.uuid || item.email)}
       contentContainerStyle={styles.listContent}
@@ -308,12 +331,21 @@ const createStyles = (theme) =>
       fontWeight: "800",
       textTransform: "none",
     },
+    navigator: {
+      flex: 1,
+      backgroundColor: theme.colors.bg,
+    },
     center: {
       flex: 1,
       alignItems: "center",
       justifyContent: "center",
     },
+    list: {
+      flex: 1,
+      backgroundColor: theme.colors.bg,
+    },
     listContent: {
+      flexGrow: 1,
       paddingVertical: 8,
       backgroundColor: theme.colors.bg,
     },
