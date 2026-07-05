@@ -144,7 +144,12 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
   return (
     <>
     <Modal visible={visible} transparent animationType="slide" onRequestClose={closeModal}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.overlay}>
+      {/* This is a Modal — its Android window doesn't inherit the Activity's
+         adjustResize behavior, so leaving this undefined on Android (as it
+         was before) meant the keyboard could cover the email/password
+         inputs. "height" is the pattern already used for the other modal
+         sheets in this app (see CreateJobModal.js) and actually works here. */}
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.overlay}>
         <View style={styles.modal}>
           <View
             style={styles.handle}
