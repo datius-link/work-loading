@@ -771,7 +771,7 @@ export async function toggleFollow(req, res) {
       type: "follow",
       title: "New follower",
       body: `@${follower?.username || "user"} is now following you`,
-      meta: db.raw("?::jsonb", [JSON.stringify({ follower_uuid: followerUuid, show_follow_back: !receiverAlreadyFollows })]),
+      meta: { follower_uuid: followerUuid, show_follow_back: !receiverAlreadyFollows },
     });
   });
   return followResponse(true);

@@ -112,7 +112,7 @@ export async function getProfile(req, res) {
         .count("* as count")
         .first(),
     ]);
-    const [followersRow, followingRow, mediaRow, attainedRow, directHiresRow, recommendationsRow, completedJobs, followedByViewer] = await Promise.all([
+    const [followersRow, followingRow, mediaRow, attainedRow, directHiresRow, recommendationsRow, completedJobs, postedJobs, followedByViewer] = await Promise.all([
       db("profile_followers").where({ provider_uuid: uuid }).count("* as count").first(),
       db("profile_followers").where({ follower_uuid: uuid }).count("* as count").first(),
       db("posts").where({ profile_uuid: uuid }).count("* as count").first(),
@@ -124,6 +124,14 @@ export async function getProfile(req, res) {
           qb.where({ created_by: uuid }).orWhere({ assigned_provider_uuid: uuid });
         })
         .whereIn("status", ["filled", "closed"])
+        .select("id", "job_code", "title", "status", "updated_at")
+        .orderBy("updated_at", "desc")
+        .limit(8),
+      // Jobs this profile posted (as the hirer), regardless of status — the
+      // "Jobs Posted" tab was showing only the count (posted_jobs_count)
+      // with no actual rows, since this list was never queried before.
+      db("jobs")
+        .where({ created_by: uuid })
         .select("id", "job_code", "title", "status", "updated_at")
         .orderBy("updated_at", "desc")
         .limit(8),
@@ -144,6 +152,7 @@ export async function getProfile(req, res) {
         direct_hires_count: Number(directHiresRow?.count || 0),
         recommendations_count: Number(recommendationsRow?.count || 0),
         completed_jobs: completedJobs,
+        posted_jobs: postedJobs,
         is_following: !!followedByViewer,
         is_followed_by_me: !!followedByViewer,
       },

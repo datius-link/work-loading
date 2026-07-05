@@ -1,10 +1,8 @@
 import db from "../db/index.js";
+import { DEFAULT_NOTIFICATION_SETTINGS, loadNotificationSettings } from "./notificationSettingsStore.js";
+import { sendPushForNotification } from "./pushService.js";
 
-const DEFAULT_NOTIFICATION_SETTINGS = {
-  enable_messages_notifications: true,
-  enable_job_notifications: true,
-  enable_follow_post_notifications: true,
-};
+export { DEFAULT_NOTIFICATION_SETTINGS, loadNotificationSettings };
 
 function notificationBucket(type, system) {
   const raw = `${type || ""} ${system || ""}`.toLowerCase();
@@ -19,16 +17,46 @@ export async function notificationAllowed(profileUuid, type, system = "general",
   const bucket = notificationBucket(type, system);
   if (!bucket) return true;
 
-  const profile = await trx("profiles").where({ uuid: profileUuid }).select("privacy_settings").first();
-  const settings = {
-    ...DEFAULT_NOTIFICATION_SETTINGS,
-    ...((profile?.privacy_settings?.notification_settings && typeof profile.privacy_settings.notification_settings === "object") ? profile.privacy_settings.notification_settings : {}),
-  };
+  const settings = await loadNotificationSettings(profileUuid, trx);
   return settings[bucket] !== false;
+}
+
+// A Knex `db.raw("?::jsonb", [JSON.stringify(obj)])` binding isn't a plain
+// object, so callers that already built the jsonb raw value (every call site
+// in hiring.controller.js / posts.controller.js) still need their original
+// meta object recovered here - it's pulled straight back out of the raw
+// binding rather than requiring every call site to be rewritten.
+function extractMetaObject(meta) {
+  if (!meta) return {};
+  if (typeof meta === "object" && !Array.isArray(meta) && meta.constructor === Object) return meta;
+  try {
+    const bindings = meta?.bindings;
+    if (Array.isArray(bindings) && typeof bindings[0] === "string") return JSON.parse(bindings[0]);
+  } catch (_) {
+    // fall through
+  }
+  return {};
 }
 
 export async function insertNotification(trx, payload) {
   const allowed = await notificationAllowed(payload?.profile_uuid, payload?.type, payload?.system, trx);
   if (!allowed) return null;
-  return trx("notifications").insert(payload);
+
+  const metaObject = extractMetaObject(payload?.meta);
+  const [row] = await trx("notifications")
+    .insert({
+      ...payload,
+      meta: db.raw("?::jsonb", [JSON.stringify(metaObject)]),
+    })
+    .returning("*");
+
+  if (row) {
+    // Fire-and-forget: a push delivery failure must never break the caller's
+    // transaction/response.
+    sendPushForNotification({ ...row, meta: metaObject }).catch((err) => {
+      console.error("push notification dispatch error:", err?.message || err);
+    });
+  }
+
+  return row;
 }

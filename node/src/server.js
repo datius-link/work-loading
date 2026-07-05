@@ -11,6 +11,7 @@ import profilesRoutes from "./profiles/profiles.routes.js";
 import recommendationsRoutes from "./recommendations/recommendations.routes.js";
 import searchRoutes from "./search/search.routes.js";
 import supportRoutes from "./support/support.routes.js";
+import adminRoutes from "./admin/admin.routes.js";
 
 import { setupSwagger } from "./config/swagger.js";
 
@@ -46,6 +47,14 @@ app.use("/api/profiles", profilesRoutes);
 app.use("/api/recommendations", recommendationsRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/support", supportRoutes);
+
+// The admin panel API is deliberately NOT mounted at the obvious "/api/admin"
+// path — anyone scanning "/api/*" for common route names would find that
+// immediately. The real path is env-configured (ADMIN_API_PREFIX) so it can
+// be rotated without a code change if it ever leaks. This is an obscurity
+// layer on top of the real protection, which is still the admin JWT check
+// in admin.middleware.js — never rely on the prefix alone.
+app.use(process.env.ADMIN_API_PREFIX || "/api/admin", adminRoutes);
 
 app.get("/health", (_req, res) => {
   return res.status(200).json({

@@ -38,6 +38,6 @@ export async function down(knex) {
   await knex.raw(`
     ALTER TABLE job_ratings
     ADD CONSTRAINT job_ratings_score_check
-    CHECK (score BETWEEN 1 AND 10)
+    CHECK (score BETWEEN 1 AND 5)
   `);
 }

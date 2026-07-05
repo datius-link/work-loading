@@ -12,7 +12,7 @@ export async function up(knex) {
     table.index(["rater_uuid", "created_at"]);
   });
 
-  await knex.raw("ALTER TABLE job_ratings ADD CONSTRAINT job_ratings_score_check CHECK (score BETWEEN 1 AND 10)");
+  await knex.raw("ALTER TABLE job_ratings ADD CONSTRAINT job_ratings_score_check CHECK (score BETWEEN 1 AND 5)");
 
   await knex.schema.createTable("job_recommendations", (table) => {
     table.increments("id").primary();

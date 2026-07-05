@@ -1,10 +1,5 @@
 import db from "../db/index.js";
-
-const DEFAULT_NOTIFICATION_SETTINGS = {
-  enable_messages_notifications: true,
-  enable_job_notifications: true,
-  enable_follow_post_notifications: true,
-};
+import { DEFAULT_NOTIFICATION_SETTINGS } from "./notificationSettingsStore.js";
 
 function profileUuid(req) {
   return req.user?.uuid || req.viewer?.uuid;
@@ -65,5 +60,54 @@ export async function markNotificationRead(req, res) {
   } catch (err) {
     console.error("markNotificationRead error:", err);
     return res.status(500).json({ message: "Failed to update notification" });
+  }
+}
+
+// Registers (or re-owns) an Expo push token for the current profile. Called
+// by the mobile app once it has notification permission and a token, on
+// startup/after login, and again whenever expo-notifications reports the
+// token changed.
+export async function registerPushToken(req, res) {
+  try {
+    const uuid = profileUuid(req);
+    if (!uuid) return res.status(401).json({ message: "Authorization required" });
+
+    const token = String(req.body?.expo_push_token || req.body?.token || "").trim();
+    if (!token) return res.status(400).json({ message: "Push token is required" });
+
+    const platform = ["ios", "android"].includes(req.body?.platform) ? req.body.platform : null;
+    const deviceId = req.body?.device_id ? String(req.body.device_id).slice(0, 191) : null;
+
+    await db("push_tokens")
+      .insert({
+        profile_uuid: uuid,
+        expo_push_token: token,
+        platform,
+        device_id: deviceId,
+        updated_at: db.fn.now(),
+      })
+      .onConflict("expo_push_token")
+      .merge({ profile_uuid: uuid, platform, device_id: deviceId, updated_at: db.fn.now() });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("registerPushToken error:", err);
+    return res.status(500).json({ message: "Failed to register push token" });
+  }
+}
+
+// Removes a token, e.g. on logout, so a signed-out device stops receiving
+// pushes meant for the account that just signed out.
+export async function unregisterPushToken(req, res) {
+  try {
+    const uuid = profileUuid(req);
+    const token = String(req.body?.expo_push_token || req.body?.token || req.query?.token || "").trim();
+    if (!uuid || !token) return res.status(400).json({ message: "Push token is required" });
+
+    await db("push_tokens").where({ profile_uuid: uuid, expo_push_token: token }).del();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("unregisterPushToken error:", err);
+    return res.status(500).json({ message: "Failed to remove push token" });
   }
 }

@@ -1,9 +1,21 @@
 import db from "../db/index.js";
+import { insertNotification } from "../notifications/notificationSettings.js";
 
 const RATEABLE_STATUSES = ["filled", "closed", "completed"];
+const RECOMMENDABLE_STATUSES = ["filled", "completed"];
+let jobsColumnSet = null;
 
 function actor(req) {
   return req.user || req.viewer || null;
+}
+
+async function jobsColumns() {
+  if (jobsColumnSet) return jobsColumnSet;
+  const names = await db("information_schema.columns")
+    .where({ table_schema: "public", table_name: "jobs" })
+    .pluck("column_name");
+  jobsColumnSet = new Set(names);
+  return jobsColumnSet;
 }
 
 function privacySettings(value) {
@@ -175,6 +187,27 @@ export async function rateJobProvider(req, res) {
     rating = created;
 
     await refreshProviderRating(providerUuid);
+
+    // Provider was never notified that a rating landed — this is the only
+    // event in the completion flow that didn't push/notify at all.
+    try {
+      const rater = await db("profiles").where({ uuid: me.uuid }).select("username", "full_name").first();
+      const raterName = rater?.full_name || rater?.username || "Someone";
+      await insertNotification(db, {
+        profile_uuid: providerUuid,
+        actor_uuid: me.uuid,
+        job_code: job.job_code || null,
+        job_id: job.id,
+        system: "hiring",
+        type: "job_rated",
+        title: "You received a rating",
+        body: `${raterName} rated you ${score} star${score === 1 ? "" : "s"}.`,
+        meta: { action: "open_job_details", score },
+      });
+    } catch (notificationErr) {
+      console.error("rateJobProvider notification error:", notificationErr);
+    }
+
     return res.json({
       success: true,
       rating,
@@ -205,7 +238,9 @@ export async function recommendJobProvider(req, res) {
     if (!job) return res.status(404).json({ message: "Job not found" });
     if (job.created_by !== me.uuid) return res.status(403).json({ message: "Only the hirer can recommend this job" });
     if (job.assigned_provider_uuid !== providerUuid) return res.status(409).json({ message: "This provider was not assigned to the job" });
-    if (job.status !== "completed") return res.status(409).json({ message: "Recommendation is available after completion and rating" });
+    if (!RECOMMENDABLE_STATUSES.includes(job.status)) {
+      return res.status(409).json({ message: "Recommendation is available after completion and rating" });
+    }
 
     const rating = await db("job_ratings")
       .where({ job_id: jobId, provider_uuid: providerUuid, rater_uuid: me.uuid })
@@ -240,14 +275,41 @@ export async function recommendJobProvider(req, res) {
         })
         .returning("*");
       recommendation = created;
+
+      try {
+        const recommender = await db("profiles").where({ uuid: me.uuid }).select("username", "full_name").first();
+        const recommenderName = recommender?.full_name || recommender?.username || "A client";
+        await insertNotification(db, {
+          profile_uuid: providerUuid,
+          actor_uuid: me.uuid,
+          job_code: job.job_code || null,
+          job_id: job.id,
+          system: "hiring",
+          type: "job_recommended",
+          title: "You were recommended",
+          body: `${recommenderName} recommended you after job ${job.job_code}.`,
+          meta: { action: "open_job_details" },
+        });
+      } catch (notificationErr) {
+        console.error("recommendJobProvider notification error:", notificationErr);
+      }
     }
+
+    const columns = await jobsColumns();
+    const updatePayload = { status: "closed", updated_at: db.fn.now() };
+    if (columns.has("recommendation_decided_at")) updatePayload.recommendation_decided_at = db.fn.now();
 
     const [updatedJob] = await db("jobs")
       .where({ id: jobId })
-      .update({ status: "closed", updated_at: db.fn.now() })
+      .update(updatePayload)
       .returning("*");
 
-    return res.json({ success: true, recommendation, job: updatedJob });
+    return res.json({
+      success: true,
+      recommendation,
+      recommendation_decided_at: updatedJob.recommendation_decided_at || updatedJob.updated_at || new Date().toISOString(),
+      job: updatedJob,
+    });
   } catch (err) {
     console.error("recommendJobProvider error:", err);
     return res.status(500).json({ message: "Failed to save recommendation" });
