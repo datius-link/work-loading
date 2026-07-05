@@ -6,7 +6,7 @@ import { viewerRequest } from "../../api/api";
 import SettingsScreen from "./SettingsScreen";
 import { useLanguage } from "../../LanguageContext";
 
-export default function ContactAdmin({ onBack }) {
+export default function ContactUs({ onBack }) {
   const { theme } = useAppTheme();
   const { language } = useLanguage();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -35,7 +35,7 @@ export default function ContactAdmin({ onBack }) {
   };
 
   return (
-    <SettingsScreen titleEn="Contact Admin" titleSw="Wasiliana na Admin" onBack={onBack}>
+    <SettingsScreen titleEn="Contact us" titleSw="Wasiliana nasi" onBack={onBack}>
       <Txt
         en="Send a private message to the e-kazi support team."
         sw="Tuma ujumbe wa faragha kwa timu ya msaada ya e-kazi."

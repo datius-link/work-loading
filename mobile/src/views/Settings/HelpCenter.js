@@ -32,8 +32,8 @@ export default function HelpCenter({ onBack }) {
             </TouchableOpacity>
             {open === index ? (
               <Txt
-                en="The detailed answer will be added here. If you need help now, use Contact Admin."
-                sw="Maelezo kamili yataongezwa hapa. Ukihitaji msaada sasa, tumia Wasiliana na Admin."
+                en="The detailed answer will be added here. If you need help now, use Contact us."
+                sw="Maelezo kamili yataongezwa hapa. Ukihitaji msaada sasa, tumia Wasiliana nasi."
                 style={styles.answer}
               />
             ) : null}

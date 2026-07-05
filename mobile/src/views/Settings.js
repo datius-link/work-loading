@@ -11,13 +11,14 @@ import Txt from "../Txt";
 import PrivacySettings from "./Settings/PrivacySettings";
 import NotificationSettings, { DEFAULT_NOTIFICATION_SETTINGS } from "./Settings/NotificationSettings";
 import HelpCenter from "./Settings/HelpCenter";
-import ContactAdmin from "./Settings/ContactAdmin";
+import ContactUs from "./Settings/ContactUs";
 import PrivacyPolicy from "./Settings/PrivacyPolicy";
 import AboutEkazi from "./Settings/AboutEkazi";
 import BluetoothDemo from "./Settings/BluetoothDemo";
 import SupportActionSheet from "./Settings/SupportActionSheet";
 import { cachedGet } from "../utils/offlineCache";
 import CachedDataNotice from "../components/CachedDataNotice";
+import { setCachedNotificationSettings } from "../notifications/notificationSettingsCache";
 
 const DEFAULT_PRIVACY = {
   show_phone_in_jobs: true,
@@ -61,26 +62,30 @@ export default function Settings() {
       .then((result) => {
         const saved = result?.data?.profile?.privacy_settings || {};
         setShowingCached(result.fromCache);
+        const mergedNotificationSettings = {
+          ...DEFAULT_NOTIFICATION_SETTINGS,
+          ...(saved.notification_settings || {}),
+        };
         setPrivacy({
           ...DEFAULT_PRIVACY,
           ...saved,
-          notification_settings: {
-            ...DEFAULT_NOTIFICATION_SETTINGS,
-            ...(saved.notification_settings || {}),
-          },
+          notification_settings: mergedNotificationSettings,
         });
+        setCachedNotificationSettings(mergedNotificationSettings);
       })
       .catch((err) => setSettingsError(getFriendlyApiError(err, language)));
   }, [email, language, profile?.uuid, user?.uuid]);
 
   const updatePrivacyObject = async (next, previous) => {
     setPrivacy(next);
+    if (next?.notification_settings) setCachedNotificationSettings(next.notification_settings);
     setSavingPrivacy(true);
     try {
       setSettingsError("");
       await viewerRequest("put", "/profiles/me", { privacy_settings: next });
     } catch (err) {
       setPrivacy(previous);
+      if (previous?.notification_settings) setCachedNotificationSettings(previous.notification_settings);
       setSettingsError(getFriendlyApiError(err, language));
       console.log("privacy update error:", err?.response?.data || err?.message);
     } finally {
@@ -119,7 +124,7 @@ export default function Settings() {
     { icon: "globe", en: "Language", sw: "Lugha", terms: "language english swahili kiswahili lugha", action: () => setLanguage(nextLanguage) },
     { icon: isDark ? "moon" : "sun", en: "Theme", sw: "Muonekano", terms: "theme appearance dark light muonekano nyeusi nyepesi", action: toggleTheme },
     { icon: "help", en: "Help", sw: "Msaada", terms: "help faq support msaada", action: () => setActiveScreen("help") },
-    { icon: "mail", en: "Contact Admin", sw: "Wasiliana na Admin", terms: "contact admin support wasiliana msaada", action: () => openProtected("contact") },
+    { icon: "mail", en: "Contact us", sw: "Wasiliana nasi", terms: "contact us support wasiliana msaada", action: () => openProtected("contact") },
     { icon: "more-horizontal", en: "Support Actions", sw: "Hatua za Msaada", terms: "feedback report problem support maoni ripoti", action: () => email ? setShowSupportActions(true) : setShowLogin(true) },
     { icon: "file-text", en: "Privacy Policy", sw: "Sera ya Faragha", terms: "legal privacy policy sheria sera faragha", action: () => setActiveScreen("privacyPolicy") },
     { icon: "logo", en: "About e-kazi", sw: "Kuhusu e-kazi", terms: "about version kuhusu toleo", action: () => setActiveScreen("about") },
@@ -144,7 +149,7 @@ export default function Settings() {
     );
   }
   if (activeScreen === "help") return <HelpCenter onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "contact") return <ContactAdmin onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "contact") return <ContactUs onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "privacyPolicy") return <PrivacyPolicy onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "about") return <AboutEkazi version={APP_VERSION} onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "bluetooth") return <BluetoothDemo onBack={() => setActiveScreen(null)} />;
@@ -261,13 +266,13 @@ export default function Settings() {
           </>
         ) : null}
 
-        {visible("support help contact admin feedback report problem msaada maoni ripoti") ? (
+        {visible("support help contact us feedback report problem msaada maoni ripoti") ? (
           <>
             <Section en="Support" sw="Msaada" styles={styles} />
             <View style={styles.panel}>
               <SettingRow icon="help" en="Help" sw="Msaada" bodyEn="Frequently asked questions." bodySw="Maswali yanayoulizwa mara kwa mara." onPress={() => setActiveScreen("help")} styles={styles} theme={theme} />
               <Divider styles={styles} />
-              <SettingRow icon="mail" en="Contact Admin" sw="Wasiliana na Admin" bodyEn="Send a private support message." bodySw="Tuma ujumbe wa faragha wa msaada." onPress={() => openProtected("contact")} styles={styles} theme={theme} />
+              <SettingRow icon="mail" en="Contact us" sw="Wasiliana nasi" bodyEn="Send a private support message." bodySw="Tuma ujumbe wa faragha wa msaada." onPress={() => openProtected("contact")} styles={styles} theme={theme} />
               <Divider styles={styles} />
               <SettingRow icon="more-horizontal" en="Support Actions" sw="Hatua za Msaada" bodyEn="Send feedback or report a problem." bodySw="Tuma maoni au ripoti tatizo." onPress={() => email ? setShowSupportActions(true) : setShowLogin(true)} styles={styles} theme={theme} />
             </View>

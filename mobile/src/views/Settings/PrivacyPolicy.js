@@ -11,7 +11,7 @@ const SECTIONS = [
   ["Notifications", "Notifications", "We use notifications for messages, jobs, follows, posts, and important account activity. You can control available notification preferences.", "Tunatumia notifications kwa ujumbe, kazi, follows, posts na shughuli muhimu za akaunti. Unaweza kudhibiti mapendeleo yake."],
   ["Contact visibility after job assignment", "Mawasiliano baada ya kupewa kazi", "Contact details are not placed on public profiles. Enabled contact details are shown only inside assigned job screens.", "Mawasiliano hayawekwi kwenye profaili za umma. Uliyowasha huonekana ndani ya screen za kazi iliyopangiwa tu."],
   ["Account safety", "Usalama wa akaunti", "Keep your login details private and report suspicious profiles, jobs, fraud, harassment, or technical problems.", "Linda taarifa zako za kuingia na ripoti profaili, kazi, utapeli, unyanyasaji au matatizo ya kiufundi yanayotia shaka."],
-  ["Contact admin", "Wasiliana na admin", "Use Contact Admin in Settings when you need private help about your account or e-kazi activity.", "Tumia Wasiliana na Admin kwenye Settings ukihitaji msaada wa faragha kuhusu akaunti au shughuli zako za e-kazi."],
+  ["Contact us", "Wasiliana nasi", "Use Contact us in Settings when you need private help about your account or e-kazi activity.", "Tumia Wasiliana nasi kwenye Settings ukihitaji msaada wa faragha kuhusu akaunti au shughuli zako za e-kazi."],
 ];
 
 export default function PrivacyPolicy({ onBack }) {

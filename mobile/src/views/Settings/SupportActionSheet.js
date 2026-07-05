@@ -60,9 +60,14 @@ export default function SupportActionSheet({ visible, onClose }) {
       await viewerRequest("post", endpoint, action === "feedback"
         ? { category, message: message.trim(), type: "feedback" }
         : { problem_type: category, description: message.trim(), type: "report_problem" });
+      // Close the sheet itself once it's sent instead of leaving the form
+      // sitting open behind the success notice — the notice is a separate
+      // Modal, so it still shows on top even though the sheet below it closes.
       setNotice("success");
+      setAction(null);
       setCategory("");
       setMessage("");
+      onClose?.();
     } catch (err) {
       setNotice(err?.response?.status === 401 ? "login" : "error");
     } finally {

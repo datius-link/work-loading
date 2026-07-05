@@ -20,8 +20,8 @@ export default function AboutEkazi({ onBack, version = "1.0.0" }) {
         <Txt en={version} sw={version} style={styles.value} />
       </View>
       <Txt
-        en="Need help? Use Help Center, Contact Admin, or Support Actions in Settings."
-        sw="Unahitaji msaada? Tumia Kituo cha Msaada, Wasiliana na Admin, au Support Actions kwenye Settings."
+        en="Need help? Use Help Center, Contact us, or Support Actions in Settings."
+        sw="Unahitaji msaada? Tumia Kituo cha Msaada, Wasiliana nasi, au Support Actions kwenye Settings."
         style={styles.support}
       />
     </SettingsScreen>
