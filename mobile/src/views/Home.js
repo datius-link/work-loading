@@ -15,6 +15,8 @@ import ExploreTab from "./home/ExploreTab";
 import { useAppTheme } from "../theme";
 import AppIcon from "../icons/AppIcon";
 import { api } from "../api/api";
+import OverflowMenu from "../components/OverflowMenu";
+import SupportActionSheet from "./Settings/SupportActionSheet";
 
 function avatarFor(user) {
   if (user?.profile_pic) return user.profile_pic;
@@ -30,10 +32,12 @@ export default function Home() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const inputRef = useRef(null);
   const requestRef = useRef(null);
+  const exploreRef = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState({ users: [], hashtags: [] });
   const [searching, setSearching] = useState(false);
+  const [showSupportActions, setShowSupportActions] = useState(false);
 
   useEffect(() => {
     const plain = query.replace(/^[@#]+/, "").trim();
@@ -99,15 +103,19 @@ export default function Home() {
   const showDropdown = searchOpen && query.replace(/^[@#]+/, "").trim().length > 0;
   const noResults = !searching && results.users.length === 0 && results.hashtags.length === 0;
 
+  const menuItems = [
+    { icon: "refresh", en: "Refresh", sw: "Onyesha upya", onPress: () => exploreRef.current?.refresh() },
+    { icon: "briefcase", en: "Filter jobs", sw: "Chuja kazi", onPress: () => navigation.navigate("Jobs", { initialTab: "browse" }) },
+    { icon: "warning", en: "Report a problem", sw: "Ripoti tatizo", onPress: () => setShowSupportActions(true) },
+    { icon: "help", en: "Go to Help", sw: "Nenda Msaadani", onPress: () => navigation.navigate("Settings", { openScreen: "help" }) },
+  ];
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        {!searchOpen ? (
-          <View style={styles.brandRow}>
-            <AppIcon name="logo" size={34} color={theme.colors.primary} />
-            <Text style={styles.logo}>e-kazi</Text>
-          </View>
-        ) : null}
+        <View style={styles.logoIconWrap}>
+          <AppIcon name="logo" size={23} color={theme.colors.primary} />
+        </View>
 
         <View style={[styles.searchWrap, searchOpen && styles.searchWrapOpen]}>
           <TouchableOpacity
@@ -120,7 +128,7 @@ export default function Home() {
               }
             }}
           >
-            <AppIcon name={searchOpen ? "close" : "search"} size={18} color={theme.colors.primary} />
+            <AppIcon name={searchOpen ? "close" : "search"} size={19} color={theme.colors.primary} />
           </TouchableOpacity>
           {searchOpen ? (
             <TextInput
@@ -136,6 +144,10 @@ export default function Home() {
               returnKeyType="search"
             />
           ) : null}
+        </View>
+
+        <View style={styles.menuWrap}>
+          <OverflowMenu items={menuItems} iconColor={theme.colors.primary} />
         </View>
       </View>
 
@@ -180,7 +192,8 @@ export default function Home() {
         </View>
       ) : null}
 
-      <ExploreTab navigation={navigation} />
+      <ExploreTab ref={exploreRef} navigation={navigation} />
+      <SupportActionSheet visible={showSupportActions} onClose={() => setShowSupportActions(false)} />
     </View>
   );
 }
@@ -192,26 +205,45 @@ const createStyles = (theme) =>
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 16,
-      paddingBottom: 10,
+      paddingBottom: 12,
       backgroundColor: theme.colors.surface,
       borderBottomWidth: 1,
       borderColor: theme.colors.border,
       zIndex: 20,
     },
-    brandRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    logo: { fontSize: 22, fontWeight: "900", color: theme.colors.primary },
-    searchWrap: {
+    logoIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.primarySoft,
+    },
+    menuWrap: {
+      width: 44,
+      height: 44,
       marginLeft: "auto",
-      minHeight: 40,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    searchWrap: {
+      width: 44,
+      height: 44,
+      marginLeft: 12,
+      marginRight: 12,
       flexDirection: "row",
       alignItems: "center",
-      borderRadius: 18,
+      borderRadius: 22,
       borderWidth: 1,
       borderColor: theme.colors.primary,
       backgroundColor: theme.colors.primarySoft,
     },
-    searchWrapOpen: { flex: 1, marginLeft: 0 },
-    searchIconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+    searchWrapOpen: {
+      flex: 1,
+      width: undefined,
+      borderRadius: 22,
+    },
+    searchIconBtn: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
     searchInput: { flex: 1, paddingRight: 12, color: theme.colors.text, fontSize: 14, fontWeight: "700" },
     dropdown: {
       position: "absolute",
