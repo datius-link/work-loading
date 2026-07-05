@@ -34,7 +34,7 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useAppTheme();
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [posts, setPosts] = useState([]);
   const [page, setPage] = useState(1);
@@ -182,16 +182,18 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
       const firstVisible = viewableItems[0]?.item;
 
       if (firstVisible?.id) {
-        setActivePostId(firstVisible.id);
+        setActivePostId((prev) => (prev === firstVisible.id ? prev : firstVisible.id));
       }
     }
   }).current;
 
-  const viewabilityConfig = {
+  const viewabilityConfig = useMemo(() => ({
     itemVisiblePercentThreshold: 80,
-  };
+  }), []);
 
-  const renderItem = ({ item }) => {
+  const keyExtractor = useCallback((item) => String(item.id), []);
+
+  const renderItem = useCallback(({ item }) => {
     return (
       <PostCard
         post={item}
@@ -202,12 +204,25 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
         onPostStateChange={updatePostState}
       />
     );
-  };
+  }, [POST_HEIGHT, activePostId, isFocused, navigation, updatePostState]);
+
+  const listFooter = useMemo(() => (
+    loadingMore ? (
+      <View style={{ paddingVertical: 20 }}>
+        <ActivityIndicator color={theme.colors.primary} />
+      </View>
+    ) : null
+  ), [loadingMore, theme.colors.primary]);
+
+  const handleLayout = useCallback((event) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    setLayoutHeight((prev) => (Math.abs(prev - nextHeight) < 1 ? prev : nextHeight));
+  }, []);
 
   return (
     <View
       style={styles.container}
-      onLayout={(event) => setLayoutHeight(event.nativeEvent.layout.height)}
+      onLayout={handleLayout}
     >
       <CachedDataNotice visible={showingCached} />
       {/* FEED */}
@@ -220,7 +235,7 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
           ref={flatListRef}
           data={posts}
           renderItem={renderItem}
-          keyExtractor={(item, index) => `${item.id}-${index}`}
+          keyExtractor={keyExtractor}
           pagingEnabled
           snapToAlignment="start"
           decelerationRate="fast"
@@ -236,18 +251,13 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           removeClippedSubviews
-          windowSize={5}
-          maxToRenderPerBatch={5}
-          initialNumToRender={3}
+          windowSize={3}
+          maxToRenderPerBatch={2}
+          initialNumToRender={2}
+          updateCellsBatchingPeriod={80}
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={{ paddingVertical: 20 }}>
-                <ActivityIndicator color={theme.colors.primary} />
-              </View>
-            ) : null
-          }
+          ListFooterComponent={listFooter}
         />
       )}
     </View>

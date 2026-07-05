@@ -398,7 +398,11 @@ export default function UserProfile() {
     );
   };
 
-  const renderJobsTab = (items, loading_, icon, emptyTitle, badge, badgeColor, badgeTextColor) => {
+  // Per-item badge instead of one fixed label for the whole list — "Jobs
+  // Done" is always a completed job so a constant badge is accurate there,
+  // but "Jobs Posted" spans open/filled/closed/cancelled jobs, so the badge
+  // has to reflect each job's own status.
+  const renderJobsTab = (items, loading_, icon, emptyTitle, badgeFor) => {
     if (loading_) return (
       <View style={styles.centerLoader}>
         <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -408,26 +412,35 @@ export default function UserProfile() {
       return <EmptyState icon={icon} title={emptyTitle} theme={theme} />;
     return (
       <View>
-        {items.map((item) => (
-          <TouchableOpacity key={String(item.id)} style={styles.profileJobRow} onPress={() => navigation.navigate("JobDetails", { jobId: item.id })}>
-            <View style={styles.profileJobIcon}><AppIcon name={icon} size={15} color={theme.colors.primary} /></View>
-            <Text style={styles.profileJobTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
-            <Text style={[styles.profileJobBadge, { color: badgeTextColor }]}>{badge}</Text>
-            <AppIcon name="chevron-right" size={14} color={theme.colors.textMuted} />
-          </TouchableOpacity>
-        ))}
+        {items.map((item) => {
+          const b = badgeFor(item);
+          return (
+            <TouchableOpacity key={String(item.id)} style={styles.profileJobRow} onPress={() => navigation.navigate("JobDetails", { jobId: item.id })}>
+              <View style={styles.profileJobIcon}><AppIcon name={icon} size={15} color={theme.colors.primary} /></View>
+              <Text style={styles.profileJobTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
+              <Text style={[styles.profileJobBadge, { color: b.color }]}>{b.label}</Text>
+              <AppIcon name="chevron-right" size={14} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
+  };
+
+  const doneBadge = () => ({ label: language === "sw" ? "Imekamilika" : "Done", color: "#2E7D32" });
+  const postedBadge = (item) => {
+    const st = String(item?.status || "").toLowerCase();
+    if (["filled", "closed", "completed"].includes(st)) return { label: language === "sw" ? "Imefungwa" : "Closed", color: "#2E7D32" };
+    if (st === "cancelled") return { label: language === "sw" ? "Imeghairiwa" : "Cancelled", color: "#C62828" };
+    return { label: language === "sw" ? "Wazi" : "Open", color: "#E65100" };
   };
 
   const renderTabContent = () => {
     if (activeTab === "media") return renderMediaTab();
     if (activeTab === "jobsDone")
-      return renderJobsTab(jobsDone, loadingJobsDone, "check-circle", t.noDone, language === "sw" ? "Imekamilika" : "Done", "#E8F5E9", "#2E7D32");
+      return renderJobsTab(jobsDone, loadingJobsDone, "check-circle", t.noDone, doneBadge);
     if (activeTab === "jobsPosted")
-      return jobsPosted.length
-        ? renderJobsTab(jobsPosted, loadingJobsPosted, "briefcase", t.noPosted, language === "sw" ? "Wazi" : "Open", "#FFF3E0", "#E65100")
-        : <EmptyState icon="briefcase" title={postedJobsCount ? `${formatCount(postedJobsCount)} ${language === "sw" ? "kazi zimewekwa" : "jobs posted"}` : t.noPosted} theme={theme} />;
+      return renderJobsTab(jobsPosted, loadingJobsPosted, "briefcase", t.noPosted, postedBadge);
   };
 
   // ── States ─────────────────────────────────────────────────────────────────
@@ -455,7 +468,6 @@ export default function UserProfile() {
 
   const services = listFrom(profile.services);
   const worksDoneCount = Number(profile.completed_jobs_count || profile.jobs_attained_count || 0);
-  const postedJobsCount = Number(profile.posted_jobs_count || jobsPosted.length || 0);
   const followerCount = profile.followers_count || profile.follower_count || 0;
   const followingCount = profile.following_count || 0;
 

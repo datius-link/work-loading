@@ -374,9 +374,13 @@ export default function CommentsSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* Same fix as LoginModal/CreateJobModal: a Modal's Android window
+         doesn't get the Activity's adjustResize behavior for free, so this
+         needs an explicit "height" behavior on Android too, or the keyboard
+         just covers the comment input instead of the sheet lifting. */}
       <KeyboardAvoidingView
         style={styles.modalRoot}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
 

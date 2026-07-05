@@ -162,7 +162,7 @@ function PostCaption({ caption, username, mentions, onMentionPress, onUsernamePr
   );
 }
 
-export default function PostCard({
+function PostCard({
   post,
   active,
   navigation,
@@ -732,3 +732,18 @@ const createStyles = (theme) =>
       fontSize: 13,
       fontWeight: "800",
     },  });
+
+function arePostCardPropsEqual(prev, next) {
+  return (
+    prev.post === next.post &&
+    prev.active === next.active &&
+    prev.height === next.height &&
+    prev.navigation === next.navigation &&
+    prev.showHireButton === next.showHireButton &&
+    prev.showFollowButton === next.showFollowButton &&
+    prev.preferredAuthActor === next.preferredAuthActor &&
+    prev.onPostStateChange === next.onPostStateChange
+  );
+}
+
+export default React.memo(PostCard, arePostCardPropsEqual);
