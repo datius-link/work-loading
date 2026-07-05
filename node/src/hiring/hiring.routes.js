@@ -1,6 +1,7 @@
 import express from "express";
 import {
   acceptDirectHire,
+  acceptJobSubmission,
   applyToJob,
   assignProvider,
   cancelJob,
@@ -11,13 +12,18 @@ import {
   disputeJobCloseout,
   getJob,
   getJobWorkspace,
+  listJobActivity,
   listJobMessages,
+  listJobSubmissions,
   listMyJobs,
   listRequests,
   confirmJobCompletion,
   confirmJobStart,
   publishJobPublicly,
+  requestJobRevision,
+  requestJobStart,
   sendJobMessage,
+  submitJobWork,
   suggestJobCompletion,
   suggestJobStart,
   updateJob,
@@ -150,6 +156,16 @@ router.post("/jobs/:jobId/start-confirm", confirmJobStart);
 router.post("/jobs/:jobId/complete-suggest", suggestJobCompletion);
 router.post("/jobs/:jobId/complete-confirm", confirmJobCompletion);
 router.post("/jobs/:jobId/dispute", disputeJobCloseout);
+
+// ── Job lifecycle v2 (assigned -> start_requested -> working -> submitted
+//    -> completed, with a submitted <-> revision_requested loop) ──────────
+router.post("/jobs/:jobId/start-request", requestJobStart);
+router.post("/jobs/:jobId/submit-work", submitJobWork);
+router.post("/jobs/:jobId/accept-submission", acceptJobSubmission);
+router.post("/jobs/:jobId/request-revision", requestJobRevision);
+router.get("/jobs/:jobId/submissions", listJobSubmissions);
+router.get("/jobs/:jobId/activity", listJobActivity);
+
 router.post("/jobs/:id/publish", publishJobPublicly);
 
 /**

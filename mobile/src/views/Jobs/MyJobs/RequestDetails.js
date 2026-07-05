@@ -1,21 +1,64 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, useWindowDimensions, View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Circle } from "react-native-svg";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useMutation } from "convex/react";
 import { api as convexApi } from "../../../../convex/_generated/api";
 import AppIcon from "../../../icons/AppIcon";
+import OverallRating from "../../Profile/OverallRating";
 import { getUserSession } from "../../../utils/userSession";
 import { getFriendlyApiError, viewerRequest } from "../../../api/api";
 import { formatDeadline, formatJobDate, formatRelativeDate } from "../jobDate";
-import { C, StatusBadge, NavHeader, SectionHeading, Card, PrimaryButton, OutlineButton } from "../jobsUI";
+import { NavHeader, SectionHeading, statusConfig, tokenColors } from "../jobsUI";
 import { useLanguage } from "../../../LanguageContext";
 import { useAppTheme } from "../../../theme";
 
+// ─── Progress timeline ──────────────────────────────────────────────────────
+// Where the job is in its lifecycle, once you've been assigned/hired.
+const TIMELINE_KEYS = ["posted", "assigned", "started", "submitted", "completed"];
+const TIMELINE_LABELS = {
+  posted: { en: "Posted", sw: "Imechapishwa" },
+  assigned: { en: "Assigned", sw: "Amepangiwa" },
+  started: { en: "Started", sw: "Imeanza" },
+  submitted: { en: "Submitted", sw: "Imewasilishwa" },
+  completed: { en: "Completed", sw: "Imekamilika" },
+};
+
+function timelineStepIndex(job) {
+  const st = String(job?.status || "").toLowerCase();
+  if (["completed", "closed", "filled"].includes(st) && job?.you_got_this_job) return 4;
+  if (["completion_pending", "submitted"].includes(st)) return 3;
+  if (["active", "start_pending", "started", "working"].includes(st)) return 2;
+  if (job?.you_got_this_job || job?.assigned_provider_uuid) return 1;
+  return 0;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// This screen used to import a static color palette (C.teal, C.red, ...)
+// that didn't change with the theme, which is why things like the code pill,
+// the workspace button and the contact icons all but disappeared in dark
+// mode (dark teal text sitting on a dark teal tint). This derives the same
+// shape from the active theme instead, so backgrounds/borders/buttons still
+// look right — foreground text/icon spots that need extra contrast use
+// theme.colors.primaryStrong directly (see below) rather than this shim.
+function legacyColors(theme) {
+  return {
+    teal: theme.colors.primary,
+    tealLight: theme.colors.primarySoft,
+    white: theme.colors.onPrimary,
+    slate: theme.colors.textMuted,
+    red: theme.colors.danger,
+    redLight: theme.colors.dangerSoft,
+    amber: theme.colors.warning,
+    amberLight: theme.colors.warningSoft,
+  };
+}
 
 function mediaUrls(media) {
   if (!Array.isArray(media)) return [];
@@ -52,6 +95,57 @@ function InfoLine({ label, value }) {
   );
 }
 
+// Small soft (not card-y) box used inside the 2x2 info grid — an icon so
+// it's not text-only, a label, and the value.
+function GridItem({ icon, label, value }) {
+  const { theme } = useAppTheme();
+  const s = useMemo(() => createStyles(theme), [theme]);
+  return (
+    <View style={s.gridItem}>
+      <View style={s.gridIconWrap}>
+        <AppIcon name={icon} size={15} color={theme.colors.primaryStrong} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={s.gridLabel} numberOfLines={1}>{label}</Text>
+        <Text style={s.gridValue} numberOfLines={1}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+// Posted → Assigned → Started → Submitted → Completed, with everything up
+// to the current step highlighted. Built with a plain row of [dot][line]
+// pairs (no absolute-position math) so it lays out predictably.
+function ProgressTimeline({ activeIndex, language }) {
+  const { theme } = useAppTheme();
+  const s = useMemo(() => createStyles(theme), [theme]);
+  return (
+    <View>
+      <View style={s.timelineRow}>
+        {TIMELINE_KEYS.map((key, i) => {
+          const done = i <= activeIndex;
+          const isLast = i === TIMELINE_KEYS.length - 1;
+          return (
+            <React.Fragment key={key}>
+              <View style={[s.timelineDot, done && s.timelineDotDone]}>
+                {done ? <AppIcon name="check" size={10} color={theme.colors.onPrimary} /> : null}
+              </View>
+              {!isLast ? <View style={[s.timelineLine, i < activeIndex && s.timelineLineDone]} /> : null}
+            </React.Fragment>
+          );
+        })}
+      </View>
+      <View style={s.timelineLabels}>
+        {TIMELINE_KEYS.map((key, i) => (
+          <Text key={key} style={[s.timelineLabel, i <= activeIndex && s.timelineLabelDone]} numberOfLines={1}>
+            {language === "sw" ? TIMELINE_LABELS[key].sw : TIMELINE_LABELS[key].en}
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function ImageStrip({ images }) {
   const { theme } = useAppTheme();
   const s = useMemo(() => createStyles(theme), [theme]);
@@ -72,6 +166,7 @@ function DirectHirePanel({ job, onDeclined }) {
   const { language } = useLanguage();
   const { theme } = useAppTheme();
   const s = useMemo(() => createStyles(theme), [theme]);
+  const C = useMemo(() => legacyColors(theme), [theme]);
   const navigation = useNavigation();
   const [step, setStep]         = useState("decision"); // "decision" | "plan"
   const [plan, setPlan]         = useState("");
@@ -123,7 +218,7 @@ function DirectHirePanel({ job, onDeclined }) {
       {/* Header label */}
       <View style={s.directHeader}>
         <View style={s.directIconWrap}>
-          <AppIcon name="direct-hire" size={24} color={C.teal} />
+          <AppIcon name="direct-hire" size={24} color={theme.colors.primaryStrong} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.directTitle}>You were directly hired</Text>
@@ -141,7 +236,7 @@ function DirectHirePanel({ job, onDeclined }) {
           >
             {declining
               ? <ActivityIndicator color={C.red} size="small" />
-              : <><AppIcon name="x" size={16} color={C.red} /><Text style={s.declineTxt}>Decline</Text></>
+              : <><AppIcon name="close" size={16} color={C.red} /><Text style={s.declineTxt}>Decline</Text></>
             }
           </TouchableOpacity>
           <TouchableOpacity
@@ -248,6 +343,7 @@ export default function RequestDetails() {
   const { language } = useLanguage();
   const { theme } = useAppTheme();
   const s = useMemo(() => createStyles(theme), [theme]);
+  const C = useMemo(() => legacyColors(theme), [theme]);
   const tx = (en, sw) => language === "sw" ? sw : en;
   const navigation = useNavigation();
   const route      = useRoute();
@@ -323,6 +419,16 @@ export default function RequestDetails() {
   const otherParty         = contacts?.viewer_role === "hirer" ? contacts?.service_provider : contacts?.hirer;
   const assignedProviderUuid = job.assigned_provider_uuid || contacts?.service_provider?.uuid || otherParty?.uuid;
   const canRateProvider    = isOwnJob && assignedProviderUuid && jobStatus.toLowerCase() === "completed" && !job.rating_submitted_at && !job.rating;
+
+  // The person to show in the header: whoever is actually assigned/matched
+  // on this job, falling back to the job poster if no one's been matched
+  // yet. Showing this once in the header means we don't need to repeat the
+  // same identity again lower down in a "Posted by" / "Assigned Contact" card.
+  const headerPerson = otherParty
+    ? { uuid: otherParty.uuid, username: otherParty.username, full_name: otherParty.full_name, profile_pic: otherParty.profile_pic, phone: otherParty.phone_number, ratings: otherParty.ratings, ratingsCount: otherParty.ratings_count, role: tx("Assigned to this job", "Amepangiwa kazi hii") }
+    : ownerUuid
+      ? { uuid: ownerUuid, username: ownerName, full_name: poster.full_name || poster.fullName, profile_pic: poster.profile_pic || poster.profilePic, phone: null, ratings: null, ratingsCount: null, role: tx("Job owner", "Mwenye kazi") }
+      : null;
 
   // Can this provider see the claim panel?
   const canClaimDirect = isDirectHire && !isOwnJob && !gotJob && !alreadyApplied && !closed && !declined && job.can_accept_direct_hire;
@@ -409,30 +515,84 @@ export default function RequestDetails() {
         contentContainerStyle={[s.scroll, { paddingBottom: canApplyPublic ? 100 + bottomInset : 32 + bottomInset }, isWide && s.scrollWide]}
       >
         <View style={[s.contentShell, isWide && s.contentShellWide]}>
-        {/* ── Job hero ── */}
-        <View style={[s.hero, isWide && s.desktopCard]}>
+        {/* ── Job hero — branded banner, holds the job facts + whoever is
+             assigned/owns the job, so that identity isn't repeated again
+             further down the page. Rounded bottom corners + a soft shadow
+             make it read as a floating panel rather than a hard rectangle. ── */}
+        <View style={[s.heroShadow, isWide && s.heroShadowWide]}>
+        <LinearGradient
+          colors={theme.colors.brandGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[s.hero, isWide && s.desktopCard]}
+        >
+          {/* Purely decorative — two faint circles so the banner isn't a
+             flat block of color. Doesn't affect layout (absolute + behind
+             everything else, ignored by touches). */}
+          <Svg width="100%" height="100%" style={s.heroDecoration} pointerEvents="none">
+            <Circle cx="92%" cy="6%" r="70" fill="#FFFFFF" opacity="0.07" />
+            <Circle cx="102%" cy="55%" r="46" fill="#FFFFFF" opacity="0.06" />
+          </Svg>
+
           <View style={s.heroTop}>
             <View style={s.codePill}><Text style={s.codeTxt}>{code}</Text></View>
-            <StatusBadge status={jobStatus} size="sm" />
+            <View style={s.statusPill}>
+              <View style={[s.statusDot, { backgroundColor: tokenColors(theme, statusConfig(jobStatus).token).color }]} />
+              <Text style={s.statusPillTxt}>{language === "sw" ? (statusConfig(jobStatus).sw || statusConfig(jobStatus).label) : statusConfig(jobStatus).label}</Text>
+            </View>
           </View>
-          <Text style={s.heroTitle}>{job.title}</Text>
+          <Text style={s.heroTitle} numberOfLines={2}>{job.title}</Text>
           <View style={s.metaRow}>
-            <AppIcon name="map-pin" size={13} color={C.slate} />
-            <Text style={s.meta}>{job.location || tx("Location not set", "Eneo halijawekwa")}</Text>
+            <AppIcon name="map-pin" size={12} color="rgba(255,255,255,0.85)" />
+            <Text style={s.heroMeta}>{job.location || tx("Location not set", "Eneo halijawekwa")}</Text>
+            <Text style={s.heroMetaDot}>·</Text>
+            <AppIcon name="clock" size={12} color="rgba(255,255,255,0.85)" />
+            <Text style={s.heroMeta}>{formatRelativeDate(job.created_at) || tx("Today", "Leo")}</Text>
           </View>
-          <View style={s.metaRow}>
-            <AppIcon name="clock" size={13} color={C.slate} />
-            <Text style={s.meta}>
-              {tx("Posted", "Ilichapishwa")} {formatRelativeDate(job.created_at) || tx("Today", "Leo")}
-              {job.tender_closes_at ? `  ·  ${formatDeadline(job.tender_closes_at)}` : ""}
-            </Text>
-          </View>
-          {ownerName ? (
-            <TouchableOpacity style={s.metaRow} onPress={() => ownerUuid && navigation.navigate("UserProfile", { uuid: ownerUuid })}>
-              <AppIcon name="user" size={13} color={C.teal} />
-              <Text style={[s.meta, { color: C.teal, fontWeight: "700" }]}>@{ownerName}</Text>
-            </TouchableOpacity>
+
+          {headerPerson ? (
+            <View style={s.personChip}>
+              <TouchableOpacity
+                style={s.personMain}
+                activeOpacity={0.85}
+                onPress={() => headerPerson.uuid && navigation.navigate("UserProfile", { uuid: headerPerson.uuid })}
+              >
+                <Image source={{ uri: avatarUri(headerPerson) }} style={s.personAvatar} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={s.personNameRow}>
+                    <Text style={[s.personName, { flexShrink: 1 }]} numberOfLines={1}>@{headerPerson.username || "user"}</Text>
+                    {headerPerson.ratings != null ? (
+                      <View style={{ flexShrink: 0 }}>
+                        <OverallRating value={headerPerson.ratings} count={0} theme={theme} compact textColor="#FFFFFF" mutedColor="rgba(255,255,255,0.7)" />
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={s.personRole} numberOfLines={1}>{headerPerson.role}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <View style={s.personActions}>
+                {headerPerson.phone ? (
+                  <TouchableOpacity style={s.personActionBtn} onPress={() => Linking.openURL(`tel:${headerPerson.phone}`)}>
+                    <AppIcon name="phone" size={14} color="#FFFFFF" />
+                  </TouchableOpacity>
+                ) : null}
+                {gotJob ? (
+                  <TouchableOpacity style={s.personActionBtn} onPress={() => navigation.navigate("JobWorkspace", { jobId: job.id, jobCode: job.job_code, tab: "chat" })}>
+                    <AppIcon name="message-circle" size={14} color="#FFFFFF" />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={s.personProfileBtn}
+                  onPress={() => headerPerson.uuid && navigation.navigate("UserProfile", { uuid: headerPerson.uuid })}
+                >
+                  <Text style={s.personProfileTxt}>{tx("View Profile", "Ona Profaili")}</Text>
+                  <AppIcon name="chevron-right" size={13} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
           ) : null}
+        </LinearGradient>
         </View>
 
         {/* ── Direct hire claim panel (ONLY for targeted provider, before claiming) ── */}
@@ -450,7 +610,7 @@ export default function RequestDetails() {
 
         {/* ── Application preview (provider: already applied or got job) ── */}
         {previewMode && (
-          <Card style={s.section}>
+          <View style={s.sectionTinted}>
             <SectionHeading label={tx("Your Application", "Ombi Lako")} />
             {selectedElsewhere && (
               <View style={s.filledBanner}>
@@ -463,35 +623,81 @@ export default function RequestDetails() {
                   jobId: job.id,
                   jobCode: job.job_code,
                 })}>
-                <AppIcon name="message-circle" size={15} color={C.teal} />
+                <AppIcon name="message-circle" size={15} color={theme.colors.onPrimary} />
                 <Text style={s.workspaceBtnTxt}>{tx("Open Job Workspace", "Fungua Eneo la Kazi")}</Text>
-                <AppIcon name="chevron-right" size={15} color={C.teal} />
+                <AppIcon name="chevron-right" size={15} color={theme.colors.onPrimary} />
               </TouchableOpacity>
             )}
-            <InfoLine label={tx("Budget", "Bajeti")} value={formatBudget(app?.budget)} />
-            <InfoLine label={tx("Duration", "Muda")} value={app?.duration || app?.estimated_time || tx("Not set", "Haijawekwa")} />
-            <InfoLine label={tx("Availability", "Upatikanaji")} value={app?.available_from || app?.availableFrom || tx("Not set", "Haijawekwa")} />
-            <InfoLine label={tx("Experience", "Uzoefu")} value={app?.experience || tx("Not set", "Haijawekwa")} />
+
+            {gotJob ? <ProgressTimeline activeIndex={timelineStepIndex(job)} language={language} /> : null}
+
+            {/* 2x2 grid instead of a stacked label/value list — small icons
+               so it isn't just plain text. */}
+            <View style={s.infoGrid}>
+              <GridItem icon="wallet" label={tx("Budget", "Bajeti")} value={formatBudget(app?.budget)} />
+              <GridItem icon="clock" label={tx("Duration", "Muda")} value={app?.duration || app?.estimated_time || tx("Not set", "Haijawekwa")} />
+              <GridItem icon="calendar" label={tx("Availability", "Upatikanaji")} value={app?.available_from || app?.availableFrom || tx("Not set", "Haijawekwa")} />
+              <GridItem icon="award" label={tx("Experience", "Uzoefu")} value={app?.experience || tx("Not set", "Haijawekwa")} />
+            </View>
+
             {app?.message || app?.explanation ? (
-              <Text style={s.appPlan}>{app.message || app.explanation}</Text>
+              <View style={s.noteBox}>
+                <View style={s.noteHeader}>
+                  <AppIcon name="comment" size={13} color={theme.colors.primaryStrong} />
+                  <Text style={s.noteHeaderTxt}>{tx("Provider Note", "Maelezo ya Mtoa Huduma")}</Text>
+                </View>
+                <Text style={s.appPlan}>{app.message || app.explanation}</Text>
+              </View>
             ) : null}
             {mediaUrls(app?.media || app?.images).length ? (
               <ImageStrip images={mediaUrls(app?.media || app?.images)} />
             ) : null}
-          </Card>
+          </View>
         )}
+
+        {/* ── Provider actions — bigger, deliberate buttons, separate from
+             the quick icons already in the header chip. ── */}
+        {gotJob ? (
+          <View style={s.sectionSoft}>
+            <SectionHeading label={tx("Actions", "Vitendo")} />
+            <View style={s.actionsRow}>
+              <TouchableOpacity
+                style={s.actionBtn}
+                onPress={() => navigation.navigate("JobWorkspace", { jobId: job.id, jobCode: job.job_code, tab: "chat" })}
+              >
+                <AppIcon name="message-circle" size={16} color={theme.colors.primaryStrong} />
+                <Text style={s.actionBtnTxt}>{tx("Message", "Ujumbe")}</Text>
+              </TouchableOpacity>
+              {headerPerson?.phone ? (
+                <TouchableOpacity style={s.actionBtn} onPress={() => Linking.openURL(`tel:${headerPerson.phone}`)}>
+                  <AppIcon name="phone" size={16} color={theme.colors.primaryStrong} />
+                  <Text style={s.actionBtnTxt}>{tx("Call", "Piga Simu")}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {closed ? (
+                <TouchableOpacity
+                  style={s.actionBtn}
+                  onPress={() => navigation.navigate("JobWorkspace", { jobId: job.id, jobCode: job.job_code, tab: "progress" })}
+                >
+                  <AppIcon name="star" size={16} color={theme.colors.primaryStrong} />
+                  <Text style={s.actionBtnTxt}>{job.rating ? tx("View Rating", "Ona Tathmini") : tx("Rating", "Tathmini")}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
 
         {/* ── Job description ── */}
         {!previewMode && (
-          <Card style={s.section}>
+          <View style={s.sectionSoft}>
             <SectionHeading label="About this job" />
             <Text style={s.bodyText}>{job.description || "No description provided."}</Text>
-          </Card>
+          </View>
         )}
 
         {/* ── Required services ── */}
         {!previewMode && categories.length ? (
-          <Card style={s.section}>
+          <View style={s.sectionSoft}>
             <SectionHeading label="Required services" />
             <View style={s.tags}>
               {categories.map((cat) => (
@@ -500,71 +706,34 @@ export default function RequestDetails() {
                 </View>
               ))}
             </View>
-          </Card>
+          </View>
         ) : null}
 
         {/* ── Job images ── */}
         {!previewMode && images.length ? (
-          <Card style={s.section}>
+          <View style={s.sectionSoft}>
             <SectionHeading label="Attached images" />
             <ImageStrip images={images} />
-          </Card>
+          </View>
         ) : null}
 
-        {/* ── Poster info ── */}
-        {!previewMode && (
-          <Card style={s.section}>
-            <SectionHeading label="Posted by" />
-            <View style={s.posterRow}>
-              {poster.profile_pic || poster.profilePic ? (
-                <Image source={{ uri: poster.profile_pic || poster.profilePic }} style={s.posterAvatar} />
-              ) : (
-                <Image source={{ uri: avatarUri(poster) }} style={s.posterAvatar} />
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={s.posterUsername}>@{ownerName}</Text>
-                <Text style={s.posterFull}>{poster.full_name || poster.fullName || ""}</Text>
-              </View>
-              {ownerUuid ? (
-                <TouchableOpacity style={s.viewProfileBtn} onPress={() => navigation.navigate("UserProfile", { uuid: ownerUuid })}>
-                  <Text style={s.viewProfileTxt}>View Profile</Text>
-                </TouchableOpacity>
-              ) : null}
+        {/* Phone now lives in the header chip above. Email doesn't fit there,
+           so it's the only thing left in this section — and it disappears
+           entirely once there's nothing to show. */}
+        {otherParty?.email ? (
+          <View style={s.section}>
+            <SectionHeading label={tx("Contact Details", "Mawasiliano")} />
+            <View style={s.contactRow}>
+              <AppIcon name="mail" size={14} color={theme.colors.primaryStrong} />
+              <Text style={s.contactLabel}>Email</Text>
+              <Text style={s.contactValue}>{otherParty.email}</Text>
             </View>
-          </Card>
-        )}
-
-        {/* ── Contact section (visible once assigned) ── */}
-        {otherParty ? (
-          <Card style={s.section}>
-            <SectionHeading label={tx("Assigned Job Contact", "Mawasiliano ya Kazi")} />
-            <View style={s.posterRow}>
-              <Image source={{ uri: avatarUri(otherParty) }} style={s.posterAvatar} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.posterUsername}>@{otherParty.username || "user"}</Text>
-                <Text style={s.posterFull}>{otherParty.full_name || "Assigned party"}</Text>
-              </View>
-            </View>
-            {otherParty.phone_number ? (
-              <View style={s.contactRow}>
-                <AppIcon name="phone" size={14} color={C.teal} />
-                <Text style={s.contactLabel}>{tx("Phone", "Simu")}</Text>
-                <Text style={s.contactValue}>{otherParty.phone_number}</Text>
-              </View>
-            ) : null}
-            {otherParty.email ? (
-              <View style={s.contactRow}>
-                <AppIcon name="mail" size={14} color={C.teal} />
-                <Text style={s.contactLabel}>Email</Text>
-                <Text style={s.contactValue}>{otherParty.email}</Text>
-              </View>
-            ) : null}
-          </Card>
+          </View>
         ) : null}
 
         {/* ── Rating section (hirer rates provider after completion) ── */}
         {canRateProvider && (
-          <Card style={s.section}>
+          <View style={s.sectionSoft}>
             <SectionHeading label="Rate this provider" />
             <View style={s.starsRow}>
               {[1, 2, 3, 4, 5].map((n) => (
@@ -585,7 +754,7 @@ export default function RequestDetails() {
             {ratingScore === 5 ? (
               <>
                 <TouchableOpacity style={s.recommendToggle} onPress={() => setRecommendProvider(!recommendProvider)}>
-                  <AppIcon name={recommendProvider ? "check-circle" : "plus-circle"} size={18} color={C.teal} />
+                  <AppIcon name={recommendProvider ? "check-circle" : "plus-circle"} size={18} color={theme.colors.primaryStrong} />
                   <Text style={s.recommendTxt}>Add a recommendation</Text>
                 </TouchableOpacity>
                 {recommendProvider ? (
@@ -607,7 +776,7 @@ export default function RequestDetails() {
                 : <Text style={s.saveRatingTxt}>Save Rating</Text>
               }
             </TouchableOpacity>
-          </Card>
+          </View>
         )}
         </View>
       </ScrollView>
@@ -648,7 +817,9 @@ export default function RequestDetails() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const createStyles = (theme) => StyleSheet.create({
+const createStyles = (theme) => {
+  const C = legacyColors(theme);
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg },
   keyboard: { flex: 1 },
   webScroller: { height: "100vh" },
@@ -657,15 +828,61 @@ const createStyles = (theme) => StyleSheet.create({
   contentShell: { width: "100%" },
   contentShellWide: { maxWidth: 1040, gap: 12 },
 
-  // Hero
-  hero: { backgroundColor: theme.colors.surface, padding: 20, borderBottomWidth: 1, borderBottomColor: theme.colors.border, gap: 8 },
-  desktopCard: { borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-  codePill: { backgroundColor: theme.colors.primarySoft, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8 },
-  codeTxt: { color: theme.colors.primary, fontSize: 11, fontWeight: "800" },
-  heroTitle: { fontSize: 28, fontWeight: "900", color: theme.colors.text, lineHeight: 34 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  // Hero — a branded gradient banner (theme.colors.brandGradient, teal→accent,
+  // fixed per brand rather than per light/dark mode) instead of a plain
+  // surface block. Everything inside it is white/translucent-white so it
+  // stays legible regardless of theme, and the code/status chips sit on
+  // white-tinted glass rather than another teal-on-teal combo.
+  // Rounded bottom corners + a shadow on the wrapper (not the gradient
+  // itself, since overflow:hidden for the radius would clip the shadow
+  // too) make it float above the page instead of ending in a hard edge.
+  heroShadow: {
+    shadowColor: "#0B6B63", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.22, shadowRadius: 20, elevation: 10,
+  },
+  heroShadowWide: { marginHorizontal: 16, marginTop: 16, borderRadius: 24, overflow: "hidden" },
+  // Trimmed padding/gap vs before — less empty air, so the banner reads as
+  // a compact header strip rather than a big block of color.
+  hero: { padding: 18, paddingBottom: 20, gap: 8, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" },
+  desktopCard: { borderRadius: 24 },
+  heroDecoration: { position: "absolute", left: 0, top: 0 },
+  heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
+  codePill: { backgroundColor: "rgba(255,255,255,0.22)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  codeTxt: { color: "#FFFFFF", fontSize: 11.5, fontWeight: "900", letterSpacing: 0.6, textTransform: "uppercase" },
+  statusPill: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.22)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusPillTxt: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  heroTitle: { fontSize: 22, fontWeight: "900", color: "#FFFFFF", lineHeight: 27 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   meta: { color: theme.colors.textMuted, fontSize: 13, lineHeight: 20 },
+  heroMeta: { color: "rgba(255,255,255,0.88)", fontSize: 12.5, lineHeight: 18, fontWeight: "600" },
+  heroMetaDot: { color: "rgba(255,255,255,0.6)", fontSize: 13, marginHorizontal: 1 },
+
+  // The assigned/owner person — with rating, phone, and quick actions —
+  // shown once inside the banner instead of repeated in a card further down.
+  personChip: {
+    backgroundColor: "rgba(255,255,255,0.16)", borderRadius: 16,
+    padding: 10, marginTop: 8, gap: 10,
+  },
+  personMain: { flexDirection: "row", alignItems: "center", gap: 10 },
+  personAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(255,255,255,0.3)" },
+  personNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  personName: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
+  personRole: { color: "rgba(255,255,255,0.8)", fontSize: 11.5, fontWeight: "600", marginTop: 1 },
+  personActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  personActionBtn: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.2)" },
+  personProfileBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+    minHeight: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  personProfileTxt: { color: "#FFFFFF", fontSize: 12.5, fontWeight: "800" },
+
+  // No more boxes: sections just flow down the page with breathing room.
+  // "Your Application" sits right under the hero so it needs no extra
+  // divider; everything after it gets a thin hairline up top to mark a new
+  // group, instead of a background block.
+  sectionTinted: { marginHorizontal: 16, marginTop: 20 },
+  sectionSoft: { marginHorizontal: 16, marginTop: 26, paddingTop: 20, borderTopWidth: 1, borderTopColor: theme.colors.border },
+  section: { marginHorizontal: 16, marginTop: 26, paddingTop: 20, borderTopWidth: 1, borderTopColor: theme.colors.border },
 
   // Direct hire panel
   directPanel: {
@@ -693,7 +910,7 @@ const createStyles = (theme) => StyleSheet.create({
     shadowOpacity: 0.15, shadowRadius: 6, elevation: 3,
   },
   directTitle: { fontSize: 15, fontWeight: "800", color: theme.colors.text },
-  directSub: { fontSize: 12, color: C.teal, marginTop: 2 },
+  directSub: { fontSize: 12, color: theme.colors.primaryStrong, marginTop: 2 },
   directBtns: { flexDirection: "row", gap: 10, padding: 14 },
   declineBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
@@ -729,7 +946,7 @@ const createStyles = (theme) => StyleSheet.create({
     borderRadius: 10, borderWidth: 1, borderColor: C.teal + "40",
     backgroundColor: theme.colors.surface, minHeight: 44,
   },
-  moneyPrefix: { paddingHorizontal: 10, color: C.teal, fontWeight: "800", fontSize: 13 },
+  moneyPrefix: { paddingHorizontal: 10, color: theme.colors.primaryStrong, fontWeight: "800", fontSize: 13 },
   moneyField: { flex: 1, color: theme.colors.text, fontSize: 14, paddingRight: 10 },
   planFieldInput: {
     minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: C.teal + "40",
@@ -744,7 +961,7 @@ const createStyles = (theme) => StyleSheet.create({
     alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.surface,
   },
   durationUnitActive: { backgroundColor: C.teal, borderColor: C.teal },
-  durationUnitText: { color: C.teal, fontSize: 12, fontWeight: "800" },
+  durationUnitText: { color: theme.colors.primaryStrong, fontSize: 12, fontWeight: "800" },
   durationUnitTextActive: { color: C.white },
   planActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   planBack: {
@@ -769,21 +986,21 @@ const createStyles = (theme) => StyleSheet.create({
   },
   declinedTxt: { color: C.red, fontSize: 13, fontWeight: "700" },
 
-  // Workspace shortcut
+  // Workspace shortcut — solid, high-contrast (this used to be a soft teal
+  // tint with teal text, which nearly vanished in dark mode).
   workspaceBtn: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: theme.colors.primarySoft, borderRadius: 10, padding: 12, marginBottom: 10,
+    backgroundColor: theme.colors.primary, borderRadius: 16, padding: 14, marginBottom: 10,
+    shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 3,
   },
-  workspaceBtnTxt: { flex: 1, color: C.teal, fontSize: 13, fontWeight: "700" },
+  workspaceBtnTxt: { flex: 1, color: theme.colors.onPrimary, fontSize: 13.5, fontWeight: "800" },
 
-  // Sections
-  section: { marginHorizontal: 16, marginTop: 12 },
   bodyText: { fontSize: 14, color: theme.colors.textMuted, lineHeight: 22 },
 
   // Tags
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: { backgroundColor: C.tealLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  tagTxt: { color: C.teal, fontSize: 13, fontWeight: "700" },
+  tagTxt: { color: theme.colors.primaryStrong, fontSize: 13, fontWeight: "700" },
 
   // Images
   imagesRow: { gap: 10, paddingRight: 4 },
@@ -796,12 +1013,12 @@ const createStyles = (theme) => StyleSheet.create({
   posterFull: { fontSize: 12, color: theme.colors.textMuted, marginTop: 1 },
   viewProfileBtn: {
     paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 10, borderWidth: 1.5, borderColor: C.teal,
+    borderRadius: 10, borderWidth: 1.5, borderColor: theme.colors.primaryStrong,
   },
-  viewProfileTxt: { color: C.teal, fontSize: 12, fontWeight: "700" },
+  viewProfileTxt: { color: theme.colors.primaryStrong, fontSize: 12, fontWeight: "700" },
 
   // Contact
-  contactRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.colors.border, marginTop: 8 },
+  contactRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
   contactLabel: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "700", width: 48 },
   contactValue: { flex: 1, color: theme.colors.text, fontSize: 13, fontWeight: "700" },
 
@@ -809,9 +1026,54 @@ const createStyles = (theme) => StyleSheet.create({
   infoLine: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   infoLabel: { color: theme.colors.textMuted, fontSize: 13, fontWeight: "600" },
   infoValue: { color: theme.colors.text, fontSize: 13, fontWeight: "700", flex: 1, textAlign: "right" },
-  appPlan: { fontSize: 14, color: theme.colors.textSecondary, lineHeight: 22, marginTop: 12 },
+  appPlan: { fontSize: 14, color: theme.colors.textSecondary, lineHeight: 22 },
   filledBanner: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.amberLight, borderRadius: 8, padding: 10, marginBottom: 10 },
   filledTxt: { color: C.amber, fontSize: 13, fontWeight: "700" },
+
+  // 2x2 info grid — small soft boxes (not big bordered cards) with an icon
+  // each, instead of a stacked label/value text list.
+  infoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 14 },
+  gridItem: {
+    flexBasis: "47%", flexGrow: 1, flexDirection: "row", alignItems: "center", gap: 9,
+    backgroundColor: theme.colors.surfaceSoft, borderRadius: 14, padding: 11,
+  },
+  gridIconWrap: {
+    width: 32, height: 32, borderRadius: 10, backgroundColor: theme.colors.primarySoft,
+    alignItems: "center", justifyContent: "center",
+  },
+  gridLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.3 },
+  gridValue: { color: theme.colors.text, fontSize: 13.5, fontWeight: "800", marginTop: 1 },
+
+  // Provider note — a small labeled, softly-tinted quote block instead of
+  // an unlabeled paragraph floating on its own.
+  noteBox: { marginTop: 14, backgroundColor: theme.colors.surfaceSoft, borderRadius: 14, padding: 12 },
+  noteHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
+  noteHeaderTxt: { color: theme.colors.primaryStrong, fontSize: 11.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 },
+
+  // Progress timeline — Posted → Assigned → Started → Submitted → Completed.
+  // A row of dots connected by flexible line segments, then a separate row
+  // of evenly-spaced labels underneath (each label owns 1/5 of the width,
+  // same as each dot+half-line pair above it, so they line up).
+  timelineRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  timelineDot: {
+    width: 18, height: 18, borderRadius: 9,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: theme.colors.surfaceSoft, borderWidth: 2, borderColor: theme.colors.border,
+  },
+  timelineDotDone: { backgroundColor: theme.colors.success, borderColor: theme.colors.success },
+  timelineLine: { flex: 1, height: 2, backgroundColor: theme.colors.border },
+  timelineLineDone: { backgroundColor: theme.colors.success },
+  timelineLabels: { flexDirection: "row", marginTop: 5 },
+  timelineLabel: { flex: 1, fontSize: 9, fontWeight: "700", color: theme.colors.textMuted, textAlign: "center" },
+  timelineLabelDone: { color: theme.colors.text, fontWeight: "800" },
+
+  // Provider actions — Message / Call / Rating, bigger deliberate buttons.
+  actionsRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
+  actionBtn: {
+    flexBasis: "30%", flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    minHeight: 44, borderRadius: 14, backgroundColor: theme.colors.primarySoft,
+  },
+  actionBtnTxt: { color: theme.colors.primaryStrong, fontSize: 12.5, fontWeight: "800" },
 
   // Rating
   starsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
@@ -824,14 +1086,18 @@ const createStyles = (theme) => StyleSheet.create({
   saveRatingTxt: { color: C.white, fontSize: 15, fontWeight: "800" },
 
   // Bottom bar (public apply)
+  // Rounded top corners + a shadow instead of a flat top border, so it
+  // reads as a floating sheet sitting over the content rather than a
+  // hard-edged bar bolted to the bottom of the screen.
   bottomBar: {
     position: "absolute", left: 0, right: 0, bottom: 0,
     gap: 8, backgroundColor: theme.colors.surface,
-    borderTopWidth: 1, borderTopColor: theme.colors.border,
-    paddingHorizontal: 16, paddingTop: 12,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 12,
+    paddingHorizontal: 16, paddingTop: 14,
   },
   applyBtn: {
-    minHeight: 54, borderRadius: 14, backgroundColor: C.teal,
+    minHeight: 54, borderRadius: 16, backgroundColor: C.teal,
     alignItems: "center", justifyContent: "center",
     shadowColor: C.teal, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.28, shadowRadius: 10, elevation: 5,
@@ -839,11 +1105,12 @@ const createStyles = (theme) => StyleSheet.create({
   applyBtnDisabled: { backgroundColor: theme.colors.surfaceSoft, shadowOpacity: 0 },
   applyTxt: { color: C.white, fontSize: 17, fontWeight: "800" },
   applyTxtDisabled: { color: C.slate },
-  updateBtn: { minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: C.tealLight, borderWidth: 1.5, borderColor: C.teal },
-  updateTxt: { color: C.teal, fontWeight: "800", fontSize: 15 },
+  updateBtn: { minHeight: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: C.tealLight, borderWidth: 1.5, borderColor: theme.colors.primaryStrong },
+  updateTxt: { color: theme.colors.primaryStrong, fontWeight: "800", fontSize: 15 },
 
   // Empty state
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 12 },
   emptyTitle: { fontSize: 20, fontWeight: "800", color: theme.colors.text },
   emptyText: { fontSize: 14, color: theme.colors.textMuted, textAlign: "center" },
-});
+  });
+};

@@ -1,5 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -7,31 +11,85 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import AppIcon from "../../../../icons/AppIcon";
-import { C, SectionHeading, InfoRow, PrimaryButton, OutlineButton } from "../../../Jobs/jobsUI";
-import { formatJobDate, formatRelativeDate } from "../../../Jobs/jobDate";
+import AnimatedJobPipeline from "./AnimatedJobPipeline";
+import { C, SectionHeading, PrimaryButton, OutlineButton } from "../../../Jobs/jobsUI";
+import { formatJobDate } from "../../../Jobs/jobDate";
 import { getFriendlyApiError, viewerRequest } from "../../../../api/api";
 import { useLanguage } from "../../../../LanguageContext";
 import { useAppTheme } from "../../../../theme";
+import { UploadManager } from "../../../../utils/UploadManager";
 
-// ─── Pipeline definition (strict 5‑stage workflow) ──────────────────────────
-const PIPELINE = [
-  { key: "hired", en: "Hired", sw: "Ameajiriwa" },
-  { key: "started", en: "Started", sw: "Imeanza" },
-  { key: "working", en: "Working", sw: "Inaendelea" },
-  { key: "submitted", en: "Submission", sw: "Imewasilishwa" },
-  { key: "completed", en: "Completed", sw: "Imekamilika" },
-];
+// ─── Status groupings (new lifecycle, tolerant of legacy statuses) ─────────
+// assigned(active) -> start_requested -> working -> submitted -> completed
+// with a submitted <-> revision_requested loop. Legacy statuses
+// (start_pending, completion_pending) are folded into the same UI states so
+// jobs created before this feature shipped keep working without a migration.
+const ASSIGNED_STATUSES = ["active"];
+const START_REQUESTED_STATUSES = ["start_requested", "start_pending"];
+const WORKING_STATUSES = ["working", "started"];
+const SUBMITTED_STATUSES = ["submitted", "completion_pending"];
+const REVISION_STATUSES = ["revision_requested"];
+const COMPLETE_STATUSES = ["completed", "filled", "closed", "rated", "recommended"];
 
+// ─── Pipeline stage index (5‑stage, revision loop folds into "Submission") ──
+// The visual step labels/icons themselves live in AnimatedJobPipeline.js.
 function pipelineIndex(status) {
   const map = {
     hired: 0, assigned: 0, active: 0,
-    start_pending: 1, started: 1,
+    start_pending: 1, start_requested: 1, started: 1,
     working: 2, in_progress: 2,
-    completion_pending: 3, submitted: 3,
+    submitted: 3, completion_pending: 3, revision_requested: 3,
     completed: 4, filled: 4, closed: 4, rated: 4, recommended: 4,
   };
   return map[String(status || "hired").toLowerCase()] ?? 0;
+}
+
+// ─── Activity log journal — turns a job_activity_logs row into readable copy ──
+function describeActivity(entry, tx) {
+  const attempt = entry?.meta?.attempt_number;
+  switch (entry?.action) {
+    case "provider_assigned":
+      return { title: tx("Provider assigned", "Mtoa huduma amepangiwa"), body: tx("Workspace is open for both parties.", "Eneo la kazi liko wazi kwa pande zote mbili.") };
+    case "start_requested":
+      return { title: tx("Provider requested start", "Mtoa huduma ameomba kuanza"), body: entry.note || "" };
+    case "start_confirmed":
+      return { title: tx("Employer confirmed start", "Mwajiri amethibitisha kuanza"), body: tx("The job is now marked as working.", "Kazi sasa imewekwa kama inaendelea.") };
+    case "work_submitted":
+      return {
+        title: attempt ? tx(`Provider submitted work (attempt #${attempt})`, `Mtoa huduma amewasilisha kazi (jaribio #${attempt})`) : tx("Provider submitted work", "Mtoa huduma amewasilisha kazi"),
+        body: entry.note || "",
+      };
+    case "completion_requested":
+      return { title: tx("Provider submitted completion", "Mtoa huduma amewasilisha ukamilishaji"), body: entry.note || "" };
+    case "revision_requested":
+      return {
+        title: tx("Employer requested revision", "Mwajiri ameomba marekebisho"),
+        body: entry.note || "",
+      };
+    case "completion_rejected":
+      return { title: tx("Employer rejected completion", "Mwajiri amekataa ukamilishaji"), body: entry.note || "" };
+    case "work_accepted":
+      return { title: tx("Employer accepted work — job completed", "Mwajiri amekubali kazi — kazi imekamilika"), body: tx("Ratings are now open.", "Kipimo kimefunguliwa.") };
+    case "completion_confirmed":
+      return { title: tx("Employer confirmed completion", "Mwajiri amethibitisha ukamilishaji"), body: tx("Ratings are now open.", "Kipimo kimefunguliwa.") };
+    case "disputed":
+      return { title: tx("Dispute reported", "Mgogoro umeripotiwa"), body: entry.note || "" };
+    case "cancelled":
+      return { title: tx("Job cancelled", "Kazi imeghairiwa"), body: entry.note || "" };
+    default:
+      return { title: entry?.action || tx("Update", "Sasisho"), body: entry?.note || "" };
+  }
+}
+
+function formatLogTime(value) {
+  if (!value) return "";
+  try {
+    return formatJobDate(value);
+  } catch {
+    return "";
+  }
 }
 
 // ─── 5‑star rating helpers ──────────────────────────────────────────────────
@@ -91,29 +149,72 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
   const isProvider = role === "provider";
   const isHirer    = role === "hirer";
 
-  // Strict pipeline flags (provider first, then hirer confirms)
-  const canStart            = isProvider && jobStatus === "active" && !job?.provider_suggested_start_at;
-  const canConfirmStart     = isHirer   && jobStatus === "start_pending" && !!job?.provider_suggested_start_at && !job?.started_at;
-  const canSubmit           = isProvider && jobStatus === "working" && !job?.provider_suggested_completed_at;
-  const canConfirmCompletion = isHirer   && jobStatus === "completion_pending" && !!job?.provider_suggested_completed_at && !job?.completed_at;
+  // ── Lifecycle flags (provider requests -> employer confirms -> submit/revise loop) ──
+  const canRequestStart   = isProvider && ASSIGNED_STATUSES.includes(jobStatus);
+  const canConfirmStart   = isHirer && START_REQUESTED_STATUSES.includes(jobStatus);
+  const canSubmitWork     = isProvider && (WORKING_STATUSES.includes(jobStatus) || REVISION_STATUSES.includes(jobStatus));
+  const canReviewSubmission = isHirer && SUBMITTED_STATUSES.includes(jobStatus);
 
-  const waitingStart        = isProvider && jobStatus === "start_pending";
-  const waitingCompletion   = isProvider && jobStatus === "completion_pending";
+  const waitingProviderStart  = isHirer && ASSIGNED_STATUSES.includes(jobStatus);
+  const waitingStartConfirm   = isProvider && START_REQUESTED_STATUSES.includes(jobStatus);
+  const waitingSubmission     = isHirer && WORKING_STATUSES.includes(jobStatus);
+  const waitingReview         = isProvider && SUBMITTED_STATUSES.includes(jobStatus);
+  const waitingResubmission   = isHirer && REVISION_STATUSES.includes(jobStatus);
 
   // Post-completion flags
-  const isComplete    = ["completed", "filled", "closed", "rated", "recommended"].includes(jobStatus);
+  const isComplete    = COMPLETE_STATUSES.includes(jobStatus);
   const isClosed      = ["closed"].includes(jobStatus);
   const hasRating     = !!job?.rating_submitted_at || !!job?.rating;
   const hasRecommend  = !!job?.recommendation_submitted_at || !!job?.recommendation;
 
-  // Start form
-  const [showStartForm,  setShowStartForm]  = useState(false);
-  const [startRemark,    setStartRemark]    = useState("");
-  const [startingJob,    setStartingJob]    = useState(false);
+  // ── Journal data (real activity log + submission history from the backend) ──
+  const [submissions, setSubmissions] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [journalLoading, setJournalLoading] = useState(true);
 
-  // Completion form
-  const [submitNote,     setSubmitNote]     = useState("");
-  const [submitting,     setSubmitting]     = useState(false);
+  const loadJournal = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      const [subsRes, actRes] = await Promise.all([
+        viewerRequest("get", `/hiring/jobs/${jobId}/submissions`),
+        viewerRequest("get", `/hiring/jobs/${jobId}/activity`),
+      ]);
+      setSubmissions(Array.isArray(subsRes?.data?.submissions) ? subsRes.data.submissions : []);
+      setActivity(Array.isArray(actRes?.data?.activity) ? actRes.data.activity : []);
+    } catch (e) {
+      console.log("workspace journal load error", e?.message);
+    } finally {
+      setJournalLoading(false);
+    }
+  }, [jobId]);
+
+  useEffect(() => {
+    loadJournal();
+    // Refetch whenever the job's status flips (e.g. from realtime push) so
+    // the journal and submission history stay in sync with the visible stage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadJournal, jobStatus]);
+
+  const latestSubmission = submissions.length ? submissions[submissions.length - 1] : null;
+
+  // Start form (provider requests start)
+  const [showStartForm, setShowStartForm] = useState(false);
+  const [startNote,     setStartNote]     = useState("");
+  const [requestingStart, setRequestingStart] = useState(false);
+  const [confirmingStart, setConfirmingStart] = useState(false);
+
+  // Submit-work form (provider) — reused for first submission and every
+  // resubmission after a revision request.
+  const [submitNote,  setSubmitNote]  = useState("");
+  const [submitMedia, setSubmitMedia] = useState([]);
+  const [picking,     setPicking]     = useState(false);
+  const [submittingWork, setSubmittingWork] = useState(false);
+
+  // Review actions (employer)
+  const [acceptingWork, setAcceptingWork] = useState(false);
+  const [showRevisionForm, setShowRevisionForm] = useState(false);
+  const [revisionNote, setRevisionNote] = useState("");
+  const [requestingRevision, setRequestingRevision] = useState(false);
 
   // Rating form (hirer only) – 5‑star, initial 4
   const [ratingScore,    setRatingScore]    = useState(4);
@@ -129,68 +230,156 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
   const [recoSaving,     setRecoSaving]     = useState(false);
   const [recoDone,       setRecoDone]       = useState(hasRecommend);
 
-  // Dispute
+  // Keep the "done" flags in sync with the canonical job data instead of
+  // only reading it once at mount. Without this, switching tabs and back
+  // (which remounts this screen) or a realtime workspace refresh landing
+  // between renders could otherwise show the rating form again after a
+  // rating was already submitted, making the recommendation step seem to
+  // have "disappeared".
+  useEffect(() => { if (hasRating) setRatingDone(true); }, [hasRating]);
+  useEffect(() => { if (hasRecommend) setRecoDone(true); }, [hasRecommend]);
+
+  // Dispute (post-completion only, unchanged legacy flow)
   const [disputeNote,    setDisputeNote]    = useState("");
   const [disputing,      setDisputing]      = useState(false);
 
-  // ── Actions ────────────────────────────────────────────────────────────────
-  const startJob = async () => {
-    if (startingJob) return;
-    setStartingJob(true);
+  // ── Lifecycle actions ───────────────────────────────────────────────────
+  const requestStart = async () => {
+    if (requestingStart) return;
+    setRequestingStart(true);
     try {
-      const endpoint = isHirer ? "start-confirm" : "start-suggest";
-      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/${endpoint}`, {
-        started_at: new Date().toISOString(),
-        provider_start_note: startRemark,
-      });
+      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/start-request`, { provider_start_note: startNote });
       onJobUpdate(res?.data?.job || job);
-      await onRealtimeChange?.(isHirer ? "start_confirmed" : "start_requested");
+      await onRealtimeChange?.("start_requested");
+      await loadJournal();
       setShowStartForm(false);
-      setStartRemark("");
-      onNotice({
-        type: "success",
-        title: isHirer ? "Start confirmed" : "Start submitted",
-        body: isHirer ? "Official start time recorded." : "Waiting for hirer to confirm."
-      });
+      setStartNote("");
+      onNotice({ type: "success", title: tx("Start requested", "Kuanza kumeombwa"), body: tx("Waiting for the employer to confirm.", "Inasubiri mwajiri athibitishe.") });
     } catch (e) {
-      onNotice({
-        type: "error",
-        title: "Could not update start",
-        body: getFriendlyApiError(e, language)
-      });
+      onNotice({ type: "error", title: tx("Could not request start", "Imeshindikana kuomba kuanza"), body: getFriendlyApiError(e, language) });
     } finally {
-      setStartingJob(false);
+      setRequestingStart(false);
     }
   };
 
-  const submitJob = async () => {
-    if (submitting) return;
-    setSubmitting(true);
+  const confirmStart = async () => {
+    if (confirmingStart) return;
+    setConfirmingStart(true);
     try {
-      const endpoint = isHirer ? "complete-confirm" : "complete-suggest";
-      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/${endpoint}`, {
-        completed_at: new Date().toISOString(),
-        provider_completion_note: submitNote,
+      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/start-confirm`, {});
+      onJobUpdate(res?.data?.job || job);
+      await onRealtimeChange?.("start_confirmed");
+      await loadJournal();
+      onNotice({ type: "success", title: tx("Start confirmed", "Kuanza kumethibitishwa"), body: tx("The job is now marked as working.", "Kazi sasa imewekwa kama inaendelea.") });
+    } catch (e) {
+      onNotice({ type: "error", title: tx("Could not confirm", "Imeshindikana kuthibitisha"), body: getFriendlyApiError(e, language) });
+    } finally {
+      setConfirmingStart(false);
+    }
+  };
+
+  const pickSubmitMedia = async () => {
+    if (picking) return;
+    setPicking(true);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        onNotice({ type: "error", title: tx("Permission needed", "Ruhusa inahitajika"), body: tx("Allow photo library access to attach files.", "Ruhusu ufikiaji wa picha ili kuambatanisha faili.") });
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images", "videos"],
+        allowsMultipleSelection: true,
+        quality: 0.85,
+      });
+      if (result.canceled) return;
+      const mapped = (result.assets || []).map((asset) => ({
+        uri: asset.uri,
+        type: asset.type === "video" ? "video" : "image",
+        width: asset.width,
+        height: asset.height,
+        duration: asset.duration,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+      }));
+      setSubmitMedia((prev) => [...prev, ...mapped].slice(0, 5));
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  const removeSubmitMedia = (index) => {
+    setSubmitMedia((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const submitWork = async () => {
+    if (submittingWork) return;
+    if (!submitNote.trim() && !submitMedia.length) {
+      onNotice({ type: "error", title: tx("Add details", "Ongeza maelezo"), body: tx("Add a note or at least one photo/video before submitting.", "Ongeza maelezo au picha/video moja kabla ya kuwasilisha.") });
+      return;
+    }
+    setSubmittingWork(true);
+    try {
+      const uploaded = submitMedia.length ? await UploadManager.startUpload(submitMedia, "job_submissions") : [];
+      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/submit-work`, {
+        note: submitNote.trim(),
+        media: uploaded,
       });
       onJobUpdate(res?.data?.job || job);
-      await onRealtimeChange?.(isHirer ? "completion_confirmed" : "completion_requested");
+      await onRealtimeChange?.("work_submitted");
+      await loadJournal();
       setSubmitNote("");
-      onNotice({
-        type: "success",
-        title: isHirer ? "Completion confirmed" : "Submitted for review",
-        body: isHirer ? "Job is now completed." : "Waiting for hirer confirmation."
-      });
+      setSubmitMedia([]);
+      onNotice({ type: "success", title: tx("Work submitted", "Kazi imewasilishwa"), body: tx("The employer will review it shortly.", "Mwajiri atapitia hivi karibuni.") });
     } catch (e) {
-      onNotice({
-        type: "error",
-        title: "Could not submit",
-        body: getFriendlyApiError(e, language)
-      });
+      onNotice({ type: "error", title: tx("Could not submit", "Imeshindikana kuwasilisha"), body: getFriendlyApiError(e, language) });
     } finally {
-      setSubmitting(false);
+      setSubmittingWork(false);
+      UploadManager.reset();
     }
   };
 
+  const acceptWork = async () => {
+    if (acceptingWork) return;
+    setAcceptingWork(true);
+    try {
+      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/accept-submission`, {});
+      onJobUpdate(res?.data?.job || job);
+      await onRealtimeChange?.("work_accepted");
+      await loadJournal();
+      onNotice({ type: "success", title: tx("Work accepted", "Kazi imekubaliwa"), body: tx("Job marked complete. Ratings are now open.", "Kazi imewekwa kama imekamilika. Kipimo kimefunguliwa.") });
+    } catch (e) {
+      onNotice({ type: "error", title: tx("Could not accept", "Imeshindikana kukubali"), body: getFriendlyApiError(e, language) });
+    } finally {
+      setAcceptingWork(false);
+    }
+  };
+
+  const requestRevision = async () => {
+    const note = revisionNote.trim();
+    if (requestingRevision) return;
+    if (note.length < 5) {
+      onNotice({ type: "error", title: tx("Add more detail", "Ongeza maelezo"), body: tx("Explain what needs to change (at least 5 characters).", "Eleza kinachohitaji kubadilishwa (angalau herufi 5).") });
+      return;
+    }
+    setRequestingRevision(true);
+    try {
+      const res = await viewerRequest("post", `/hiring/jobs/${jobId}/request-revision`, { review_note: note });
+      onJobUpdate(res?.data?.job || job);
+      await onRealtimeChange?.("revision_requested");
+      await loadJournal();
+      setShowRevisionForm(false);
+      setRevisionNote("");
+      onNotice({ type: "success", title: tx("Revision requested", "Marekebisho yameombwa"), body: tx("The provider can see your notes and resubmit.", "Mtoa huduma anaweza kuona maelezo yako na kuwasilisha tena.") });
+    } catch (e) {
+      onNotice({ type: "error", title: tx("Could not request revision", "Imeshindikana kuomba marekebisho"), body: getFriendlyApiError(e, language) });
+    } finally {
+      setRequestingRevision(false);
+    }
+  };
+
+  // ── Rating / recommendation — unchanged; server already gates these on
+  // job.status === "completed", so no changes needed here for requirement 9. ──
   const saveRating = async () => {
     if (ratingSaving) return;
     setRatingSaving(true);
@@ -248,16 +437,22 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
         reason: recoReason,
         recommender_visible: recoVisible,
       });
-      setRecoDone(!!res?.data?.recommendation);
+      const recommendationDecidedAt =
+        res?.data?.recommendation?.created_at ||
+        res?.data?.recommendation_decided_at ||
+        res?.data?.job?.recommendation_decided_at ||
+        new Date().toISOString();
+      setRecoDone(true);
       setShowRecoForm(false);
       onJobUpdate({
         ...job,
         ...(res?.data?.job || {}),
         recommendation: res?.data?.recommendation || null,
-        recommendation_submitted_at: res?.data?.recommendation?.created_at || null,
+        recommendation_submitted_at: recommendationDecidedAt,
+        recommendation_decided_at: recommendationDecidedAt,
       });
       await onRealtimeChange?.("recommendation_submitted");
-      onNotice({ type: "success", title: "Recommendation saved ✓", body: "Your recommendation has been recorded." });
+      onNotice({ type: "success", title: "Recommendation decision saved", body: "This workspace has been closed." });
     } catch (e) {
       onNotice({
         type: "error",
@@ -284,8 +479,9 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
       const res = await viewerRequest("post", `/hiring/jobs/${jobId}/dispute`, { reason });
       onJobUpdate(res?.data?.job || job);
       await onRealtimeChange?.("dispute_submitted");
+      await loadJournal();
       setDisputeNote("");
-      onNotice({ type: "success", title: isHirer && jobStatus === "completion_pending" ? "Completion rejected" : "Report submitted", body: isHirer && jobStatus === "completion_pending" ? "The provider has been notified and can submit completion again when ready." : "Your dispute has been recorded." });
+      onNotice({ type: "success", title: "Report submitted", body: "Your dispute has been recorded." });
     } catch (e) {
       onNotice({
         type: "error",
@@ -299,178 +495,216 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll}>
-      {/* ── Pipeline visual (refined) ── */}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+    >
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled">
+      {/* ── Pipeline visual ── */}
       <Section style={st.pipelineCard}>
         <SectionHeading label={tx("Job pipeline", "Hatua za kazi")} />
-        <View style={st.pipeline}>
-          {PIPELINE.map((step, i) => {
-            const done = i <= pipeIdx;
-            const current = i === pipeIdx;
-            return (
-              <React.Fragment key={step.key}>
-                <View style={st.pipeStep}>
-                  <View style={[st.pipeCircle, done && st.pipeCircleDone, current && st.pipeCircleCurrent]}>
-                    {done ? (
-                      <AppIcon name="check" size={13} color={C.white} />
-                    ) : (
-                      <View style={st.pipeDot} />
-                    )}
-                  </View>
-                  <Text style={[st.pipeLabel, done && st.pipeLabelDone]}>{language === "sw" ? step.sw : step.en}</Text>
-                </View>
-                {i < PIPELINE.length - 1 && (
-                  <View style={[st.pipeLine, done && i < pipeIdx && st.pipeLineDone]} />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </View>
+        <AnimatedJobPipeline
+          activeIndex={pipeIdx}
+          language={language}
+          disabled={["cancelled", "disputed"].includes(jobStatus)}
+        />
 
-        {/* Post-completion checklist */}
+        {REVISION_STATUSES.includes(jobStatus) && (
+          <View style={st.revisionFlag}>
+            <AppIcon name="alert-circle" size={14} color={C.red} />
+            <Text style={st.revisionFlagTxt}>{tx("Returned for revision — provider is resubmitting", "Imerudishwa kwa marekebisho — mtoa huduma anawasilisha tena")}</Text>
+          </View>
+        )}
+
         {isComplete && (
           <View style={st.checkList}>
             <ReputationRow done={ratingDone} label={tx("Rated", "Imepimwa")} />
-            <ReputationRow done={recoDone} label={tx("Recommended", "Imependekezwa")} />
+            <ReputationRow done={recoDone} label={tx("Recommendation", "Pendekezo")} />
             <ReputationRow done={isClosed} label={tx("Closed", "Imefungwa")} />
           </View>
         )}
       </Section>
 
-      {/* ── Activity log ── */}
-      <Section style={{ gap: 8 }}>
-        <SectionHeading label={tx("Activity log", "Historia ya shughuli")} />
-        <LogRow title={tx("Provider assigned", "Mtoa huduma amepangiwa")} note={tx("Workspace is open for both parties.", "Eneo la kazi liko wazi kwa pande zote mbili.")} time={formatRelativeDate(job?.updated_at || job?.created_at)} />
-        {job?.provider_suggested_start_at && (
-          <LogRow title={tx("Start time suggested", "Muda wa kuanza umependekezwa")} note={job.provider_start_note || ""} time={formatJobDate(job.provider_suggested_start_at)} />
-        )}
-        {job?.started_at && (
-          <LogRow title={tx("Start confirmed", "Kuanza kumethibitishwa")} note={tx("Official start time recorded.", "Muda rasmi wa kuanza umehifadhiwa.")} time={formatJobDate(job.started_at)} />
-        )}
-        {job?.provider_suggested_completed_at && (
-          <LogRow title={tx("Completion submitted", "Kukamilika kumewasilishwa")} note={job.provider_completion_note || ""} time={formatJobDate(job.provider_suggested_completed_at)} />
-        )}
-        {job?.completed_at && (
-          <LogRow title={tx("Job completed", "Kazi imekamilika")} note={tx("Both parties confirmed. Rating stage open.", "Pande zote zimethibitisha. Hatua ya kupima imefunguliwa.")} time={formatJobDate(job.completed_at)} />
-        )}
-        {ratingDone && <LogRow title={tx("Rated", "Imepimwa")} note={tx("Employer submitted a rating for the provider.", "Mwajiri amewasilisha kipimo cha mtoa huduma.")} />}
-        {recoDone && <LogRow title={tx("Recommended", "Imependekezwa")} note={tx("Employer wrote a recommendation.", "Mwajiri ameandika pendekezo.")} />}
-        {isClosed && <LogRow title={tx("Closed", "Imefungwa")} note={tx("This job is now part of history.", "Kazi hii sasa ipo kwenye historia.")} />}
-      </Section>
+      {/* ── Waiting banners (both roles, whichever side is not the actor) ── */}
+      {waitingProviderStart && (
+        <WaitingBanner icon="clock" title={tx("Waiting for the provider to start", "Inasubiri mtoa huduma aanze")} body={tx("They'll tap \"I have started\" once they begin the work.", "Watagusa \"Nimeanza\" mara wataanza kazi.")} />
+      )}
+      {waitingStartConfirm && (
+        <WaitingBanner icon="clock" title={tx("Waiting for employer confirmation", "Inasubiri uthibitisho wa mwajiri")} body={tx("The employer needs to confirm the start before the job becomes active.", "Mwajiri anahitaji kuthibitisha kuanza kabla kazi haijaanza rasmi.")} />
+      )}
+      {waitingSubmission && (
+        <WaitingBanner icon="clock" title={tx("Waiting for submission", "Inasubiri uwasilishaji")} body={tx("The provider is working. You'll be notified once they submit.", "Mtoa huduma anafanya kazi. Utaarifiwa mara atakapowasilisha.")} />
+      )}
+      {waitingReview && (
+        <WaitingBanner icon="clock" title={tx("Waiting for employer review", "Inasubiri mapitio ya mwajiri")} body={tx("The employer is reviewing your submission.", "Mwajiri anapitia uwasilishaji wako.")} />
+      )}
+      {waitingResubmission && (
+        <WaitingBanner icon="clock" title={tx("Waiting for provider resubmission", "Inasubiri uwasilishaji upya")} body={tx("The provider has your revision notes and is working on it.", "Mtoa huduma ana maelezo yako ya marekebisho na anafanyia kazi.")} />
+      )}
 
-      {/* ── Start time info ── */}
-      {(job?.provider_suggested_start_at || job?.started_at) && (
+      {/* ── Provider: request start ── */}
+      {canRequestStart && (
         <Section>
-          <SectionHeading label={tx("Start time", "Muda wa kuanza")} />
-          <InfoRow icon="clock" label={tx("Provider suggested", "Mtoa huduma alipendekeza")} value={formatJobDate(job.provider_suggested_start_at) || tx("Not suggested", "Haujapendekezwa")} />
-          <InfoRow icon="check-circle" label={tx("Official start", "Mwanzo rasmi")} value={formatJobDate(job.started_at) || tx("Waiting confirmation", "Inasubiri uthibitisho")} />
-          {job.provider_start_note ? <Text style={st.hint}>{job.provider_start_note}</Text> : null}
-        </Section>
-      )}
-
-      {/* ── Waiting banners ── */}
-      {waitingStart && (
-        <WaitingBanner
-          icon="clock"
-          title={tx("Waiting for start confirmation", "Inasubiri uthibitisho wa kuanza")}
-          body={tx("The hirer needs to confirm the start time before the job becomes active.", "Mwajiri anahitaji kuthibitisha muda wa kuanza kabla kazi haijaanza rasmi.")}
-        />
-      )}
-      {waitingCompletion && (
-        <WaitingBanner
-          icon="clock"
-          title={tx("Waiting for completion confirmation", "Inasubiri uthibitisho wa kukamilika")}
-          body={tx("The hirer needs to confirm that the work is done before ratings open.", "Mwajiri anahitaji kuthibitisha kuwa kazi imekamilika kabla ya kipimo kufunguliwa.")}
-        />
-      )}
-
-      {/* ── Start form (provider suggests, hirer confirms) ── */}
-      {(canStart || canConfirmStart) && (
-        <Section>
-          <SectionHeading label={isHirer ? tx("Confirm start time", "Thibitisha muda wa kuanza") : tx("Start this job", "Anza kazi hii")} />
+          <SectionHeading label={tx("Start this job", "Anza kazi hii")} />
           {!showStartForm ? (
-            <PrimaryButton
-              label={isHirer ? tx("Confirm Start", "Thibitisha Kuanza") : tx("Suggest Start", "Pendekeza Kuanza")}
-              icon="play-circle"
-              onPress={() => setShowStartForm(true)}
-            />
+            <PrimaryButton label={tx("I have started", "Nimeanza")} icon="play-circle" onPress={() => setShowStartForm(true)} />
           ) : (
             <View style={{ gap: 10 }}>
-              <Text style={st.hint}>Add a remark (optional) — e.g. "Nipo njiani, nitafika dakika 20"</Text>
+              <Text style={st.hint}>{tx('Add a remark (optional) — e.g. "Nipo njiani, nitafika dakika 20"', 'Ongeza maelezo (si lazima) — mfano "Nipo njiani, nitafika dakika 20"')}</Text>
               <TextInput
                 style={st.textarea}
                 placeholder={tx("Remark…", "Maelezo…")}
                 placeholderTextColor={C.slate}
-                value={startRemark}
-                onChangeText={setStartRemark}
+                value={startNote}
+                onChangeText={setStartNote}
                 multiline
               />
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <OutlineButton label={tx("Cancel", "Ghairi")} onPress={() => setShowStartForm(false)} color={theme.colors.textMuted} />
-                <PrimaryButton label={isHirer ? tx("Confirm Start", "Thibitisha Kuanza") : tx("Submit Start", "Wasilisha Kuanza")} onPress={startJob} loading={startingJob} />
+                <PrimaryButton label={tx("Send Request", "Tuma Ombi")} onPress={requestStart} loading={requestingStart} />
               </View>
             </View>
           )}
         </Section>
       )}
 
-      {/* ── Completion time info ── */}
-      {(job?.provider_suggested_completed_at || job?.completed_at) && (
+      {/* ── Employer: confirm start ── */}
+      {canConfirmStart && (
         <Section>
-          <SectionHeading label={tx("Completion time", "Muda wa kukamilika")} />
-          <InfoRow icon="clock" label={tx("Provider submitted", "Mtoa huduma aliwasilisha")} value={formatJobDate(job.provider_suggested_completed_at) || tx("Not submitted", "Haijawasilishwa")} />
-          <InfoRow icon="check-circle" label={tx("Official completion", "Kukamilika rasmi")} value={formatJobDate(job.completed_at) || tx("Waiting confirmation", "Inasubiri uthibitisho")} />
-          {job.provider_completion_note ? <Text style={st.hint}>{job.provider_completion_note}</Text> : null}
+          <SectionHeading label={tx("Confirm start", "Thibitisha kuanza")} />
+          {job?.provider_start_note ? <Text style={st.hint}>{job.provider_start_note}</Text> : null}
+          <PrimaryButton label={tx("Confirm Start", "Thibitisha Kuanza")} icon="check-circle" onPress={confirmStart} loading={confirmingStart} />
         </Section>
       )}
 
-      {/* ── Submit / confirm work ── */}
-      {(canSubmit || canConfirmCompletion) && (
+      {/* ── Revision notes (shown to provider when returned for correction) ── */}
+      {isProvider && REVISION_STATUSES.includes(jobStatus) && latestSubmission?.review_note && (
+        <Section style={st.revisionNoteBox}>
+          <SectionHeading label={tx("Employer's revision notes", "Maelezo ya marekebisho ya mwajiri")} />
+          <Text style={st.revisionNoteTxt}>{latestSubmission.review_note}</Text>
+        </Section>
+      )}
+
+      {/* ── Provider: submit / resubmit work ── */}
+      {canSubmitWork && (
         <Section>
-          <SectionHeading label={isHirer ? tx("Confirm completion", "Thibitisha kukamilika") : tx("Submit your work", "Wasilisha kazi yako")} />
-          <Text style={st.hint}>
-            {isHirer
-              ? "Confirm only when the work is done. This closes the working stage and opens ratings."
-              : "Submit only when everything is finished. The hirer will review and confirm."}
-          </Text>
+          <SectionHeading label={REVISION_STATUSES.includes(jobStatus) ? tx("Submit again", "Wasilisha tena") : tx("Submit work", "Wasilisha kazi")} />
+          <Text style={st.hint}>{tx("Add a note and, optionally, photos or a video of the finished work.", "Ongeza maelezo na, kama unataka, picha au video ya kazi iliyokamilika.")}</Text>
           <TextInput
             style={[st.textarea, { marginTop: 10 }]}
-            placeholder={tx("Handover note (optional)…", "Maelezo ya makabidhiano (si lazima)…")}
+            placeholder={tx("Describe what you completed…", "Eleza ulichokamilisha…")}
             placeholderTextColor={C.slate}
             value={submitNote}
             onChangeText={setSubmitNote}
             multiline
           />
+          {submitMedia.length > 0 && (
+            <View style={st.mediaRow}>
+              {submitMedia.map((m, idx) => (
+                <View key={`${m.uri}-${idx}`} style={st.mediaThumbWrap}>
+                  {m.type === "video" ? (
+                    <View style={[st.mediaThumb, st.mediaThumbVideo]}>
+                      <AppIcon name="camera" size={18} color={C.white} />
+                    </View>
+                  ) : (
+                    <Image source={{ uri: m.uri }} style={st.mediaThumb} />
+                  )}
+                  <TouchableOpacity style={st.mediaRemove} onPress={() => removeSubmitMedia(idx)} activeOpacity={0.8}>
+                    <AppIcon name="x-circle" size={16} color={C.white} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+            <OutlineButton label={tx("Add Photo/Video", "Ongeza Picha/Video")} icon="camera" onPress={pickSubmitMedia} disabled={picking || submitMedia.length >= 5} />
+          </View>
           <View style={{ marginTop: 10 }}>
             <PrimaryButton
-              label={isHirer ? tx("Confirm Completed", "Thibitisha Kukamilika") : tx("Submit Completed Work", "Wasilisha Kazi Iliyokamilika")}
+              label={REVISION_STATUSES.includes(jobStatus) ? tx("Submit Again", "Wasilisha Tena") : tx("Submit Work", "Wasilisha Kazi")}
               icon="upload-cloud"
-              onPress={submitJob}
-              loading={submitting}
+              onPress={submitWork}
+              loading={submittingWork}
             />
           </View>
-          {isHirer ? (
-            <View style={st.rejectBox}>
-              <Text style={st.rejectTitle}>{tx("Not finished yet?", "Bado hajamaliza?")}</Text>
-              <Text style={st.hint}>{tx("Explain what is missing. The job will return to Working and the provider can submit completion again when ready.", "Eleza kilichobaki. Kazi itarudi Working na mtoa huduma ataweza kuwasilisha tena akikamilisha.")}</Text>
-              <TextInput
-                style={st.textarea}
-                placeholder={tx("What still needs to be finished?", "Nini bado hakijakamilika?")}
-                placeholderTextColor={C.slate}
-                value={disputeNote}
-                onChangeText={setDisputeNote}
-                multiline
-              />
-              <OutlineButton
-                label={tx("Reject Completion", "Kataa Kukamilika")}
-                onPress={reportDispute}
-                loading={disputing}
-                color={C.red}
-              />
-            </View>
-          ) : null}
         </Section>
       )}
+
+      {/* ── Employer: review submitted work ── */}
+      {canReviewSubmission && (
+        <Section>
+          <SectionHeading label={tx("Review submitted work", "Pitia kazi iliyowasilishwa")} />
+          {latestSubmission ? (
+            <>
+              {!!latestSubmission.note && <Text style={st.hint}>{latestSubmission.note}</Text>}
+              {Array.isArray(latestSubmission.media) && latestSubmission.media.length > 0 && (
+                <View style={st.mediaRow}>
+                  {latestSubmission.media.map((m, idx) => (
+                    m.type === "video" ? (
+                      <View key={`${m.url || idx}`} style={[st.mediaThumb, st.mediaThumbVideo]}>
+                        <AppIcon name="camera" size={18} color={C.white} />
+                      </View>
+                    ) : (
+                      <Image key={`${m.url || idx}`} source={{ uri: m.url }} style={st.mediaThumb} />
+                    )
+                  ))}
+                </View>
+              )}
+              <Text style={st.attemptTag}>{tx(`Attempt #${latestSubmission.attempt_number}`, `Jaribio #${latestSubmission.attempt_number}`)}</Text>
+            </>
+          ) : (
+            <Text style={st.hint}>{tx("No submission details found.", "Hakuna maelezo ya uwasilishaji.")}</Text>
+          )}
+
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+            <PrimaryButton label={tx("Accept Work", "Kubali Kazi")} icon="check-circle" onPress={acceptWork} loading={acceptingWork} />
+          </View>
+          {!showRevisionForm ? (
+            <View style={{ marginTop: 10 }}>
+              <OutlineButton label={tx("Request Revision", "Omba Marekebisho")} icon="edit" onPress={() => setShowRevisionForm(true)} color={C.red} />
+            </View>
+          ) : (
+            <View style={st.rejectBox}>
+              <Text style={st.rejectTitle}>{tx("What needs to change?", "Nini kinahitaji kubadilishwa?")}</Text>
+              <TextInput
+                style={st.textarea}
+                placeholder={tx("Explain what still needs to be fixed…", "Eleza kinachohitaji kurekebishwa…")}
+                placeholderTextColor={C.slate}
+                value={revisionNote}
+                onChangeText={setRevisionNote}
+                multiline
+              />
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <OutlineButton label={tx("Cancel", "Ghairi")} onPress={() => setShowRevisionForm(false)} color={theme.colors.textMuted} />
+                <PrimaryButton label={tx("Send Revision Request", "Tuma Ombi la Marekebisho")} onPress={requestRevision} loading={requestingRevision} danger />
+              </View>
+            </View>
+          )}
+        </Section>
+      )}
+
+      {/* ── Submission history (visible once there's more than one attempt) ── */}
+      {submissions.length > 0 && (
+        <Section style={{ gap: 10 }}>
+          <SectionHeading label={tx("Submission history", "Historia ya uwasilishaji")} />
+          {submissions.map((s) => (
+            <SubmissionRow key={s.id} submission={s} tx={tx} />
+          ))}
+        </Section>
+      )}
+
+      {/* ── Activity log — the real job journal, built from job_activity_logs ── */}
+      <Section style={{ gap: 10 }}>
+        <SectionHeading label={tx("Activity log", "Historia ya shughuli")} />
+        {journalLoading && !activity.length ? (
+          <ActivityIndicator color={theme.colors.primary} />
+        ) : activity.length ? (
+          activity.map((entry) => <ActivityRow key={entry.id} entry={entry} tx={tx} />)
+        ) : (
+          <Text style={st.hint}>{tx("No activity yet.", "Hakuna shughuli bado.")}</Text>
+        )}
+      </Section>
 
       {/* ════════════════════ POST-COMPLETION ZONE ════════════════════ */}
       {isComplete && (
@@ -478,15 +712,15 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
           {/* Completed banner */}
           <Section style={st.completedBanner}>
             <AppIcon name="award" size={28} color={C.green} />
-            <Text style={st.completedTitle}>Job Completed</Text>
-            <Text style={st.completedSub}>Excellent work! This job is now in the reputation stage.</Text>
+            <Text style={st.completedTitle}>{tx("Job Completed", "Kazi Imekamilika")}</Text>
+            <Text style={st.completedSub}>{tx("Excellent work! This job is now in the reputation stage.", "Kazi nzuri! Kazi hii sasa iko kwenye hatua ya sifa.")}</Text>
           </Section>
 
           {/* ── HIRER: Rate the provider (5‑stars) ── */}
           {isHirer && !ratingDone && (
             <Section>
-              <SectionHeading label="Rate the provider" />
-              <Text style={st.hint}>Your honest rating helps the provider build their reputation on the platform.</Text>
+              <SectionHeading label={tx("Rate the provider", "Mpimie Mtoa Huduma")} />
+              <Text style={st.hint}>{tx("Your honest rating helps the provider build their reputation on the platform.", "Kipimo chako cha kweli kinasaidia mtoa huduma kujenga sifa yake kwenye jukwaa.")}</Text>
               <View style={{ marginVertical: 14 }}>
                 <StarRating score={ratingScore} onChange={setRatingScore} />
               </View>
@@ -500,7 +734,7 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
                 multiline
               />
               <View style={{ marginTop: 12 }}>
-                <PrimaryButton label="Submit Rating" icon="star" onPress={saveRating} loading={ratingSaving} />
+                <PrimaryButton label={tx("Submit Rating", "Wasilisha Kipimo")} icon="star" onPress={saveRating} loading={ratingSaving} />
               </View>
             </Section>
           )}
@@ -508,23 +742,23 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
           {isHirer && ratingDone && (
             <Section style={st.doneBanner}>
               <AppIcon name="check-circle" size={20} color={C.teal} />
-              <Text style={st.doneTxt}>Rating submitted ✓</Text>
+              <Text style={st.doneTxt}>{tx("Rating submitted ✓", "Kipimo kimewasilishwa ✓")}</Text>
             </Section>
           )}
 
           {/* ── HIRER: Write a recommendation ── */}
           {isHirer && ratingDone && !recoDone && !isClosed && (
             <Section>
-              <SectionHeading label="Write a recommendation" />
-              <Text style={st.hint}>This is the final workspace stage. Submit a recommendation decision to close the job.</Text>
+              <SectionHeading label={tx("Write a recommendation", "Andika Pendekezo")} />
+              <Text style={st.hint}>{tx("This is the final workspace stage. Submit a recommendation decision to close the job.", "Hii ni hatua ya mwisho ya eneo la kazi. Wasilisha uamuzi wa pendekezo ili kufunga kazi.")}</Text>
               {!showRecoForm ? (
-                <PrimaryButton label="Create Recommendation" icon="thumbs-up" onPress={() => setShowRecoForm(true)} />
+                <PrimaryButton label={tx("Create Recommendation", "Unda Pendekezo")} icon="thumbs-up" onPress={() => setShowRecoForm(true)} />
               ) : (
                 <View style={{ gap: 10 }}>
                   <Text style={[st.hint, { fontWeight: "700", color: theme.colors.text }]}>{tx("Recommend this provider?", "Unampendekeza mtoa huduma huyu?")}</Text>
                   <View style={st.toggleRow}>
-                    <ToggleChip label="Yes" active={recoRecommend} onPress={() => setRecoRecommend(true)} />
-                    <ToggleChip label="No"  active={!recoRecommend} onPress={() => setRecoRecommend(false)} />
+                    <ToggleChip label={tx("Yes", "Ndiyo")} active={recoRecommend} onPress={() => setRecoRecommend(true)} />
+                    <ToggleChip label={tx("No", "Hapana")} active={!recoRecommend} onPress={() => setRecoRecommend(false)} />
                   </View>
                   {recoRecommend && (
                     <>
@@ -539,8 +773,8 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
                       />
                       <Text style={[st.hint, { fontWeight: "700", color: theme.colors.text, marginTop: 4 }]}>{tx("Show my identity publicly?", "Onyesha utambulisho wangu hadharani?")}</Text>
                       <View style={st.toggleRow}>
-                        <ToggleChip label="Yes" active={recoVisible}  onPress={() => setRecoVisible(true)} />
-                        <ToggleChip label="No"  active={!recoVisible} onPress={() => setRecoVisible(false)} />
+                        <ToggleChip label={tx("Yes", "Ndiyo")} active={recoVisible}  onPress={() => setRecoVisible(true)} />
+                        <ToggleChip label={tx("No", "Hapana")} active={!recoVisible} onPress={() => setRecoVisible(false)} />
                       </View>
                     </>
                   )}
@@ -555,8 +789,8 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
                     />
                   )}
                   <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
-                    <OutlineButton label="Cancel" onPress={() => setShowRecoForm(false)} color={C.slate} />
-                    <PrimaryButton label="Submit" onPress={saveRecommendation} loading={recoSaving} />
+                    <OutlineButton label={tx("Cancel", "Ghairi")} onPress={() => setShowRecoForm(false)} color={C.slate} />
+                    <PrimaryButton label={tx("Submit", "Wasilisha")} onPress={saveRecommendation} loading={recoSaving} />
                   </View>
                 </View>
               )}
@@ -566,31 +800,31 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
           {isHirer && recoDone && (
             <Section style={st.doneBanner}>
               <AppIcon name="check-circle" size={20} color={C.teal} />
-              <Text style={st.doneTxt}>Recommendation submitted ✓</Text>
+              <Text style={st.doneTxt}>{tx("Recommendation submitted ✓", "Pendekezo limewasilishwa ✓")}</Text>
             </Section>
           )}
 
           {/* ── PROVIDER: What they see ── */}
           {isProvider && (
             <Section>
-              <SectionHeading label="Reputation status" />
+              <SectionHeading label={tx("Reputation status", "Hali ya Sifa")} />
               {!hasRating ? (
                 <View style={st.waitRow}>
                   <AppIcon name="clock" size={16} color={C.slate} />
-                  <Text style={st.waitTxt}>Waiting for employer rating…</Text>
+                  <Text style={st.waitTxt}>{tx("Waiting for employer rating…", "Inasubiri kipimo cha mwajiri…")}</Text>
                 </View>
               ) : (
                 <View style={st.waitRow}>
                   <AppIcon name="star" size={16} color={C.amber} filled />
                   <Text style={[st.waitTxt, { color: theme.colors.text, fontWeight: "700" }]}>
-                    You received a rating: {job?.rating?.score ?? "—"}/5
+                    {tx(`You received a rating: ${job?.rating?.score ?? "—"}/5`, `Umepokea kipimo: ${job?.rating?.score ?? "—"}/5`)}
                   </Text>
                 </View>
               )}
               {hasRecommend && (
                 <View style={[st.waitRow, { marginTop: 8 }]}>
                   <AppIcon name="thumbs-up" size={16} color={C.teal} />
-                  <Text style={[st.waitTxt, { color: C.teal, fontWeight: "700" }]}>You received a recommendation.</Text>
+                  <Text style={[st.waitTxt, { color: C.teal, fontWeight: "700" }]}>{tx("You received a recommendation.", "Umepokea pendekezo.")}</Text>
                 </View>
               )}
             </Section>
@@ -601,18 +835,18 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
       {/* ── Provider dispute (post-completion only) ── */}
       {isProvider && isComplete && !job?.dispute_created_at && (
         <Section>
-          <SectionHeading label="Report an issue" />
-          <Text style={st.hint}>Use this only if the confirmed start or completion details are unfair or incorrect.</Text>
+          <SectionHeading label={tx("Report an issue", "Ripoti Tatizo")} />
+          <Text style={st.hint}>{tx("Use this only if the confirmed start or completion details are unfair or incorrect.", "Tumia hii tu ikiwa maelezo ya kuanza au kukamilika ni yasiyo sahihi.")}</Text>
           <TextInput
             style={[st.textarea, { marginTop: 10 }]}
-            placeholder="Explain what happened…"
+            placeholder={tx("Explain what happened…", "Eleza kilichotokea…")}
             placeholderTextColor={C.slate}
             value={disputeNote}
             onChangeText={setDisputeNote}
             multiline
           />
           <View style={{ marginTop: 10 }}>
-            <OutlineButton label="Report Issue" onPress={reportDispute} loading={disputing} color={C.red} />
+            <OutlineButton label={tx("Report Issue", "Ripoti Tatizo")} onPress={reportDispute} loading={disputing} color={C.red} />
           </View>
         </Section>
       )}
@@ -621,25 +855,56 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
       {isClosed && (
         <Section style={st.completedBanner}>
           <AppIcon name="lock" size={22} color={C.slate} />
-          <Text style={[st.completedTitle, { color: C.slate }]}>Workspace Closed</Text>
-          <Text style={[st.completedSub, { color: C.slate }]}>The Job has been archived. Data is now on your profile.</Text>
+          <Text style={[st.completedTitle, { color: C.slate }]}>{tx("Workspace Closed", "Eneo la Kazi Limefungwa")}</Text>
+          <Text style={[st.completedSub, { color: C.slate }]}>{tx("The Job has been archived. Data is now on your profile.", "Kazi imehifadhiwa. Data sasa ipo kwenye wasifu wako.")}</Text>
         </Section>
       )}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 // ─── Small sub-components ─────────────────────────────────────────────────────
-function LogRow({ title, note, time }) {
+function ActivityRow({ entry, tx }) {
   const { theme } = useAppTheme();
   const st = useMemo(() => createStyles(theme), [theme]);
+  const { title, body } = describeActivity(entry, tx);
+  const actorLabel = entry?.actor?.full_name || entry?.actor?.username || entry?.actor_name;
   return (
     <View style={st.logRow}>
       <View style={st.logDot} />
       <View style={{ flex: 1 }}>
         <Text style={st.logTitle}>{title}</Text>
-        {!!note && <Text style={st.logNote}>{note}</Text>}
-        {!!time && <Text style={st.logTime}>{time}</Text>}
+        {!!actorLabel && <Text style={st.logActor}>{actorLabel}</Text>}
+        {!!body && <Text style={st.logNote}>{body}</Text>}
+        {!!entry?.created_at && <Text style={st.logTime}>{formatLogTime(entry.created_at)}</Text>}
+      </View>
+    </View>
+  );
+}
+
+const SUBMISSION_STATUS_LABEL = {
+  submitted: { en: "Awaiting review", sw: "Inasubiri mapitio", color: C.amber },
+  accepted: { en: "Accepted", sw: "Imekubaliwa", color: C.green },
+  revision_requested: { en: "Revision requested", sw: "Marekebisho yameombwa", color: C.red },
+};
+
+function SubmissionRow({ submission, tx }) {
+  const { theme } = useAppTheme();
+  const st = useMemo(() => createStyles(theme), [theme]);
+  const cfg = SUBMISSION_STATUS_LABEL[submission.status] || SUBMISSION_STATUS_LABEL.submitted;
+  return (
+    <View style={st.submissionRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={st.submissionTitle}>{tx(`Attempt #${submission.attempt_number}`, `Jaribio #${submission.attempt_number}`)}</Text>
+        {!!submission.note && <Text style={st.logNote}>{submission.note}</Text>}
+        {submission.status === "revision_requested" && !!submission.review_note && (
+          <Text style={[st.logNote, { color: C.red, fontWeight: "600", marginTop: 4 }]}>{submission.review_note}</Text>
+        )}
+        {!!submission.submitted_at && <Text style={st.logTime}>{formatLogTime(submission.submitted_at)}</Text>}
+      </View>
+      <View style={[st.submissionBadge, { borderColor: cfg.color }]}>
+        <Text style={[st.submissionBadgeTxt, { color: cfg.color }]}>{tx(cfg.en, cfg.sw)}</Text>
       </View>
     </View>
   );
@@ -684,7 +949,7 @@ function ToggleChip({ label, active, onPress }) {
   );
 }
 
-// ─── Styles (refined pipeline and modern look) ───────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────
 const createStyles = (theme) => StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingBottom: 100 },
   section: {
@@ -694,26 +959,23 @@ const createStyles = (theme) => StyleSheet.create({
     gap: 12,
   },
 
-  // Pipeline card
+  // Pipeline card (the pipeline itself is rendered by AnimatedJobPipeline)
   pipelineCard: { gap: 16, paddingTop: 14 },
-  pipeline: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
-  pipeStep: { alignItems: "center", gap: 6, flex: 1 },
-  pipeCircle: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: theme.colors.surfaceSoft,
-    alignItems: "center", justifyContent: "center",
+
+  // Revision flag
+  revisionFlag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  pipeCircleDone: { backgroundColor: theme.colors.primary },
-  pipeCircleCurrent: {
-    backgroundColor: theme.colors.primary,
-    shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4, shadowRadius: 6, elevation: 4,
-  },
-  pipeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.border },
-  pipeLabel: { fontSize: 10, fontWeight: "600", color: theme.colors.textMuted, textAlign: "center" },
-  pipeLabelDone: { color: theme.colors.primary, fontWeight: "700" },
-  pipeLine: { flex: 1, height: 2, backgroundColor: theme.colors.surfaceSoft, marginBottom: 18 },
-  pipeLineDone: { backgroundColor: theme.colors.primary },
+  revisionFlagTxt: { fontSize: 12, fontWeight: "700", color: C.red, flex: 1 },
+
+  revisionNoteBox: { backgroundColor: "#FEF2F2" },
+  revisionNoteTxt: { fontSize: 14, color: "#991B1B", lineHeight: 20, fontWeight: "600" },
 
   // Reputation checklist
   checkList: { borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 12, gap: 8 },
@@ -724,8 +986,34 @@ const createStyles = (theme) => StyleSheet.create({
   logRow:   { flexDirection: "row", gap: 12, alignItems: "flex-start" },
   logDot:   { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.primary, marginTop: 5 },
   logTitle: { fontSize: 14, fontWeight: "700", color: theme.colors.text },
+  logActor: { fontSize: 12, color: theme.colors.textMuted, marginTop: 1, fontStyle: "italic" },
   logNote:  { fontSize: 13, color: theme.colors.textMuted, lineHeight: 19, marginTop: 2 },
   logTime:  { fontSize: 11, color: theme.colors.textMuted, marginTop: 4 },
+
+  // Submission history
+  submissionRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  submissionTitle: { fontSize: 13, fontWeight: "800", color: theme.colors.text },
+  submissionBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
+  submissionBadgeTxt: { fontSize: 10, fontWeight: "800" },
+  attemptTag: { fontSize: 11, fontWeight: "700", color: theme.colors.textMuted, marginTop: 6 },
+
+  // Media thumbnails
+  mediaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  mediaThumbWrap: { position: "relative" },
+  mediaThumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: theme.colors.surfaceSoft },
+  mediaThumbVideo: { alignItems: "center", justifyContent: "center", backgroundColor: "#0F172A" },
+  mediaRemove: {
+    position: "absolute", top: -6, right: -6,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: "#0F172A", alignItems: "center", justifyContent: "center",
+  },
 
   // Forms
   hint: { fontSize: 13, color: theme.colors.textMuted, lineHeight: 20 },

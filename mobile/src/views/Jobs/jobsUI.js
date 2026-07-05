@@ -7,6 +7,9 @@ import AppIcon from "../../icons/AppIcon";
 import { useAppTheme } from "../../theme";
 import { useLanguage } from "../../LanguageContext";
 
+// Legacy static tokens — kept for screens that haven't been migrated to
+// theme-aware colors yet. Prefer theme.colors.* (see theme/theme.js) for
+// anything that needs to look correct in both light and dark mode.
 export const C = {
   teal:"#0B6B63", tealLight:"#E8F5F4", tealMid:"#D0EDEB",
   amber:"#F59E0B", amberLight:"#FEF3C7",
@@ -18,38 +21,60 @@ export const C = {
   white:"#FFFFFF", bg:"#F7F9FB",
 };
 
+// Status → design token. The actual color/background is resolved against
+// the active theme at render time so badges adapt to light/dark mode
+// instead of keeping a fixed light-mode pastel background.
 const STATUS_MAP = {
-  open:{label:"Open",sw:"Wazi",color:"#0B6B63",bg:"#E8F5F4"},
-  posted:{label:"Posted",sw:"Imechapishwa",color:"#0B6B63",bg:"#E8F5F4"},
-  applied:{label:"Applied",sw:"Umeomba",color:"#2563EB",bg:"#DBEAFE"},
-  applications:{label:"Applications",sw:"Maombi",color:"#2563EB",bg:"#DBEAFE"},
-  assigned:{label:"Assigned",sw:"Imepangiwa",color:"#0B6B63",bg:"#E8F5F4"},
-  waiting_approval:{label:"Pending",sw:"Inasubiri",color:"#F59E0B",bg:"#FEF3C7"},
-  requested:{label:"Requested",sw:"Imeombwa",color:"#F59E0B",bg:"#FEF3C7"},
-  in_progress:{label:"In Progress",sw:"Inaendelea",color:"#EA580C",bg:"#FFEDD5"},
-  active:{label:"Active",sw:"Inaendelea",color:"#EA580C",bg:"#FFEDD5"},
-  start_pending:{label:"Start Requested",sw:"Kuanza kumeombwa",color:"#F59E0B",bg:"#FEF3C7"},
-  working:{label:"Working",sw:"Inafanyiwa kazi",color:"#EA580C",bg:"#FFEDD5"},
-  completion_pending:{label:"Completion Requested",sw:"Kukamilisha kumeombwa",color:"#F59E0B",bg:"#FEF3C7"},
-  completed:{label:"Completed",sw:"Imekamilika",color:"#16A34A",bg:"#DCFCE7"},
-  filled:{label:"Filled",sw:"Imejazwa",color:"#16A34A",bg:"#DCFCE7"},
-  closed:{label:"Closed",sw:"Imefungwa",color:"#64748B",bg:"#F1F5F9"},
-  not_attained:{label:"Not Attained",sw:"Hukupata",color:"#DC2626",bg:"#FEE2E2"},
-  approved:{label:"Approved",sw:"Imekubaliwa",color:"#16A34A",bg:"#DCFCE7"},
-  cancelled:{label:"Cancelled",sw:"Imeghairiwa",color:"#DC2626",bg:"#FEE2E2"},
-  declined:{label:"Declined",sw:"Imekataliwa",color:"#DC2626",bg:"#FEE2E2"},
+  open:{label:"Open",sw:"Wazi",token:"primary"},
+  posted:{label:"Posted",sw:"Imechapishwa",token:"primary"},
+  applied:{label:"Applied",sw:"Umeomba",token:"accent"},
+  applications:{label:"Applications",sw:"Maombi",token:"accent"},
+  assigned:{label:"Assigned",sw:"Imepangiwa",token:"primary"},
+  waiting_approval:{label:"Pending",sw:"Inasubiri",token:"warning"},
+  requested:{label:"Requested",sw:"Imeombwa",token:"warning"},
+  in_progress:{label:"In Progress",sw:"Inaendelea",token:"orange"},
+  active:{label:"Active",sw:"Inaendelea",token:"orange"},
+  start_pending:{label:"Start Requested",sw:"Kuanza kumeombwa",token:"warning"},
+  start_requested:{label:"Start Requested",sw:"Kuanza kumeombwa",token:"warning"},
+  working:{label:"Working",sw:"Inafanyiwa kazi",token:"orange"},
+  submitted:{label:"Submitted",sw:"Imewasilishwa",token:"accent"},
+  revision_requested:{label:"Revision Requested",sw:"Marekebisho Yameombwa",token:"danger"},
+  completion_pending:{label:"Completion Requested",sw:"Kukamilisha kumeombwa",token:"warning"},
+  completed:{label:"Completed",sw:"Imekamilika",token:"success"},
+  filled:{label:"Filled",sw:"Imejazwa",token:"success"},
+  closed:{label:"Closed",sw:"Imefungwa",token:"muted"},
+  not_attained:{label:"Not Attained",sw:"Hukupata",token:"danger"},
+  approved:{label:"Approved",sw:"Imekubaliwa",token:"success"},
+  cancelled:{label:"Cancelled",sw:"Imeghairiwa",token:"danger"},
+  declined:{label:"Declined",sw:"Imekataliwa",token:"danger"},
 };
 
 export function statusConfig(key) {
   return STATUS_MAP[String(key||"open").replace(/ /g,"_").toLowerCase()]
-    ||{label:String(key||"Open"),color:"#0B6B63",bg:"#E8F5F4"};
+    ||{label:String(key||"Open"),token:"primary"};
+}
+
+// Resolves a design token to an actual {color,bg} pair for the active theme.
+export function tokenColors(theme, token){
+  switch(token){
+    case "accent": return { color: theme.colors.accent, bg: theme.colors.accentSoft };
+    case "warning": return { color: theme.colors.warning, bg: theme.colors.warningSoft };
+    case "orange": return { color: theme.colors.orange, bg: theme.colors.orangeSoft };
+    case "success": return { color: theme.colors.success, bg: theme.colors.successSoft };
+    case "danger": return { color: theme.colors.danger, bg: theme.colors.dangerSoft };
+    case "muted": return { color: theme.colors.textMuted, bg: theme.colors.surfaceSoft };
+    case "primary":
+    default: return { color: theme.colors.primaryStrong, bg: theme.colors.primarySoft };
+  }
 }
 
 export function StatusBadge({status,size="md"}){
   const {language}=useLanguage();
-  const c=statusConfig(status);const sm=size==="sm";
-  return(<View style={[{paddingHorizontal:sm?7:10,paddingVertical:sm?2:4,borderRadius:20,backgroundColor:c.bg}]}>
-    <Text style={{fontSize:sm?10:12,fontWeight:"700",color:c.color}}>{language==="sw"?(c.sw||c.label):c.label}</Text>
+  const {theme}=useAppTheme();
+  const cfg=statusConfig(status);const sm=size==="sm";
+  const {color,bg}=tokenColors(theme,cfg.token);
+  return(<View style={[{paddingHorizontal:sm?7:10,paddingVertical:sm?2:4,borderRadius:20,backgroundColor:bg}]}>
+    <Text style={{fontSize:sm?10:12,fontWeight:"700",color:color}}>{language==="sw"?(cfg.sw||cfg.label):cfg.label}</Text>
   </View>);
 }
 
@@ -82,11 +107,11 @@ export function OutlineButton({label,onPress,disabled,icon,color}){
 export function NavHeader({title,onBack,right}){
   const {theme}=useAppTheme();
   return(
-    <View style={{minHeight:50,flexDirection:"row",alignItems:"center",paddingHorizontal:14,paddingVertical:7,backgroundColor:theme.colors.surface,borderBottomWidth:1,borderBottomColor:theme.colors.border,gap:10}}>
+    <View style={{minHeight:52,flexDirection:"row",alignItems:"center",paddingHorizontal:14,paddingVertical:7,backgroundColor:theme.colors.surface,borderBottomWidth:1,borderBottomColor:theme.colors.border,gap:10,shadowColor:"#000",shadowOffset:{width:0,height:2},shadowOpacity:0.06,shadowRadius:5,elevation:3,zIndex:5}}>
       <TouchableOpacity style={{width:34,height:34,borderRadius:17,backgroundColor:theme.colors.surfaceSoft,alignItems:"center",justifyContent:"center"}} onPress={onBack} activeOpacity={0.7}>
         <AppIcon name="arrowLeft" size={18} color={theme.colors.text}/>
       </TouchableOpacity>
-      <Text style={{flex:1,fontSize:17,fontWeight:"900",color:theme.colors.text}} numberOfLines={1}>{title}</Text>
+      <Text style={{flex:1,fontSize:18,fontWeight:"900",color:theme.colors.text,letterSpacing:0.2}} numberOfLines={1}>{title}</Text>
       <View style={{minWidth:34}}>{right||null}</View>
     </View>
   );

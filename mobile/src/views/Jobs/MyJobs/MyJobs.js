@@ -12,7 +12,7 @@ import CreateJobModal from "./CreateJobModal";
 import { UploadManager } from "../../../utils/UploadManager";
 import { formatRelativeDate, formatJobDate } from "../jobDate";
 import HiringNoticeModal from "../HiringNoticeModal";
-import { C, StatusBadge } from "../jobsUI";
+import { StatusBadge } from "../jobsUI";
 import { cachedGet } from "../../../utils/offlineCache";
 import { isNetworkError } from "../../../utils/network";
 import CachedDataNotice from "../../../components/CachedDataNotice";
@@ -134,31 +134,31 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
   };
 
   const listEmpty=()=>{
-    if(loading)return<View style={s.center}><ActivityIndicator color={C.teal} size="large"/></View>;
+    if(loading)return<View style={s.center}><ActivityIndicator color={theme.colors.primary} size="large"/></View>;
     if(needsLogin)return(
       <View style={s.center}>
-        <View style={s.emptyIcon}><AppIcon name="lock" size={28} color={C.teal}/></View>
+        <View style={s.emptyIcon}><AppIcon name="lock" size={28} color={theme.colors.primary}/></View>
         <Text style={s.emptyTitle}>{t.loginTitle}</Text>
         <Text style={s.emptyBody}>{t.loginBody}</Text>
         <TouchableOpacity style={s.primaryBtn} onPress={()=>setShowLogin(true)}>
-          <AppIcon name="login" size={17} color={C.white}/><Text style={s.primaryTxt}>{t.loginAction}</Text>
+          <AppIcon name="login" size={17} color={theme.colors.onPrimary}/><Text style={s.primaryTxt}>{t.loginAction}</Text>
         </TouchableOpacity>
       </View>
     );
     if(error)return(
       <View style={s.center}>
-        <View style={[s.emptyIcon,{backgroundColor:C.redLight}]}><AppIcon name="warning" size={28} color={C.red}/></View>
+        <View style={[s.emptyIcon,{backgroundColor:theme.colors.dangerSoft}]}><AppIcon name="warning" size={28} color={theme.colors.danger}/></View>
         <Text style={s.emptyTitle}>{error}</Text>
         <TouchableOpacity style={s.outlineBtn} onPress={()=>load()}><Text style={s.outlineTxt}>{t.retry}</Text></TouchableOpacity>
       </View>
     );
     return(
       <View style={s.center}>
-        <View style={s.emptyIcon}><AppIcon name="briefcase" size={28} color={C.teal}/></View>
+        <View style={s.emptyIcon}><AppIcon name="briefcase" size={28} color={theme.colors.primary}/></View>
         <Text style={s.emptyTitle}>{t.emptyTitle}</Text>
         <Text style={s.emptyBody}>{t.emptyBody}</Text>
         <TouchableOpacity style={s.primaryBtn} onPress={openPost}>
-          <AppIcon name="plus" size={17} color={C.white}/><Text style={s.primaryTxt}>{t.postJob}</Text>
+          <AppIcon name="plus" size={17} color={theme.colors.onPrimary}/><Text style={s.primaryTxt}>{t.postJob}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -173,7 +173,7 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
             <Text style={s.headerSub}>{t.subtitle}</Text>
           </View>
           <TouchableOpacity style={s.fab} onPress={openPost}>
-            <AppIcon name="plus" size={20} color={C.white}/>
+            <AppIcon name="plus" size={20} color={theme.colors.onPrimary}/>
           </TouchableOpacity>
         </View>
       )}
@@ -182,7 +182,7 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
         data={jobs} keyExtractor={i=>String(i.id)} renderItem={renderItem}
         contentContainerStyle={[s.list,!jobs.length&&{flexGrow:1}]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} tintColor={C.teal} onRefresh={()=>load({refresh:true})}/>}
+        refreshControl={<RefreshControl refreshing={refreshing} tintColor={theme.colors.primary} onRefresh={()=>load({refresh:true})}/>}
         ListEmptyComponent={listEmpty}
       />
       <LoginModal visible={showLogin} onClose={()=>setShowLogin(false)} onSuccess={async()=>{setShowLogin(false);await refreshSession();load();}}/>
@@ -227,12 +227,12 @@ const createStyles=(theme)=>StyleSheet.create({
   metaSm:{color:theme.colors.textMuted,fontSize:10.5},
   cardFooter:{flexDirection:"row",alignItems:"center",gap:5},
   applicantPill:{marginLeft:"auto",backgroundColor:theme.colors.accentSoft,paddingHorizontal:7,paddingVertical:2,borderRadius:7},
-  applicantTxt:{color:C.blue,fontSize:11,fontWeight:"700"},
-  emptyIcon:{width:72,height:72,borderRadius:22,backgroundColor:C.tealLight,alignItems:"center",justifyContent:"center"},
+  applicantTxt:{color:theme.colors.accent,fontSize:11,fontWeight:"700"},
+  emptyIcon:{width:72,height:72,borderRadius:22,backgroundColor:theme.colors.primarySoft,alignItems:"center",justifyContent:"center"},
   emptyTitle:{fontSize:18,fontWeight:"800",color:theme.colors.text,textAlign:"center"},
   emptyBody:{fontSize:14,color:theme.colors.textMuted,textAlign:"center",lineHeight:21},
   primaryBtn:{flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:24,paddingVertical:13,backgroundColor:theme.colors.primary,borderRadius:12,shadowColor:theme.colors.primary,shadowOffset:{width:0,height:4},shadowOpacity:0.25,shadowRadius:8,elevation:4},
-  primaryTxt:{color:C.white,fontWeight:"800",fontSize:15},
+  primaryTxt:{color:theme.colors.onPrimary,fontWeight:"800",fontSize:15},
   outlineBtn:{paddingHorizontal:24,paddingVertical:12,borderRadius:12,borderWidth:1.5,borderColor:theme.colors.border},
   outlineTxt:{color:theme.colors.text,fontWeight:"700"},
 });

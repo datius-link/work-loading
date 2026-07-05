@@ -201,6 +201,25 @@ export default function JobWorkspace() {
     }
   };
 
+  // Resend a message that failed to send. The local media (if any) is still
+  // sitting on the optimistic message with its original device uri and
+  // dimensions, so we just remove the failed entry and run it back through
+  // sendMessage exactly like a fresh send.
+  const retryMessage = async (failedItem) => {
+    if (!failedItem?.id) return;
+    setPendingMessages((prev) => prev.filter((item) => item.id !== failedItem.id));
+    const mediaAssets = (Array.isArray(failedItem.media) ? failedItem.media : []).map((m) => ({
+      uri: m.url,
+      type: m.type,
+      width: m.width,
+      height: m.height,
+      duration: m.duration,
+      fileName: m.name,
+      mimeType: m.mimeType,
+    }));
+    await sendMessage({ text: failedItem.message || "", mediaAssets });
+  };
+
   // States
   if (loading) {
     return (
@@ -245,6 +264,7 @@ export default function JobWorkspace() {
             myUuid={myUuid}
             sending={sending}
             onSend={sendMessage}
+            onRetry={retryMessage}
           />
         )}
         {tab === "progress" && (

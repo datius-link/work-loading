@@ -1,10 +1,10 @@
 import crypto from "crypto";
 import db from "../db/index.js";
-import { insertNotification, notificationAllowed } from "../notifications/notificationSettings.js";
+import { insertNotification } from "../notifications/notificationSettings.js";
 
 const ACTIVE_STATUSES = ["open", "applied"];
 const DIRECT_HIRE_STATUSES = ["pending"];
-const CONTACT_VISIBLE_STATUSES = ["closed", "filled", "completed", "active", "start_pending", "started", "working", "submitted", "completion_pending"];
+const CONTACT_VISIBLE_STATUSES = ["closed", "filled", "completed", "active", "start_pending", "start_requested", "started", "working", "submitted", "revision_requested", "completion_pending", "disputed"];
 let jobsColumnSet = null;
 let jobMessagesColumnSet = null;
 
@@ -138,6 +138,7 @@ function serializeJob(row) {
     start_confirmed_by_boss_at: row.start_confirmed_by_boss_at || null,
     completed_at: row.completed_at || null,
     completed_by_uuid: row.completed_by_uuid || null,
+    recommendation_decided_at: row.recommendation_decided_at || null,
     provider_suggested_completed_at: row.provider_suggested_completed_at || null,
     provider_completion_note: row.provider_completion_note || "",
     completion_confirmed_by_boss_at: row.completion_confirmed_by_boss_at || null,
@@ -279,7 +280,22 @@ async function addNotification(trx, profile_uuid, type, body, job, meta = {}, sy
     title: title || notificationJobTitle(job),
     body,
     job_id: job?.id || null,
-    meta: db.raw("?::jsonb", [JSON.stringify(meta)]),
+    meta,
+  });
+}
+
+// Every lifecycle transition (old or new flow) writes one row here, so the
+// Progress screen can render a single, chronological "job journal" instead
+// of piecing history back together from individual job columns.
+async function logActivity(trx, { jobId, actorUuid, action, fromStatus, toStatus, note, meta = {} }) {
+  await trx("job_activity_logs").insert({
+    job_id: jobId,
+    actor_uuid: actorUuid || null,
+    action,
+    from_status: fromStatus || null,
+    to_status: toStatus || null,
+    note: note || null,
+    meta: db.raw("?::jsonb", [JSON.stringify(meta || {})]),
   });
 }
 
@@ -334,22 +350,20 @@ export async function createJob(req, res) {
       .select("uuid");
 
     if (providers.length) {
-      const allowedProviders = [];
       for (const provider of providers) {
-        if (await notificationAllowed(provider.uuid, "new_relevant_job", "hiring")) allowedProviders.push(provider);
-      }
-      if (allowedProviders.length) {
-        await db("notifications").insert(
-          allowedProviders.map((provider) => ({
+        try {
+          await insertNotification(db, {
             profile_uuid: provider.uuid,
             system: "hiring",
             type: "new_relevant_job",
             title: notificationJobTitle(job),
             body: `You received a relevant job ${job.job_code}, ${job.title}. Open to view and apply.`,
             job_id: job.id,
-            meta: db.raw("?::jsonb", [JSON.stringify({ job_code: job.job_code, action: "open_job_post" })]),
-          }))
-        );
+            meta: { job_code: job.job_code, action: "open_job_post" },
+          });
+        } catch (notificationErr) {
+          console.error("createJob relevant-provider notification error:", notificationErr);
+        }
       }
     }
 
@@ -361,7 +375,7 @@ export async function createJob(req, res) {
         title: notificationJobTitle(job),
         body: `Your job ${job.job_code}, ${job.title}, has been posted. Applications will appear in My Jobs.`,
         job_id: job.id,
-        meta: db.raw("?::jsonb", [JSON.stringify({ job_code: job.job_code, action: "open_job_post" })]),
+        meta: { job_code: job.job_code, action: "open_job_post" },
       });
     } catch (notificationErr) {
       console.error("createJob light-user notification error:", notificationErr);
@@ -647,7 +661,7 @@ async function workspaceJob(jobIdOrCode, me) {
   }
 
   row.contact_details = await assignedJobContactDetails(row, me);
-  const reputation = await reputationForJob(row.id, row.assigned_provider_uuid, row.created_by);
+  const reputation = await reputationForJob(row.id, row.assigned_provider_uuid, row.created_by, row);
   return { row, job: { ...serializeJob(row), ...reputation }, role: isHirer ? "hirer" : "provider" };
 }
 
@@ -711,7 +725,7 @@ async function listMessagesForJob(jobId, viewerUuid = null) {
   }));
 }
 
-async function reputationForJob(jobId, providerUuid, raterUuid) {
+async function reputationForJob(jobId, providerUuid, raterUuid, job = null) {
   if (!jobId || !providerUuid || !raterUuid) return {};
   const [hasRatingsTable, hasRecommendationsTable] = await Promise.all([
     db.schema.hasTable("job_ratings"),
@@ -746,7 +760,7 @@ async function reputationForJob(jobId, providerUuid, raterUuid) {
           created_at: recommendation.created_at,
         }
       : null,
-    recommendation_submitted_at: recommendation?.created_at || null,
+    recommendation_submitted_at: recommendation?.created_at || job?.recommendation_decided_at || null,
   };
 }
 
@@ -815,8 +829,17 @@ export async function sendJobMessage(req, res) {
 
     const recipientUuid = result.role === "hirer" ? result.row.assigned_provider_uuid : result.row.created_by;
     if (recipientUuid) {
+      const senderProfile = await db("profiles").where({ uuid: me.uuid }).select("username", "full_name").first();
       await db.transaction(async (trx) => {
-        await addNotification(trx, recipientUuid, "job_message", `New message on job ${result.row.job_code}.`, result.row, { actor_uuid: me.uuid, message_id: created.id, action: "open_workspace" });
+        await addNotification(trx, recipientUuid, "job_message", `New message on job ${result.row.job_code}.`, result.row, {
+          actor_uuid: me.uuid,
+          message_id: created.id,
+          action: "open_workspace",
+          sender_name: senderProfile?.full_name || senderProfile?.username || null,
+          // Kept short: this is only used to build the OS push preview text
+          // (see pushService.js), never stored as the canonical message body.
+          message_preview: message ? message.slice(0, 120) : (media.length ? "Sent an attachment" : ""),
+        });
       });
     }
 
@@ -838,15 +861,17 @@ export async function suggestJobStart(req, res) {
     if (!["active"].includes(String(result.row.status))) return res.status(409).json({ message: "This job is not ready to start" });
     const suggestedAt = parseDateInput(req.body?.started_at || req.body?.start_at || req.body?.date);
     if (!suggestedAt) return res.status(400).json({ message: "Valid start date/time required" });
-    const [updated] = await db("jobs").where({ id: result.row.id }).update({
+    const [updated] = await db("jobs").where({ id: result.row.id, status: "active" }).update({
       status: "start_pending",
       provider_suggested_start_at: suggestedAt,
       provider_start_note: closeoutNote(req, "provider_start_note"),
       started_requested_at: db.fn.now(),
       updated_at: db.fn.now(),
     }).returning("*");
+    if (!updated) return res.status(409).json({ message: "This job is not ready to start" });
     updated.contact_details = await assignedJobContactDetails(updated, me);
     await db.transaction(async (trx) => {
+      await logActivity(trx, { jobId: updated.id, actorUuid: me.uuid, action: "start_requested", fromStatus: "active", toStatus: "start_pending" });
       await addNotification(trx, result.row.created_by, "job_start_requested", `Start time was submitted for job ${result.row.job_code}. Confirm it to mark the job as working.`, updated, { actor_uuid: me.uuid, action: "confirm_start" });
     });
     return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
@@ -863,19 +888,29 @@ export async function confirmJobStart(req, res) {
     const result = await workspaceJob(routeJobId(req), me);
     if (result.error) return res.status(result.error.status).json({ message: result.error.message });
     if (result.role !== "hirer") return res.status(403).json({ message: "Only the hirer can confirm start time" });
-    if (!["active", "start_pending"].includes(String(result.row.status))) return res.status(409).json({ message: "This job cannot be started from this state" });
+    // "active"/"start_pending" are the legacy start-suggest flow; "start_requested"
+    // is the new provider-requests-start flow (see requestJobStart). Both land here.
+    const fromStatus = String(result.row.status);
+    if (!["active", "start_pending", "start_requested"].includes(fromStatus)) {
+      return res.status(409).json({ message: "This job cannot be started from this state" });
+    }
     const officialAt = parseDateInput(req.body?.started_at || req.body?.start_at || req.body?.date || result.row.provider_suggested_start_at);
     if (!officialAt) return res.status(400).json({ message: "Valid start date/time required" });
-    const [updated] = await db("jobs").where({ id: result.row.id }).update({
-      status: "working",
-      started_at: officialAt,
-      started_by_uuid: me.uuid,
-      started_confirmed_at: db.fn.now(),
-      start_confirmed_by_boss_at: db.fn.now(),
-      updated_at: db.fn.now(),
-    }).returning("*");
+    const [updated] = await db("jobs")
+      .where({ id: result.row.id, status: fromStatus })
+      .update({
+        status: "working",
+        started_at: officialAt,
+        started_by_uuid: me.uuid,
+        started_confirmed_at: db.fn.now(),
+        start_confirmed_by_boss_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      })
+      .returning("*");
+    if (!updated) return res.status(409).json({ message: "This job was already updated" });
     updated.contact_details = await assignedJobContactDetails(updated, me);
     await db.transaction(async (trx) => {
+      await logActivity(trx, { jobId: updated.id, actorUuid: me.uuid, action: "start_confirmed", fromStatus, toStatus: "working" });
       await addNotification(trx, result.row.assigned_provider_uuid, "job_start_confirmed", `Job ${result.row.job_code} is now marked as working.`, updated, { actor_uuid: me.uuid, action: "open_workspace" });
     });
     return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
@@ -895,15 +930,17 @@ export async function suggestJobCompletion(req, res) {
     if (!["working"].includes(String(result.row.status))) return res.status(409).json({ message: "This job cannot be submitted from this state" });
     const suggestedAt = parseDateInput(req.body?.completed_at || req.body?.completion_at || req.body?.date);
     if (!suggestedAt) return res.status(400).json({ message: "Valid completion date/time required" });
-    const [updated] = await db("jobs").where({ id: result.row.id }).update({
+    const [updated] = await db("jobs").where({ id: result.row.id, status: "working" }).update({
       status: "completion_pending",
       provider_suggested_completed_at: suggestedAt,
       provider_completion_note: closeoutNote(req, "provider_completion_note"),
       completion_requested_at: db.fn.now(),
       updated_at: db.fn.now(),
     }).returning("*");
+    if (!updated) return res.status(409).json({ message: "This job cannot be submitted from this state" });
     updated.contact_details = await assignedJobContactDetails(updated, me);
     await db.transaction(async (trx) => {
+      await logActivity(trx, { jobId: updated.id, actorUuid: me.uuid, action: "completion_requested", fromStatus: "working", toStatus: "completion_pending" });
       await addNotification(trx, result.row.created_by, "job_completion_requested", `Completion was submitted for job ${result.row.job_code}. Confirm it to close the job.`, updated, { actor_uuid: me.uuid, action: "confirm_completion" });
     });
     return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
@@ -920,24 +957,424 @@ export async function confirmJobCompletion(req, res) {
     const result = await workspaceJob(routeJobId(req), me);
     if (result.error) return res.status(result.error.status).json({ message: result.error.message });
     if (result.role !== "hirer") return res.status(403).json({ message: "Only the hirer can confirm completion" });
-    if (!["working", "completion_pending"].includes(String(result.row.status))) return res.status(409).json({ message: "This job cannot be completed from this state" });
+    const fromStatus = String(result.row.status);
+    if (!["working", "completion_pending"].includes(fromStatus)) return res.status(409).json({ message: "This job cannot be completed from this state" });
     const officialAt = parseDateInput(req.body?.completed_at || req.body?.completion_at || req.body?.date || result.row.provider_suggested_completed_at);
     if (!officialAt) return res.status(400).json({ message: "Valid completion date/time required" });
-    const [updated] = await db("jobs").where({ id: result.row.id }).update({
-      status: "completed",
-      completed_at: officialAt,
-      completed_by_uuid: me.uuid,
-      completion_confirmed_by_boss_at: db.fn.now(),
-      updated_at: db.fn.now(),
-    }).returning("*");
+    const [updated] = await db("jobs")
+      .where({ id: result.row.id, status: fromStatus })
+      .update({
+        status: "completed",
+        completed_at: officialAt,
+        completed_by_uuid: me.uuid,
+        completion_confirmed_by_boss_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      })
+      .returning("*");
+    if (!updated) return res.status(409).json({ message: "This job was already updated" });
     updated.contact_details = await assignedJobContactDetails(updated, me);
     await db.transaction(async (trx) => {
+      await logActivity(trx, { jobId: updated.id, actorUuid: me.uuid, action: "completion_confirmed", fromStatus, toStatus: "completed" });
       await addNotification(trx, result.row.assigned_provider_uuid, "job_completed", `Job ${result.row.job_code} has been confirmed complete.`, updated, { actor_uuid: me.uuid, action: "rate_or_view" });
     });
     return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
   } catch (err) {
     console.error("confirmJobCompletion error:", err);
     return res.status(500).json({ message: "Failed to confirm completion" });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// New lifecycle (v2): assigned(active) -> start_requested -> working ->
+// submitted -> completed, with a submitted -> revision_requested -> submitted
+// loop supporting multiple attempts. `start-confirm` above already accepts
+// "start_requested" as a valid source status, so requestJobStart + the
+// existing confirmJobStart together form the new start flow.
+// ─────────────────────────────────────────────────────────────────────────
+
+function toClientSubmission(row, extra = {}) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    job_id: row.job_id,
+    provider_uuid: row.provider_uuid,
+    attempt_number: row.attempt_number,
+    note: row.note || "",
+    media: Array.isArray(row.media) ? row.media : [],
+    status: row.status,
+    submitted_at: row.submitted_at,
+    reviewed_by_uuid: row.reviewed_by_uuid || null,
+    reviewed_at: row.reviewed_at || null,
+    review_note: row.review_note || "",
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    ...extra,
+  };
+}
+
+export async function requestJobStart(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "provider") return res.status(403).json({ message: "Only the hired provider can request start" });
+
+    const note = closeoutNote(req, "provider_start_note");
+    const [updated] = await db("jobs")
+      .where({ id: result.row.id, status: "active" })
+      .update({
+        status: "start_requested",
+        provider_start_note: note || result.row.provider_start_note || null,
+        started_requested_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      })
+      .returning("*");
+
+    if (!updated) return res.status(409).json({ message: "This job is not ready for a start request" });
+    updated.contact_details = await assignedJobContactDetails(updated, me);
+
+    await db.transaction(async (trx) => {
+      await logActivity(trx, {
+        jobId: updated.id,
+        actorUuid: me.uuid,
+        action: "start_requested",
+        fromStatus: "active",
+        toStatus: "start_requested",
+        note,
+      });
+      await addNotification(
+        trx,
+        result.row.created_by,
+        "job_start_requested",
+        `The provider is ready to start job ${updated.job_code}. Confirm to begin work.`,
+        updated,
+        { actor_uuid: me.uuid, action: "confirm_start" }
+      );
+    });
+
+    return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    console.error("requestJobStart error:", err);
+    return res.status(500).json({ message: "Failed to request start" });
+  }
+}
+
+export async function submitJobWork(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "provider") return res.status(403).json({ message: "Only the hired provider can submit work" });
+
+    const fromStatus = String(result.row.status);
+    if (!["working", "revision_requested"].includes(fromStatus)) {
+      return res.status(409).json({ message: "This job is not ready for submission" });
+    }
+
+    const note = String(req.body?.note || req.body?.message || "").trim();
+    const media = normalizeMessageMedia(req.body?.media || req.body?.attachments);
+    if (!note && !media.length) {
+      return res.status(400).json({ message: "Add a note or at least one file before submitting" });
+    }
+
+    let submission = null;
+    let updatedJob = null;
+
+    await db.transaction(async (trx) => {
+      const [updated] = await trx("jobs")
+        .where({ id: result.row.id, status: fromStatus })
+        .update({
+          status: "submitted",
+          provider_suggested_completed_at: db.fn.now(),
+          provider_completion_note: note || result.row.provider_completion_note || null,
+          completion_requested_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        })
+        .returning("*");
+
+      if (!updated) {
+        throw Object.assign(new Error("This job is not ready for submission"), { status: 409 });
+      }
+      updatedJob = updated;
+
+      const priorAttempts = await trx("job_submissions").where({ job_id: updated.id }).count("* as count").first();
+      const attemptNumber = Number(priorAttempts?.count || 0) + 1;
+
+      [submission] = await trx("job_submissions")
+        .insert({
+          job_id: updated.id,
+          provider_uuid: me.uuid,
+          attempt_number: attemptNumber,
+          note: note || null,
+          media: db.raw("?::jsonb", [JSON.stringify(media)]),
+          status: "submitted",
+          submitted_at: db.fn.now(),
+        })
+        .returning("*");
+
+      await logActivity(trx, {
+        jobId: updated.id,
+        actorUuid: me.uuid,
+        action: "work_submitted",
+        fromStatus,
+        toStatus: "submitted",
+        note,
+        meta: { attempt_number: attemptNumber, submission_id: submission.id },
+      });
+
+      await addNotification(
+        trx,
+        result.row.created_by,
+        "job_submitted",
+        `The provider submitted work for job ${updated.job_code} (attempt #${attemptNumber}). Review it to accept or request changes.`,
+        updated,
+        { actor_uuid: me.uuid, action: "open_workspace_progress", attempt_number: attemptNumber }
+      );
+    });
+
+    updatedJob.contact_details = await assignedJobContactDetails(updatedJob, me);
+    return res.status(201).json({
+      job: serializeJob({ ...updatedJob, applicant_count: result.row.applicant_count }),
+      submission: toClientSubmission(submission),
+    });
+  } catch (err) {
+    if (err?.status === 409) return res.status(409).json({ message: err.message });
+    console.error("submitJobWork error:", err);
+    return res.status(500).json({ message: "Failed to submit work" });
+  }
+}
+
+export async function acceptJobSubmission(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "hirer") return res.status(403).json({ message: "Only the hirer can accept submitted work" });
+    // "completion_pending" is the legacy complete-suggest flow's equivalent of
+    // "submitted" - accepted here too so old in-flight jobs aren't stranded.
+    const fromStatus = String(result.row.status);
+    if (!["submitted", "completion_pending"].includes(fromStatus)) {
+      return res.status(409).json({ message: "There is no pending submission to accept" });
+    }
+
+    let updatedJob = null;
+    let latestAttempt = null;
+    await db.transaction(async (trx) => {
+      const [updated] = await trx("jobs")
+        .where({ id: result.row.id, status: fromStatus })
+        .update({
+          status: "completed",
+          completed_at: db.fn.now(),
+          completed_by_uuid: me.uuid,
+          completion_confirmed_by_boss_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        })
+        .returning("*");
+
+      if (!updated) throw Object.assign(new Error("There is no pending submission to accept"), { status: 409 });
+      updatedJob = updated;
+
+      const latest = await trx("job_submissions").where({ job_id: updated.id }).orderBy("attempt_number", "desc").first();
+      latestAttempt = latest?.attempt_number || null;
+      if (latest) {
+        await trx("job_submissions").where({ id: latest.id }).update({
+          status: "accepted",
+          reviewed_by_uuid: me.uuid,
+          reviewed_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        });
+      }
+
+      await logActivity(trx, {
+        jobId: updated.id,
+        actorUuid: me.uuid,
+        action: "work_accepted",
+        fromStatus,
+        toStatus: "completed",
+        meta: { attempt_number: latestAttempt },
+      });
+
+      await addNotification(
+        trx,
+        result.row.assigned_provider_uuid,
+        "job_completed",
+        `Job ${updated.job_code} was accepted as complete. Ratings are now open.`,
+        updated,
+        { actor_uuid: me.uuid, action: "rate_or_view" }
+      );
+    });
+
+    updatedJob.contact_details = await assignedJobContactDetails(updatedJob, me);
+    return res.json({ job: serializeJob({ ...updatedJob, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    if (err?.status === 409) return res.status(409).json({ message: err.message });
+    console.error("acceptJobSubmission error:", err);
+    return res.status(500).json({ message: "Failed to accept submission" });
+  }
+}
+
+export async function requestJobRevision(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    if (result.role !== "hirer") return res.status(403).json({ message: "Only the hirer can request revisions" });
+    // "completion_pending" is the legacy complete-suggest flow's equivalent of
+    // "submitted" - accepted here too so old in-flight jobs aren't stranded.
+    const fromStatus = String(result.row.status);
+    if (!["submitted", "completion_pending"].includes(fromStatus)) {
+      return res.status(409).json({ message: "There is no pending submission to review" });
+    }
+
+    const reviewNote = String(req.body?.review_note || req.body?.note || req.body?.reason || "").trim();
+    if (reviewNote.length < 5) {
+      return res.status(400).json({ message: "Explain what needs to change (at least 5 characters)" });
+    }
+
+    let updatedJob = null;
+    let latestAttempt = null;
+    await db.transaction(async (trx) => {
+      const [updated] = await trx("jobs")
+        .where({ id: result.row.id, status: fromStatus })
+        .update({
+          status: "revision_requested",
+          provider_suggested_completed_at: null,
+          completion_requested_at: null,
+          updated_at: db.fn.now(),
+        })
+        .returning("*");
+
+      if (!updated) throw Object.assign(new Error("There is no pending submission to review"), { status: 409 });
+      updatedJob = updated;
+
+      const latest = await trx("job_submissions").where({ job_id: updated.id }).orderBy("attempt_number", "desc").first();
+      latestAttempt = latest?.attempt_number || null;
+      if (latest) {
+        await trx("job_submissions").where({ id: latest.id }).update({
+          status: "revision_requested",
+          reviewed_by_uuid: me.uuid,
+          reviewed_at: db.fn.now(),
+          review_note: reviewNote,
+          updated_at: db.fn.now(),
+        });
+      }
+
+      await logActivity(trx, {
+        jobId: updated.id,
+        actorUuid: me.uuid,
+        action: "revision_requested",
+        fromStatus,
+        toStatus: "revision_requested",
+        note: reviewNote,
+        meta: { attempt_number: latestAttempt },
+      });
+
+      await addNotification(
+        trx,
+        result.row.assigned_provider_uuid,
+        "job_revision_requested",
+        `The employer requested changes on job ${updated.job_code}${latestAttempt ? ` (attempt #${latestAttempt})` : ""}. ${reviewNote}`,
+        updated,
+        { actor_uuid: me.uuid, action: "open_workspace_progress", review_note: reviewNote }
+      );
+    });
+
+    updatedJob.contact_details = await assignedJobContactDetails(updatedJob, me);
+    return res.json({ job: serializeJob({ ...updatedJob, applicant_count: result.row.applicant_count }) });
+  } catch (err) {
+    if (err?.status === 409) return res.status(409).json({ message: err.message });
+    console.error("requestJobRevision error:", err);
+    return res.status(500).json({ message: "Failed to request revision" });
+  }
+}
+
+export async function listJobSubmissions(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+
+    const rows = await db("job_submissions as s")
+      .leftJoin("profiles as p", "p.uuid", "s.provider_uuid")
+      .leftJoin("profiles as r", "r.uuid", "s.reviewed_by_uuid")
+      .where("s.job_id", result.row.id)
+      .orderBy("s.attempt_number", "asc")
+      .select(
+        "s.*",
+        "p.username as provider_username",
+        "p.full_name as provider_full_name",
+        "p.profile_pic as provider_profile_pic",
+        "r.username as reviewer_username",
+        "r.full_name as reviewer_full_name"
+      );
+
+    const submissions = rows.map((row) =>
+      toClientSubmission(row, {
+        provider: {
+          uuid: row.provider_uuid,
+          username: row.provider_username || "",
+          full_name: row.provider_full_name || "",
+          profile_pic: row.provider_profile_pic || "",
+        },
+        reviewer: row.reviewed_by_uuid
+          ? { uuid: row.reviewed_by_uuid, username: row.reviewer_username || "", full_name: row.reviewer_full_name || "" }
+          : null,
+      })
+    );
+
+    return res.json({ submissions });
+  } catch (err) {
+    console.error("listJobSubmissions error:", err);
+    return res.status(500).json({ message: "Failed to load submissions" });
+  }
+}
+
+export async function listJobActivity(req, res) {
+  try {
+    const me = actor(req);
+    if (!me) return res.status(401).json({ message: "User account required" });
+    const result = await workspaceJob(routeJobId(req), me);
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+
+    const rows = await db("job_activity_logs as a")
+      .leftJoin("profiles as p", "p.uuid", "a.actor_uuid")
+      .where("a.job_id", result.row.id)
+      .orderBy("a.created_at", "asc")
+      .select(
+        "a.*",
+        "p.username as actor_username",
+        "p.full_name as actor_full_name",
+        "p.profile_pic as actor_profile_pic"
+      );
+
+    const activity = rows.map((row) => ({
+      id: row.id,
+      job_id: row.job_id,
+      action: row.action,
+      from_status: row.from_status,
+      to_status: row.to_status,
+      note: row.note || "",
+      meta: row.meta && typeof row.meta === "object" ? row.meta : {},
+      created_at: row.created_at,
+      actor: row.actor_uuid
+        ? {
+            uuid: row.actor_uuid,
+            username: row.actor_username || "",
+            full_name: row.actor_full_name || "",
+            profile_pic: row.actor_profile_pic || "",
+          }
+        : null,
+    }));
+
+    return res.json({ activity });
+  } catch (err) {
+    console.error("listJobActivity error:", err);
+    return res.status(500).json({ message: "Failed to load activity" });
   }
 }
 
@@ -973,10 +1410,19 @@ export async function disputeJobCloseout(req, res) {
     const [updated] = await db("jobs").where({ id: result.row.id }).update(updatePayload).returning("*");
     updated.contact_details = await assignedJobContactDetails(updated, me);
 
-    if (completionRejected && result.row.assigned_provider_uuid) {
-      const hirer = await db("profiles").where({ uuid: me.uuid }).first();
-      const hirerName = hirer?.full_name || hirer?.username || "The hirer";
-      await db.transaction(async (trx) => {
+    await db.transaction(async (trx) => {
+      await logActivity(trx, {
+        jobId: updated.id,
+        actorUuid: me.uuid,
+        action: completionRejected ? "completion_rejected" : "disputed",
+        fromStatus: result.row.status,
+        toStatus: updated.status,
+        note: reason,
+      });
+
+      if (completionRejected && result.row.assigned_provider_uuid) {
+        const hirer = await db("profiles").where({ uuid: me.uuid }).first();
+        const hirerName = hirer?.full_name || hirer?.username || "The hirer";
         await addNotification(
           trx,
           result.row.assigned_provider_uuid,
@@ -985,8 +1431,8 @@ export async function disputeJobCloseout(req, res) {
           updated,
           { actor_uuid: me.uuid, action: "open_workspace_progress", reason }
         );
-      });
-    }
+      }
+    });
 
     return res.json({ job: serializeJob({ ...updated, applicant_count: result.row.applicant_count }) });
   } catch (err) {
@@ -1031,6 +1477,15 @@ export async function acceptDirectHire(req, res) {
       .update(updatePayload)
       .returning("*");
 
+    await logActivity(db, {
+      jobId: updated.id,
+      actorUuid: me.uuid,
+      action: "provider_assigned",
+      fromStatus: job.status,
+      toStatus: "active",
+      meta: { via: "direct_hire" },
+    });
+
     await insertNotification(db, {
       profile_uuid: job.created_by,
       system: "hiring",
@@ -1038,7 +1493,7 @@ export async function acceptDirectHire(req, res) {
       title: notificationJobTitle(job),
       body: `${provider?.full_name || provider?.username || "Provider"} has accepted job ${job.job_code} of ${job.title}.`,
       job_id: job.id,
-      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid, actor_uuid: me.uuid, action: "open_job_details" })]),
+      meta: { profile_uuid: me.uuid, actor_uuid: me.uuid, action: "open_job_details" },
     });
 
     return res.json({ success: true, message: "Direct hire accepted", job: serializeJob({ ...updated, applicant_count: 0 }), workspace: { job_id: updated.id } });
@@ -1080,7 +1535,7 @@ export async function declineDirectHire(req, res) {
       title: notificationJobTitle(job),
       body: `${provider?.full_name || provider?.username || "Provider"} has declined job ${job.job_code} of ${job.title}.`,
       job_id: job.id,
-      meta: db.raw("?::jsonb", [JSON.stringify({ profile_uuid: me.uuid, actor_uuid: me.uuid, action: "publish_publicly" })]),
+      meta: { profile_uuid: me.uuid, actor_uuid: me.uuid, action: "publish_publicly" },
     });
 
     return res.json({ success: true, message: "Direct hire declined", job: serializeJob({ ...updated, applicant_count: 0 }) });
@@ -1158,6 +1613,7 @@ export async function cancelJob(req, res) {
 
     await db.transaction(async (trx) => {
       const [updated] = await trx("jobs").where({ id: job.id }).update({ status: "cancelled", updated_at: db.fn.now() }).returning("*");
+      await logActivity(trx, { jobId: updated.id, actorUuid: me.uuid, action: "cancelled", fromStatus: job.status, toStatus: "cancelled" });
       const apps = await trx("job_applications").where({ job_id: job.id }).whereNull("withdrawn_at").select("profile_uuid");
       for (const app of apps) {
         await addNotification(trx, app.profile_uuid, "job_cancelled", `Job ${updated.job_code} was cancelled.`, updated);
@@ -1287,6 +1743,14 @@ export async function assignProvider(req, res) {
     await db.transaction(async (trx) => {
       const [updated] = await trx("jobs").where({ id: job.id }).update({ status: "active", assigned_provider_uuid: profile_uuid, updated_at: db.fn.now() }).returning("*");
       assignedJob = updated;
+      await logActivity(trx, {
+        jobId: updated.id,
+        actorUuid: me.uuid,
+        action: "provider_assigned",
+        fromStatus: job.status,
+        toStatus: "active",
+        meta: { provider_uuid: profile_uuid },
+      });
       const apps = await trx("job_applications").where({ job_id: job.id }).whereNull("withdrawn_at").select("profile_uuid");
       for (const item of apps) {
         if (item.profile_uuid === profile_uuid) {

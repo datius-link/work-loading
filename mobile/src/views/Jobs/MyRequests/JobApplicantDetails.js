@@ -13,15 +13,30 @@ import AppIcon from "../../../icons/AppIcon";
 import { getFriendlyApiError, viewerRequest } from "../../../api/api";
 import { formatJobDate, formatRelativeDate } from "../jobDate";
 import HiringNoticeModal from "../HiringNoticeModal";
-import { NavHeader, SectionHeading, PrimaryButton, InfoRow } from "../jobsUI";
+import { NavHeader, SectionHeading, PrimaryButton } from "../jobsUI";
 
 const T={
-  en:{budget:"Budget",time:"Est. Time",available:"Available From",experience:"Experience",howIWork:"How I'll do this",workImages:"Previous Work / Tools",notes:"Additional Notes",jobInfo:"Job Info",hire:"Hire This Provider",openWorkspace:"Open Job Workspace",closed:"Request Closed",confirmTitle:"Hire provider?",confirmBack:"Cancel",confirmHire:"Hire",hired:"Provider hired!",errHire:"Could not hire",noRating:"Not rated yet"},
-  sw:{budget:"Bajeti",time:"Muda",available:"Anapatikana",experience:"Uzoefu",howIWork:"Jinsi nitakavyofanya",workImages:"Kazi Zilizopita / Zana",notes:"Maelezo ya Ziada",jobInfo:"Taarifa ya Kazi",hire:"Mwajiri Mtoa Huduma",openWorkspace:"Fungua Workspace",closed:"Imefungwa",confirmTitle:"Mwajiri?",confirmBack:"Rudi",confirmHire:"Mwajiri",hired:"Ameajiriwa!",errHire:"Imeshindikana",noRating:"Hakuna ukadiriaji"},
+  en:{budget:"Budget",time:"Est. Time",available:"Available",experience:"Experience",proposalNote:"Proposal Note",workImages:"Previous Work / Tools",notes:"Additional Notes",jobInfo:"Job Info",hire:"Hire This Provider",openWorkspace:"Open Job Workspace",closed:"Request Closed",confirmTitle:"Hire provider?",confirmBack:"Cancel",confirmHire:"Hire",hired:"Provider hired!",errHire:"Could not hire",noRating:"Not rated yet"},
+  sw:{budget:"Bajeti",time:"Muda",available:"Anapatikana",experience:"Uzoefu",proposalNote:"Maelezo ya Pendekezo",workImages:"Kazi Zilizopita / Zana",notes:"Maelezo ya Ziada",jobInfo:"Taarifa ya Kazi",hire:"Mwajiri Mtoa Huduma",openWorkspace:"Fungua Workspace",closed:"Imefungwa",confirmTitle:"Mwajiri?",confirmBack:"Rudi",confirmHire:"Mwajiri",hired:"Ameajiriwa!",errHire:"Imeshindikana",noRating:"Hakuna ukadiriaji"},
 };
 
 function formatBudget(v){const r=String(v||"").trim();if(!r)return"Not set";if(/^TZS\b/i.test(r))return r;const n=r.replace(/[^\d.]/g,"");return n?`TZS ${Number(n).toLocaleString("en-US")}`:r;}
 function avatarUri(u){if(u?.profilePic||u?.profile_pic)return u.profilePic||u.profile_pic;return`https://ui-avatars.com/api/?name=${encodeURIComponent(u?.username||"P")}&background=0B6B63&color=fff&bold=true&rounded=true`;}
+
+// Small soft box (icon + label + value) used in the 2x2 offer-summary grid.
+function GridItem({icon,label,value,theme,styles}){
+  return(
+    <View style={styles.gridItem}>
+      <View style={styles.gridIconWrap}>
+        <AppIcon name={icon} size={14} color={theme.colors.primaryStrong}/>
+      </View>
+      <View style={{flex:1,minWidth:0}}>
+        <Text style={styles.gridLabel} numberOfLines={1}>{label}</Text>
+        <Text style={styles.gridValue} numberOfLines={1}>{value}</Text>
+      </View>
+    </View>
+  );
+}
 
 export default function JobApplicantDetails(){
   const nav=useNavigation();const route=useRoute();
@@ -62,7 +77,7 @@ export default function JobApplicantDetails(){
   }
 
   const isClosed=request.status==="closed";
-  const BOTTOM=80+insets.bottom;
+  const BOTTOM=68+insets.bottom;
 
   const hireProvider=()=>{
     if(isClosed){setNotice({type:"error",title:t.closed});return;}
@@ -118,22 +133,20 @@ export default function JobApplicantDetails(){
           </TouchableOpacity>
         </View>
 
-        {/* How I'll do it */}
+        {/* Proposal note — compact, not a big block */}
         <View style={s.section}>
-          <SectionHeading label={t.howIWork}/>
+          <SectionHeading label={t.proposalNote}/>
           <Text style={s.bodyTxt}>{request.explanation||"No explanation provided."}</Text>
         </View>
 
-        {/* Offer summary */}
+        {/* Offer summary — 2x2 grid instead of 4 stacked rows */}
         <View style={s.section}>
-          <SectionHeading label={language==="sw"?"Muhtasari wa ofa":"Offer summary"}/>
-          <View>
-            {[{l:t.budget,v:formatBudget(request.budget)},{l:t.time,v:request.duration||"Not set"},{l:t.available,v:request.availableFrom||"Not set"},{l:t.experience,v:request.experience||"Not set"}].map(r=>(
-              <View key={r.l} style={s.infoRow}>
-                <Text style={s.infoLbl}>{r.l}</Text>
-                <Text style={s.infoVal}>{r.v}</Text>
-              </View>
-            ))}
+          <SectionHeading label={language==="sw"?"Muhtasari wa ofa":"Offer Summary"}/>
+          <View style={s.infoGrid}>
+            <GridItem icon="wallet" label={t.budget} value={formatBudget(request.budget)} theme={theme} styles={s}/>
+            <GridItem icon="clock" label={t.time} value={request.duration||"Not set"} theme={theme} styles={s}/>
+            <GridItem icon="calendar" label={t.available} value={request.availableFrom||"Not set"} theme={theme} styles={s}/>
+            <GridItem icon="award" label={t.experience} value={request.experience||"Not set"} theme={theme} styles={s}/>
           </View>
         </View>
 
@@ -152,21 +165,26 @@ export default function JobApplicantDetails(){
           <View style={s.section}><SectionHeading label={t.notes}/><Text style={s.bodyTxt}>{request.notes}</Text></View>
         ):null}
 
-        {/* Job mini card */}
-        <View style={s.section}>
+        {/* Job info — one compact block, no per-row dividers */}
+        <View style={[s.section,s.sectionLast]}>
           <SectionHeading label={t.jobInfo}/>
-          <View style={s.jobCodeRow}>
+          <View style={s.jobInfoRow}>
             <View style={s.jobCodePill}><Text style={s.jobCodeTxt}>{request.job.code}</Text></View>
+            <Text style={s.jobTitleInline} numberOfLines={1}>{request.job.title}</Text>
           </View>
-          <Text style={s.jobTitle}>{request.job.title}</Text>
-          <InfoRow icon="map-pin" label="Location" value={request.job.location||"Not set"}/>
-          <InfoRow icon="calendar" label="Posted" value={formatRelativeDate(request.job.postedAt)||"Today"}/>
+          <View style={s.jobMetaRow}>
+            <AppIcon name="map-pin" size={13} color={theme.colors.textMuted}/>
+            <Text style={s.jobMetaTxt}>{request.job.location||"Not set"}</Text>
+            <Text style={s.jobMetaDot}>•</Text>
+            <AppIcon name="calendar" size={13} color={theme.colors.textMuted}/>
+            <Text style={s.jobMetaTxt}>{formatRelativeDate(request.job.postedAt)||"Today"}</Text>
+          </View>
         </View>
         </View>
       </ScrollView>
 
       {/* Bottom action bar */}
-      <View style={[s.bottomBar,{paddingBottom:insets.bottom+14},isWide&&s.bottomBarWide]}>
+      <View style={[s.bottomBar,{paddingBottom:insets.bottom+10},isWide&&s.bottomBarWide]}>
         {hired?(
           <PrimaryButton label={t.openWorkspace} icon="message"
             onPress={()=>nav.navigate("JobWorkspace", {
@@ -195,28 +213,50 @@ const createStyles=(theme)=>StyleSheet.create({
   center:{flex:1,alignItems:"center",justifyContent:"center"},
   notFoundTxt:{fontSize:17,fontWeight:"700",color:theme.colors.text},
   webScroller:{height:"100vh"},
-  scroll:{paddingHorizontal:16},
+  scroll:{paddingHorizontal:24},
   scrollWide:{alignItems:"center"},
   contentShell:{},
   contentShellWide:{width:"100%",maxWidth:1180},
-  profileBanner:{flexDirection:"row",alignItems:"center",gap:11,paddingVertical:12,borderBottomWidth:1,borderBottomColor:theme.colors.border},
-  avatar:{width:54,height:54,borderRadius:27,borderWidth:2,borderColor:theme.colors.primarySoft,backgroundColor:theme.colors.surfaceSoft},
-  profileCopy:{flex:1,minWidth:0},
-  profileLink:{width:32,height:32,alignItems:"center",justifyContent:"center"},
+
+  // Compact provider identity — smaller gaps, no extra air.
+  profileBanner:{flexDirection:"row",alignItems:"center",gap:12,paddingVertical:14,borderBottomWidth:1,borderBottomColor:theme.colors.border},
+  avatar:{width:64,height:64,borderRadius:32,borderWidth:1.5,borderColor:theme.colors.primarySoft,backgroundColor:theme.colors.surfaceSoft},
+  profileCopy:{flex:1,minWidth:0,gap:2},
+  profileLink:{width:30,height:30,alignItems:"center",justifyContent:"center"},
   provUsername:{fontSize:16,fontWeight:"900",color:theme.colors.text},
-  provFull:{fontSize:11.5,color:theme.colors.textMuted,marginTop:1},
+  provFull:{fontSize:11.5,color:theme.colors.textMuted},
   ratingRow:{flexDirection:"row",alignItems:"center",gap:4},
   ratingTxt:{fontSize:13,fontWeight:"700",color:theme.colors.warning},
-  section:{paddingVertical:12,borderBottomWidth:1,borderBottomColor:theme.colors.border},
-  bodyTxt:{fontSize:14,color:theme.colors.textMuted,lineHeight:22},
-  infoRow:{minHeight:38,flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:12,borderBottomWidth:1,borderBottomColor:theme.colors.borderLight},
-  infoLbl:{color:theme.colors.textMuted,fontSize:12,fontWeight:"700"},
-  infoVal:{color:theme.colors.text,fontSize:13,fontWeight:"900",textAlign:"right"},
+
+  // Sections flow with a hairline only at each section boundary — no
+  // internal per-row dividers.
+  section:{paddingVertical:14,borderBottomWidth:1,borderBottomColor:theme.colors.border},
+  sectionLast:{borderBottomWidth:0,paddingBottom:4},
+  bodyTxt:{fontSize:14,color:theme.colors.textMuted,lineHeight:21},
+
+  // Offer summary — 2x2 grid of small soft boxes instead of 4 tall rows.
+  infoGrid:{flexDirection:"row",flexWrap:"wrap",gap:8,marginTop:2},
+  gridItem:{
+    flexBasis:"47%",flexGrow:1,flexDirection:"row",alignItems:"center",gap:8,
+    backgroundColor:theme.colors.surfaceSoft,borderRadius:12,padding:10,
+  },
+  gridIconWrap:{width:28,height:28,borderRadius:9,backgroundColor:theme.colors.primarySoft,alignItems:"center",justifyContent:"center"},
+  gridLabel:{color:theme.colors.textMuted,fontSize:10.5,fontWeight:"700",textTransform:"uppercase",letterSpacing:0.3},
+  gridValue:{color:theme.colors.text,fontSize:13,fontWeight:"800",marginTop:1},
+
   workImg:{width:140,height:110,borderRadius:12,backgroundColor:theme.colors.surfaceSoft},
-  jobCodeRow:{marginBottom:6},
-  jobCodePill:{backgroundColor:theme.colors.surface,paddingHorizontal:8,paddingVertical:3,borderRadius:8,alignSelf:"flex-start"},
+
+  // Job info — one compact block: code + title inline, then a single
+  // meta row with location and posted date. No per-row dividers.
+  jobInfoRow:{flexDirection:"row",alignItems:"center",gap:8,marginTop:2},
+  jobCodePill:{backgroundColor:theme.colors.surfaceSoft,paddingHorizontal:8,paddingVertical:3,borderRadius:8},
   jobCodeTxt:{color:theme.colors.primary,fontSize:11,fontWeight:"800"},
-  jobTitle:{fontSize:17,fontWeight:"800",color:theme.colors.text,marginBottom:4},
-  bottomBar:{borderTopWidth:1,borderTopColor:theme.colors.border,paddingHorizontal:16,paddingTop:14,backgroundColor:theme.colors.surface},
+  jobTitleInline:{flex:1,fontSize:15,fontWeight:"800",color:theme.colors.text},
+  jobMetaRow:{flexDirection:"row",alignItems:"center",gap:5,marginTop:8},
+  jobMetaTxt:{color:theme.colors.textMuted,fontSize:12.5,fontWeight:"600"},
+  jobMetaDot:{color:theme.colors.textVeryMuted||theme.colors.textMuted,fontSize:12,marginHorizontal:1},
+
+  // Sticky bottom bar — trimmed padding so it reads as a slim action strip.
+  bottomBar:{borderTopWidth:1,borderTopColor:theme.colors.border,paddingHorizontal:16,paddingTop:10,backgroundColor:theme.colors.surface},
   bottomBarWide:{alignSelf:"center",width:"100%",maxWidth:1180,borderLeftWidth:1,borderRightWidth:1,borderColor:theme.colors.border},
 });

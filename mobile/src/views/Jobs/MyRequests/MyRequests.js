@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -13,7 +12,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useAppTheme } from "../../../theme";
 import { api, getFriendlyApiError } from "../../../api/api";
 import { formatRelativeDate } from "../jobDate";
-import { C, StatusBadge } from "../jobsUI";
+import { StatusBadge } from "../jobsUI";
 import AppIcon from "../../../icons/AppIcon";
 import { useLanguage } from "../../../LanguageContext";
 import { cachedGet } from "../../../utils/offlineCache";
@@ -27,25 +26,34 @@ const FILTERS = [
   { key: "not_attained", en: "Not Attained", sw: "Hukupata" },
 ];
 
+// A job counts as "finished" once it's no longer actionable — this is what
+// used to be missing, which made completed/closed jobs still show an
+// "Open Job Workspace" button and a "You were selected" note as if the job
+// was still active.
+function isFinished(job) {
+  return ["closed", "completed", "cancelled", "declined", "filled"].includes(job.status);
+}
+
 function mapStatus(job, language) {
   const sw = language === "sw";
-  if (job.you_got_this_job || ["active", "start_pending", "started", "working", "submitted", "completion_pending", "completed"].includes(job.status))
+  if (job.you_got_this_job) {
+    if (isFinished(job)) return { status: "completed", statusLabel: sw ? "Imekamilika" : "Completed" };
     return { status: "approved", statusLabel: sw ? "Imekubaliwa" : "Approved" };
-  if (
-    (job.status === "filled" || job.status === "closed" || job.status === "completed") &&
-    !job.you_got_this_job &&
-    job.has_applied
-  )
-    return { status: "not_attained", statusLabel: "Not Attained" };
-  if (["closed", "completed", "cancelled", "declined"].includes(job.status))
-    return { status: "closed", statusLabel: "Closed" };
+  }
+  if (["active", "start_pending", "started", "working", "submitted", "completion_pending"].includes(job.status))
+    return { status: "approved", statusLabel: sw ? "Imekubaliwa" : "Approved" };
+  if ((job.status === "filled" || job.status === "closed" || job.status === "completed") && job.has_applied)
+    return { status: "not_attained", statusLabel: sw ? "Hukupata" : "Not Attained" };
+  if (isFinished(job))
+    return { status: "closed", statusLabel: sw ? "Imefungwa" : "Closed" };
   if (job.hire_type === "direct" || job.target_provider_uuid)
-    return { status: "requested", statusLabel: "Waiting Approval" };
-  return { status: "requested", statusLabel: "Requested" };
+    return { status: "requested", statusLabel: sw ? "Inasubiri" : "Waiting Approval" };
+  return { status: "requested", statusLabel: sw ? "Imeombwa" : "Requested" };
 }
 
 function reqNote(job, language) {
   const sw = language === "sw";
+  if (job.you_got_this_job && isFinished(job)) return sw ? "Kazi imekamilika. Ulichaguliwa." : "Job completed. You were selected.";
   if (job.hire_type === "direct" || job.target_provider_uuid) return sw ? "Imetumwa kwa mtoa huduma aliyechaguliwa" : "Sent to selected provider";
   if (job.you_got_this_job) return sw ? "Umechaguliwa" : "You were selected";
   if (job.my_application) return sw ? "Ombi limetumwa" : "Application sent";
@@ -59,6 +67,7 @@ function toReq(job, language) {
   return {
     ...job,
     ...m,
+    rawStatus: job.status,
     code: job.job_code || job.code || "JOB",
     postedAt: formatRelativeDate(job.created_at),
     requestType:
@@ -68,16 +77,26 @@ function toReq(job, language) {
         ? (sw ? "Ombi" : "Application")
         : (sw ? "Ombi" : "Request"),
     note: reqNote(job, language),
+    // The workspace CTA only makes sense while the job is still actively
+    // being worked — once it's finished, show the note only.
+    canOpenWorkspace: job.you_got_this_job && !isFinished(job),
   };
 }
 
-// Status dot color map
-const STATUS_DOT = {
-  approved: "#10B981",
-  requested: "#F59E0B",
-  not_attained: "#EF4444",
-  closed: "#94A3B8",
-};
+function statusDotColor(theme, status) {
+  switch (status) {
+    case "approved":
+    case "completed":
+      return theme.colors.success;
+    case "requested":
+      return theme.colors.warning;
+    case "not_attained":
+      return theme.colors.danger;
+    case "closed":
+    default:
+      return theme.colors.textMuted;
+  }
+}
 
 const REQUEST_TYPE_ICON = {
   "Direct Hire": "user-check",
@@ -124,12 +143,21 @@ export default function MyRequests() {
     }, [load])
   );
 
-  const filtered = filter === "all" ? requests : requests.filter((r) => r.status === filter);
+  const matchesFilter = (r, key) => key === "all" || r.status === key || (key === "closed" && r.status === "completed");
+  const filtered = requests.filter((r) => matchesFilter(r, filter));
+
+  const emptyCopy = {
+    all: { en: "No requests yet", sw: "Hakuna maombi bado" },
+    requested: { en: "No requested jobs yet", sw: "Hakuna maombi yaliyotumwa bado" },
+    approved: { en: "No approved jobs yet", sw: "Hakuna kazi zilizokubaliwa bado" },
+    closed: { en: "No closed jobs yet", sw: "Hakuna kazi zilizofungwa bado" },
+    not_attained: { en: "No missed jobs", sw: "Hakuna kazi ulizokosa" },
+  }[filter] || { en: "Nothing here yet", sw: "Hakuna bado" };
 
   if (loading)
     return (
       <View style={s.center}>
-        <ActivityIndicator color={C.teal} size="large" />
+        <ActivityIndicator color={theme.colors.primary} size="large" />
       </View>
     );
 
@@ -137,18 +165,15 @@ export default function MyRequests() {
     <View style={s.safe}>
       <CachedDataNotice visible={showingCached}/>
       {error?<View style={s.errorBox}><Text style={s.errorText}>{error}</Text><TouchableOpacity style={s.retryBtn} onPress={load}><Text style={s.retryText}>{language==="sw"?"Jaribu tena":"Retry"}</Text></TouchableOpacity></View>:null}
-      {/* Filter chips — compact pill row */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={s.filters}
-      >
+
+      {/* Filter bar — fixed in place (no horizontal scroll), evenly laid out together */}
+      <View style={s.filters}>
         {FILTERS.map((f) => {
           const active = filter === f.key;
           const count =
             f.key === "all"
               ? requests.length
-              : requests.filter((r) => r.status === f.key).length;
+              : requests.filter((r) => matchesFilter(r, f.key)).length;
           return (
             <TouchableOpacity
               key={f.key}
@@ -156,7 +181,7 @@ export default function MyRequests() {
               onPress={() => setFilter(f.key)}
               activeOpacity={0.75}
             >
-              <Text style={[s.chipTxt, active && s.chipActiveTxt]}>{language==="sw"?f.sw:f.en}</Text>
+              <Text style={[s.chipTxt, active && s.chipActiveTxt]} numberOfLines={1}>{language==="sw"?f.sw:f.en}</Text>
               {count > 0 && (
                 <View style={[s.chipBadge, active && s.chipBadgeActive]}>
                   <Text style={[s.chipBadgeTxt, active && s.chipBadgeTxtActive]}>{count}</Text>
@@ -165,7 +190,7 @@ export default function MyRequests() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       <FlatList
         data={filtered}
@@ -175,7 +200,7 @@ export default function MyRequests() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            tintColor={C.teal}
+            tintColor={theme.colors.primary}
             onRefresh={() => {
               setRefreshing(true);
               load();
@@ -184,8 +209,8 @@ export default function MyRequests() {
         }
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={s.card}
-            activeOpacity={0.88}
+            style={s.row}
+            activeOpacity={0.82}
             onPress={() =>
               nav.navigate("RequestDetails", {
                 job: item,
@@ -193,47 +218,35 @@ export default function MyRequests() {
               })
             }
           >
-            {/* Card header */}
-            <View style={s.cardHead}>
+            <View style={s.rowTop}>
               <View style={s.codeRow}>
-                <View style={[s.statusDot, { backgroundColor: STATUS_DOT[item.status] || C.slate }]} />
+                <View style={[s.statusDot, { backgroundColor: statusDotColor(theme, item.status) }]} />
                 <Text style={s.codeTxt}>{item.code}</Text>
               </View>
               <StatusBadge status={item.status} size="sm" />
             </View>
 
-            {/* Title */}
-            <Text style={s.title} numberOfLines={2}>
+            <Text style={s.title} numberOfLines={1}>
               {item.title}
             </Text>
 
-            {/* Meta row */}
             <View style={s.metaRow}>
               <View style={s.metaItem}>
                 <AppIcon
                   name={REQUEST_TYPE_ICON[item.requestType] || "tag"}
                   size={11}
-                  color={C.slate}
+                  color={theme.colors.textMuted}
                 />
                 <Text style={s.metaTxt}>{item.requestType}</Text>
               </View>
               <View style={s.metaDivider} />
-              <View style={s.metaItem}>
-                <AppIcon name="clock" size={11} color={C.slate} />
-                <Text style={s.metaTxt}>{item.postedAt || "Today"}</Text>
-              </View>
+              <Text style={s.metaTxt}>{item.postedAt || "Today"}</Text>
             </View>
 
-            {/* Note */}
-            <View style={s.noteBubble}>
-              <AppIcon name="info" size={11} color={C.slate} />
-              <Text style={s.noteTxt} numberOfLines={1}>
-                {item.note}
-              </Text>
-            </View>
-
-            {/* Workspace CTA — only when got job */}
-            {item.you_got_this_job && (
+            {/* Only one of these shows at a time — an active job gets the
+               workspace shortcut, a finished one just gets a short note.
+               Showing both was the source of the clutter on closed jobs. */}
+            {item.canOpenWorkspace ? (
               <TouchableOpacity
                 style={s.workspaceBtn}
                 onPress={() => nav.navigate("JobWorkspace", {
@@ -241,31 +254,36 @@ export default function MyRequests() {
                   jobCode: item.job_code,
                 })}
               >
-                <AppIcon name="message-circle" size={14} color={C.teal} />
-                <Text style={s.workspaceBtnTxt}>{language === "sw" ? "Fungua Eneo la Kazi" : "Open Job Workspace"}</Text>
-                <AppIcon name="chevron-right" size={13} color={C.teal} />
+                <AppIcon name="message-circle" size={14} color={theme.colors.primary} />
+                <Text style={s.workspaceBtnTxt} numberOfLines={1}>{language === "sw" ? "Fungua Eneo la Kazi" : "Open Job Workspace"}</Text>
+                <AppIcon name="chevron-right" size={13} color={theme.colors.primary} />
               </TouchableOpacity>
+            ) : (
+              <View style={s.noteRow}>
+                <AppIcon name="info" size={11} color={theme.colors.textMuted} />
+                <Text style={s.noteTxt} numberOfLines={1}>{item.note}</Text>
+              </View>
             )}
           </TouchableOpacity>
         )}
         ListEmptyComponent={
           <View style={s.empty}>
             <View style={s.emptyIcon}>
-              <AppIcon name="inbox" size={28} color={C.teal} />
+              <AppIcon name="inbox" size={28} color={theme.colors.primary} />
             </View>
-            <Text style={s.emptyTitle}>No {filter === "all" ? "" : filter} requests yet</Text>
+            <Text style={s.emptyTitle}>{language === "sw" ? emptyCopy.sw : emptyCopy.en}</Text>
             <Text style={s.emptyBody}>
               {filter === "all"
-                ? "Browse open jobs and apply — your requests will appear here."
-                : `You have no ${filter} requests at the moment.`}
+                ? (language === "sw" ? "Tafuta kazi na uombe — maombi yako yataonekana hapa." : "Browse open jobs and apply — your requests will appear here.")
+                : (language === "sw" ? "Huna maombi ya aina hii kwa sasa." : "You have no requests of this kind at the moment.")}
             </Text>
             {filter === "all" && (
               <TouchableOpacity
                 style={s.emptyBtn}
-                onPress={() => nav.navigate("Browse")}
+                onPress={() => nav.navigate("MainTabs", { screen: "Jobs", params: { initialTab: "browse" } })}
                 activeOpacity={0.8}
               >
-                <Text style={s.emptyBtnTxt}>Browse Jobs</Text>
+                <Text style={s.emptyBtnTxt}>{language === "sw" ? "Tafuta Kazi" : "Browse Jobs"}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -279,40 +297,45 @@ const createStyles=(theme)=>StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  // Filters — compact pill style
+  // Filters — fixed row, wraps instead of scrolling so every option stays
+  // visible together instead of being scrollable off-screen.
   filters: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 10,
     paddingBottom: 10,
-    gap: 8,
-    alignItems: "center",
+    gap: 6,
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
   chip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceSoft,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   chipActive: {
     backgroundColor: theme.colors.primarySoft,
-    borderColor: C.teal,
+    borderColor: theme.colors.primary,
   },
   chipTxt: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "600",
     color: theme.colors.textMuted,
   },
   chipActiveTxt: {
-    color: C.teal,
+    color: theme.colors.primary,
     fontWeight: "700",
   },
   chipBadge: {
-    backgroundColor: theme.colors.surfaceSoft,
+    backgroundColor: theme.colors.surface,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
@@ -321,43 +344,36 @@ const createStyles=(theme)=>StyleSheet.create({
     paddingHorizontal: 4,
   },
   chipBadgeActive: {
-    backgroundColor: C.teal + "25",
+    backgroundColor: theme.colors.primary,
   },
   chipBadgeTxt: {
     fontSize: 10,
     fontWeight: "700",
-    color: C.slate,
+    color: theme.colors.textMuted,
   },
   chipBadgeTxtActive: {
-    color: C.teal,
+    color: theme.colors.onPrimary,
   },
 
   // List
   list: {
     paddingHorizontal: 16,
-    paddingTop: 4,
+    paddingTop: 2,
     paddingBottom: 100,
-    gap: 10,
   },
   listEmpty: {
     flex: 1,
   },
 
-  // Card
-  card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-    gap: 8,
+  // Row — compact, flat divider style to match MyJobs instead of a padded
+  // shadowed card with a lot of empty space around it.
+  row: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    gap: 5,
   },
-  cardHead: {
+  rowTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -368,22 +384,21 @@ const createStyles=(theme)=>StyleSheet.create({
     gap: 6,
   },
   statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   codeTxt: {
-    color: C.slate,
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+    color: theme.colors.textMuted,
+    fontSize: 10.5,
+    fontWeight: "800",
+    letterSpacing: 0.4,
   },
   title: {
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "900",
     color: theme.colors.text,
-    lineHeight: 21,
+    lineHeight: 19,
   },
 
   // Meta
@@ -398,8 +413,8 @@ const createStyles=(theme)=>StyleSheet.create({
     gap: 4,
   },
   metaTxt: {
-    color: C.slate,
-    fontSize: 12,
+    color: theme.colors.textMuted,
+    fontSize: 11.5,
   },
   metaDivider: {
     width: 1,
@@ -407,15 +422,11 @@ const createStyles=(theme)=>StyleSheet.create({
     backgroundColor: theme.colors.border,
   },
 
-  // Note
-  noteBubble: {
+  // Note (finished / pending jobs)
+  noteRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: theme.colors.surfaceSoft,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
   },
   noteTxt: {
     flex: 1,
@@ -424,21 +435,21 @@ const createStyles=(theme)=>StyleSheet.create({
     fontWeight: "500",
   },
 
-  // Workspace button
+  // Workspace button (active jobs only)
   workspaceBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     backgroundColor: theme.colors.primarySoft,
-    borderRadius: 10,
-    marginTop: 2,
+    borderRadius: 8,
+    marginTop: 1,
   },
   workspaceBtnTxt: {
     flex: 1,
-    color: C.teal,
-    fontSize: 13,
+    color: theme.colors.primary,
+    fontSize: 12.5,
     fontWeight: "700",
   },
 
@@ -464,17 +475,16 @@ const createStyles=(theme)=>StyleSheet.create({
     fontWeight: "800",
     color: theme.colors.text,
     textAlign: "center",
-    textTransform: "capitalize",
   },
   emptyBody: {
     fontSize: 13,
-    color: C.slate,
+    color: theme.colors.textMuted,
     textAlign: "center",
     lineHeight: 19,
   },
   emptyBtn: {
     marginTop: 8,
-    backgroundColor: C.teal,
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 20,
