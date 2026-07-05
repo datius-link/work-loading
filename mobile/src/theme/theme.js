@@ -41,6 +41,11 @@ export const createTheme = (mode = "light") => ({
     primaryDark: mode === "dark" ? "#073F3A" : "#08544D",
     onPrimary: "#FFFFFF",
     primarySoft: mode === "dark" ? "#0F3E3B" : "#E6F4F2",
+    // "#0B6B63" reads fine on white but is too low-luminance to use as
+    // text/icon color against dark surfaces or primarySoft in dark mode —
+    // it visually disappears (the exact "hidden" look). Use this instead
+    // for teal text/icons that sit on a surface or tint, not as a button fill.
+    primaryStrong: mode === "dark" ? "#3DDBC4" : "#0B6B63",
     accent: "#1683C7",
     onAccent: "#FFFFFF",
     accentSoft: mode === "dark" ? "#102F45" : "#E7F4FD",
@@ -50,9 +55,15 @@ export const createTheme = (mode = "light") => ({
 
     danger: "#E63946",
     error: "#E63946",
+    dangerSoft: mode === "dark" ? "#3A161B" : "#FDE8EA",
     success: "#16A34A",
     successSoft: mode === "dark" ? "#10351F" : "#DCFCE7",
     warning: "#F59E0B",
+    warningSoft: mode === "dark" ? "#3A2A0F" : "#FEF3C7",
+    orange: "#EA580C",
+    orangeSoft: mode === "dark" ? "#3A1F0F" : "#FFEDD5",
+    slate: palette[mode].textMuted,
+    slateSoft: mode === "dark" ? "#1C2A30" : "#F1F5F9",
   },
 
   radius: {
