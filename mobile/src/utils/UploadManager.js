@@ -72,6 +72,14 @@ export const UploadManager = {
           mimeType:
             media.mimeType ||
             (media.type === "video" ? "video/mp4" : "image/jpeg"),
+          // Width/height/duration are required by chat (and any other
+          // consumer) to render media at its real aspect ratio instead of a
+          // fixed guess box. These were previously dropped here, so every
+          // uploaded photo/video lost its dimensions the moment it was
+          // saved — only the optimistic (pre-upload) preview still had them.
+          width: media.width || null,
+          height: media.height || null,
+          duration: media.duration || null,
         });
       }
 

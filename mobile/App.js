@@ -15,7 +15,17 @@ import { ThemeProvider, useAppTheme } from "./src/theme";
 import AppIcon from "./src/icons/AppIcon";
 import Txt from "./src/Txt";
 import NetworkBanner from "./src/components/NetworkBanner";
+import NotificationBanner from "./src/components/NotificationBanner";
 import { initOfflineCache } from "./src/utils/offlineCache";
+import { getUserSession, subscribeUserSession } from "./src/utils/userSession";
+import { navigationRef } from "./src/notifications/navigationRef";
+import {
+  attachNotificationListeners,
+  flushPendingNavigation,
+  initPushNotifications,
+  registerDeviceForPush,
+  unregisterDeviceForPush,
+} from "./src/notifications/pushNotifications";
 
 /* ---------------------------
    MAIN USER SCREENS
@@ -150,6 +160,36 @@ function AppShell() {
     return () => clearTimeout(timeout);
   }, []);
 
+  // Real OS push/local notifications (expo-notifications). This is separate
+  // from the Convex realtimeEvents wiring used elsewhere for in-app live
+  // badges/counts - that stays untouched.
+  useEffect(() => {
+    let cancelled = false;
+
+    initPushNotifications();
+    const detachListeners = attachNotificationListeners();
+
+    // Requirement: request permission / register a token on app startup if
+    // already logged in, and again right after a fresh login.
+    getUserSession().then((session) => {
+      if (!cancelled && session?.isLoggedIn) registerDeviceForPush();
+    });
+
+    const unsubscribeSession = subscribeUserSession((session) => {
+      if (session?.isLoggedIn) {
+        registerDeviceForPush();
+      } else {
+        unregisterDeviceForPush();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      detachListeners();
+      unsubscribeSession();
+    };
+  }, []);
+
   return (
     <View style={[rootStyles.app, { backgroundColor: theme.colors.bg }]}>
       <StatusBar
@@ -159,6 +199,7 @@ function AppShell() {
       />
       {showSplash ? <SplashScreen /> : <RootNavigator />}
       <NetworkBanner />
+      <NotificationBanner />
     </View>
   );
 }
@@ -179,7 +220,7 @@ function SplashScreen() {
 
 function RootNavigator() {
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={() => flushPendingNavigation()}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

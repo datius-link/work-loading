@@ -29,15 +29,33 @@
       "usesCleartextTraffic": true,
       "package": "com.dmcaltd.ekazi",
       "edgeToEdgeEnabled": true,
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-audio",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow e-kazi to use the camera for job workspace photos and videos.",
+          "microphonePermission": "Allow e-kazi to use the microphone when recording job workspace videos."
+        }
+      ],
       "expo-video",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon.png",
+          "color": "#0B6B63"
+        }
+      ]
     ]
   }
 }
