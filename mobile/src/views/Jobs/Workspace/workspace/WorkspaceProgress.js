@@ -20,6 +20,8 @@ import { getFriendlyApiError, viewerRequest } from "../../../../api/api";
 import { useLanguage } from "../../../../LanguageContext";
 import { useAppTheme } from "../../../../theme";
 import { UploadManager } from "../../../../utils/UploadManager";
+import JobReceipt from "./JobReceipt";
+import { useCall } from "../../../../calling/CallProvider";
 
 // ─── Status groupings (new lifecycle, tolerant of legacy statuses) ─────────
 // assigned(active) -> start_requested -> working -> submitted -> completed
@@ -148,6 +150,9 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
   const pipeIdx    = pipelineIndex(jobStatus);
   const isProvider = role === "provider";
   const isHirer    = role === "hirer";
+  const call = useCall();
+  const progressContact = job?.contact_details;
+  const progressOtherParty = progressContact?.viewer_role === "hirer" ? progressContact?.service_provider : progressContact?.hirer;
 
   // ── Lifecycle flags (provider requests -> employer confirms -> submit/revise loop) ──
   const canRequestStart   = isProvider && ASSIGNED_STATUSES.includes(jobStatus);
@@ -242,6 +247,9 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
   // Dispute (post-completion only, unchanged legacy flow)
   const [disputeNote,    setDisputeNote]    = useState("");
   const [disputing,      setDisputing]      = useState(false);
+
+  // Receipt modal (post-completion only)
+  const [showReceipt, setShowReceipt] = useState(false);
 
   // ── Lifecycle actions ───────────────────────────────────────────────────
   const requestStart = async () => {
@@ -526,6 +534,25 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
         )}
       </Section>
 
+      {/* ── Quick call — most useful exactly where you'd be waiting on or
+           checking in with the other party. ── */}
+      {call?.supported && progressOtherParty?.uuid && !["cancelled", "disputed"].includes(jobStatus) ? (
+        <TouchableOpacity
+          style={st.callCard}
+          activeOpacity={0.85}
+          onPress={() => call.startCall({ calleeUuid: progressOtherParty.uuid, calleeName: progressOtherParty.username || progressOtherParty.full_name, calleePhoto: progressOtherParty.profile_pic, jobId })}
+        >
+          <View style={st.callCardIcon}>
+            <AppIcon name="phone" size={16} color={theme.colors.onPrimary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={st.callCardTitle}>{tx(`Call ${progressOtherParty.username || progressOtherParty.full_name || "them"}`, `Piga simu ${progressOtherParty.username || progressOtherParty.full_name || "kwao"}`)}</Text>
+            <Text style={st.callCardSub}>{tx("In-app call, no phone number needed", "Simu ndani ya app, hakuna namba inayohitajika")}</Text>
+          </View>
+          <AppIcon name="chevron-right" size={16} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+      ) : null}
+
       {/* ── Waiting banners (both roles, whichever side is not the actor) ── */}
       {waitingProviderStart && (
         <WaitingBanner icon="clock" title={tx("Waiting for the provider to start", "Inasubiri mtoa huduma aanze")} body={tx("They'll tap \"I have started\" once they begin the work.", "Watagusa \"Nimeanza\" mara wataanza kazi.")} />
@@ -714,6 +741,10 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
             <AppIcon name="award" size={28} color={C.green} />
             <Text style={st.completedTitle}>{tx("Job Completed", "Kazi Imekamilika")}</Text>
             <Text style={st.completedSub}>{tx("Excellent work! This job is now in the reputation stage.", "Kazi nzuri! Kazi hii sasa iko kwenye hatua ya sifa.")}</Text>
+            <TouchableOpacity style={st.receiptBtn} onPress={() => setShowReceipt(true)} activeOpacity={0.85}>
+              <AppIcon name="file-text" size={15} color={theme.colors.primary} />
+              <Text style={st.receiptBtnTxt}>{tx("View Receipt", "Angalia Risiti")}</Text>
+            </TouchableOpacity>
           </Section>
 
           {/* ── HIRER: Rate the provider (5‑stars) ── */}
@@ -860,6 +891,7 @@ export default function WorkspaceProgress({ job, jobId, role, onJobUpdate, onNot
         </Section>
       )}
     </ScrollView>
+    <JobReceipt visible={showReceipt} job={job} role={role} onClose={() => setShowReceipt(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -962,6 +994,27 @@ const createStyles = (theme) => StyleSheet.create({
   // Pipeline card (the pipeline itself is rendered by AnimatedJobPipeline)
   pipelineCard: { gap: 16, paddingTop: 14 },
 
+  // Quick in-app call card
+  callCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  callCardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.primary,
+  },
+  callCardTitle: { color: theme.colors.text, fontSize: 13.5, fontWeight: "800" },
+  callCardSub: { color: theme.colors.textMuted, fontSize: 11, marginTop: 1 },
+
   // Revision flag
   revisionFlag: {
     flexDirection: "row",
@@ -1055,6 +1108,19 @@ const createStyles = (theme) => StyleSheet.create({
   },
   completedTitle: { fontSize: 18, fontWeight: "800", color: C.green },
   completedSub:   { fontSize: 13, color: C.green, textAlign: "center" },
+  receiptBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.surface,
+  },
+  receiptBtnTxt: { color: theme.colors.primary, fontSize: 13, fontWeight: "800" },
 
   // Done badge
   doneBanner: {
