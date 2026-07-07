@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "456118898801",
+    "project_id": "ekazi-app",
+    "storage_bucket": "ekazi-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:456118898801:android:b5181887f88e71fb34cbd0",
+        "android_client_info": {
+          "package_name": "com.dmcaltd.ekazi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4x-KYjlYxNQf_yj9WUj7qrpFK0kjtlWQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

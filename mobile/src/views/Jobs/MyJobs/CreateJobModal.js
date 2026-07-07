@@ -17,6 +17,8 @@ import { useAppTheme } from "../../../theme";
 import { useLanguage } from "../../../LanguageContext";
 import AppIcon from "../../../icons/AppIcon";
 import HiringNoticeModal from "../HiringNoticeModal";
+import DateField from "../../../components/DateField";
+import { searchLocations } from "../../../data/tanzaniaLocations";
 
 // ─── Strings ─────────────────────────────────────────────────────────────────
 const T = {
@@ -34,6 +36,9 @@ const T = {
     datePlaceholder: "Closing date  YYYY-MM-DD",
     addPics: "Add Pictures",
     takePhoto: "Take Photo",
+    chooseLibrary: "Choose from Library",
+    scheduleDatePlaceholder: "Choose a date",
+    availabilityNotesPlaceholder: "Time of day, e.g. morning/evening (optional)",
     submit: "Send Hire Request",
     postSubmit: "Post Job",
     longDateWarning: "You selected more than 3 weeks ahead. Are you sure?",
@@ -62,6 +67,9 @@ const T = {
     datePlaceholder: "Tarehe ya kufunga  YYYY-MM-DD",
     addPics: "Ongeza Picha",
     takePhoto: "Piga Picha",
+    chooseLibrary: "Chagua kwenye Picha",
+    scheduleDatePlaceholder: "Chagua tarehe",
+    availabilityNotesPlaceholder: "Muda, mfano asubuhi/jioni (hiari)",
     submit: "Tuma Ombi la Kuajiri",
     postSubmit: "Chapisha Kazi",
     longDateWarning: "Umechagua zaidi ya wiki 3. Una uhakika?",
@@ -133,7 +141,14 @@ export default function CreateJobModal({
   const [scheduledFor, setScheduledFor]           = useState("");
   const [availabilityNotes, setAvailabilityNotes] = useState("");
   const [notice, setNotice]                       = useState(null);
+  const [showPhotoMenu, setShowPhotoMenu]         = useState(false);
+  const [locationFocused, setLocationFocused]     = useState(false);
   const dragStartY = React.useRef(0);
+
+  const locationSuggestions = useMemo(
+    () => (locationFocused ? searchLocations(location) : []),
+    [location, locationFocused]
+  );
 
   const daysAhead = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -159,6 +174,8 @@ export default function CreateJobModal({
     setNeedsAvailability(false);
     setScheduledFor("");
     setAvailabilityNotes("");
+    setShowPhotoMenu(false);
+    setLocationFocused(false);
   }
 
   function handleClose() {
@@ -276,53 +293,98 @@ export default function CreateJobModal({
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
             >
-              <TextInput
-                style={styles.input}
-                placeholder={isDirect ? t.directTitlePlaceholder : t.titlePlaceholder}
-                placeholderTextColor={theme.colors.textVeryMuted}
-                value={title}
-                onChangeText={setTitle}
-              />
+              <View style={styles.iconInputRow}>
+                <View style={styles.iconInputIconWrap}>
+                  <AppIcon name="edit" size={17} color={theme.colors.textMuted} />
+                </View>
+                <TextInput
+                  style={styles.iconInput}
+                  placeholder={isDirect ? t.directTitlePlaceholder : t.titlePlaceholder}
+                  placeholderTextColor={theme.colors.textVeryMuted}
+                  value={title}
+                  onChangeText={setTitle}
+                />
+              </View>
 
-              <TextInput
-                style={[styles.input, styles.textarea]}
-                placeholder={isDirect ? t.directDescPlaceholder : t.descPlaceholder}
-                placeholderTextColor={theme.colors.textVeryMuted}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-              />
+              <View style={[styles.iconInputRow, styles.iconInputRowTextarea]}>
+                <View style={styles.iconInputIconWrapTop}>
+                  <AppIcon name="file-text" size={17} color={theme.colors.textMuted} />
+                </View>
+                <TextInput
+                  style={[styles.iconInput, styles.textarea]}
+                  placeholder={isDirect ? t.directDescPlaceholder : t.descPlaceholder}
+                  placeholderTextColor={theme.colors.textVeryMuted}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                />
+              </View>
 
               {/* Dynamic categories */}
               {!isDirect && categories.map((cat, i) => (
-                  <View key={i} style={styles.catRow}>
+                  <View key={i} style={styles.iconInputRow}>
+                    <View style={styles.iconInputIconWrap}>
+                      <AppIcon name="tag" size={17} color={theme.colors.textMuted} />
+                    </View>
                     <TextInput
-                      style={[styles.input, styles.catInput]}
+                      style={styles.iconInput}
                       placeholder={t.catPlaceholder}
                       placeholderTextColor={theme.colors.textVeryMuted}
                       value={cat}
                       onChangeText={(txt) => updateCategory(txt, i)}
                     />
                     <TouchableOpacity
-                      style={styles.catBtn}
+                      style={styles.catInlineBtn}
                       onPress={i === 0 ? addCategory : () => removeCategory(i)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.85}
                     >
                       <AppIcon
                         name={i === 0 ? "plus" : "minus"}
-                        size={18}
-                        color={theme.colors.text}
+                        size={16}
+                        color={theme.colors.primary}
                       />
                     </TouchableOpacity>
                   </View>
                 ))}
 
-              <TextInput
-                style={styles.input}
-                placeholder={t.locationPlaceholder}
-                placeholderTextColor={theme.colors.textVeryMuted}
-                value={location}
-                onChangeText={setLocation}
-              />
+              <View style={styles.locationWrap}>
+                <View style={styles.iconInputRow}>
+                  <View style={styles.iconInputIconWrap}>
+                    <AppIcon name="map-pin" size={17} color={theme.colors.textMuted} />
+                  </View>
+                  <TextInput
+                    style={styles.iconInput}
+                    placeholder={t.locationPlaceholder}
+                    placeholderTextColor={theme.colors.textVeryMuted}
+                    value={location}
+                    onChangeText={setLocation}
+                    onFocus={() => setLocationFocused(true)}
+                    onBlur={() => setTimeout(() => setLocationFocused(false), 150)}
+                  />
+                </View>
+                {locationSuggestions.length > 0 ? (
+                  <View style={styles.locationDropdown}>
+                    {locationSuggestions.map((item) => (
+                      <TouchableOpacity
+                        key={`${item.name}-${item.region}`}
+                        style={styles.locationOption}
+                        onPress={() => {
+                          setLocation(item.name);
+                          setLocationFocused(false);
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <AppIcon name="map-pin" size={14} color={theme.colors.primary} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.locationOptionText}>{item.name}</Text>
+                          <Text style={styles.locationOptionRegion}>{item.region}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
 
               {!isDirect && (
                 <View style={styles.dateBlock}>
@@ -401,16 +463,16 @@ export default function CreateJobModal({
 
               {needsAvailability && (
                 <>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Date/time or availability window"
-                    placeholderTextColor={theme.colors.textVeryMuted}
+                  <DateField
                     value={scheduledFor}
-                    onChangeText={setScheduledFor}
+                    onChange={setScheduledFor}
+                    theme={theme}
+                    language={language}
+                    placeholder={t.scheduleDatePlaceholder}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Availability notes (optional)"
+                    placeholder={t.availabilityNotesPlaceholder}
                     placeholderTextColor={theme.colors.textVeryMuted}
                     value={availabilityNotes}
                     onChangeText={setAvailabilityNotes}
@@ -423,19 +485,40 @@ export default function CreateJobModal({
                 <View style={styles.mediaActions}>
                   <TouchableOpacity
                     style={styles.mediaBtn}
-                    onPress={() => pickImages(false)}
+                    onPress={() => setShowPhotoMenu((v) => !v)}
+                    activeOpacity={0.85}
                   >
                     <AppIcon name="image" size={16} color={theme.colors.primary} />
                     <Text style={styles.mediaBtnText}>{t.addPics}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.mediaBtn}
-                    onPress={() => pickImages(true)}
-                  >
-                    <AppIcon name="camera" size={16} color={theme.colors.primary} />
-                    <Text style={styles.mediaBtnText}>{t.takePhoto}</Text>
+                    <AppIcon name="chevron-right" size={13} color={theme.colors.textMuted} strokeWidth={2.5} />
                   </TouchableOpacity>
                 </View>
+                {showPhotoMenu && (
+                  <View style={styles.photoDropdown}>
+                    <TouchableOpacity
+                      style={styles.photoOption}
+                      onPress={() => {
+                        setShowPhotoMenu(false);
+                        pickImages(true);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <AppIcon name="camera" size={15} color={theme.colors.primary} />
+                      <Text style={styles.photoOptionText}>{t.takePhoto}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.photoOption}
+                      onPress={() => {
+                        setShowPhotoMenu(false);
+                        pickImages(false);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <AppIcon name="image" size={15} color={theme.colors.primary} />
+                      <Text style={styles.photoOptionText}>{t.chooseLibrary}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
                 {images.length > 0 && (
                   <View style={styles.previewRow}>
                     {images.map((img, i) => (
@@ -577,6 +660,76 @@ const createStyles = (theme) =>
     },
     textarea: { minHeight: 96, textAlignVertical: "top" },
 
+    /* Icon-prefixed inputs (title / description) */
+    iconInputRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: theme.colors.surfaceSoft,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.xs,
+      paddingHorizontal: 14,
+      minHeight: 54,
+      marginBottom: 12,
+    },
+    iconInputRowTextarea: {
+      alignItems: "flex-start",
+      minHeight: 96,
+      paddingVertical: 14,
+    },
+    iconInputIconWrap: {
+      width: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    iconInputIconWrapTop: {
+      width: 20,
+      alignItems: "center",
+      justifyContent: "flex-start",
+      paddingTop: 2,
+    },
+    iconInput: {
+      flex: 1,
+      fontSize: 15,
+      color: theme.colors.text,
+      paddingVertical: 14,
+    },
+
+    /* Location autocomplete */
+    locationWrap: {
+      marginBottom: 12,
+      zIndex: 10,
+    },
+    locationDropdown: {
+      marginTop: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.xs,
+      backgroundColor: theme.colors.surface,
+      overflow: "hidden",
+    },
+    locationOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    locationOptionText: {
+      color: theme.colors.text,
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    locationOptionRegion: {
+      marginTop: 1,
+      color: theme.colors.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+    },
+
     dateBlock: {
       marginBottom: 12,
     },
@@ -638,18 +791,15 @@ const createStyles = (theme) =>
     },
 
     /* Category row */
-    catRow: { flexDirection: "row", gap: 10, alignItems: "center" },
-    catInput: { flex: 1 },
-    catBtn: {
-      width: 48,
-      height: 48,
-      borderRadius: theme.radius.xs,
-      backgroundColor: theme.colors.surfaceSoft,
+    catInlineBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: theme.colors.primarySoft,
       borderWidth: 1,
-      borderColor: theme.colors.border,
+      borderColor: theme.colors.primary + "44",
       alignItems: "center",
       justifyContent: "center",
-      marginBottom: 12,
     },
 
     /* Long-date warning */
@@ -714,6 +864,28 @@ const createStyles = (theme) =>
       minWidth: 132,
     },
     mediaBtnText: { color: theme.colors.primary, fontWeight: "800", fontSize: 13, flexShrink: 1 },
+    photoDropdown: {
+      marginTop: 4,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.xs,
+      backgroundColor: theme.colors.surface,
+      overflow: "hidden",
+    },
+    photoOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    photoOptionText: {
+      color: theme.colors.text,
+      fontSize: 14,
+      fontWeight: "800",
+    },
     previewRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     previewImg: { width: 72, height: 72, borderRadius: theme.radius.sm },
 

@@ -5,6 +5,7 @@ import setBadgeCountAsync from "expo-notifications/build/setBadgeCountAsync";
 import scheduleNotificationAsync from "expo-notifications/build/scheduleNotificationAsync";
 import ServerRegistrationModule from "expo-notifications/build/ServerRegistrationModule";
 import setNotificationChannelAsync from "expo-notifications/build/setNotificationChannelAsync";
+import registerTaskAsync from "expo-notifications/build/registerTaskAsync";
 import { AndroidImportance, AndroidNotificationVisibility } from "expo-notifications/build/NotificationChannelManager.types";
 import { addNotificationReceivedListener, addNotificationResponseReceivedListener, getLastNotificationResponseAsync } from "expo-notifications/build/NotificationsEmitter";
 import { setNotificationHandler } from "expo-notifications/build/NotificationsHandler";
@@ -88,5 +89,6 @@ export function getNotificationsModule() {
     setBadgeCountAsync,
     setNotificationChannelAsync,
     setNotificationHandler,
+    registerTaskAsync,
   };
 }

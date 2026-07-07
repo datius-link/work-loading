@@ -15,6 +15,9 @@ const paths = {
   message: "M21 11.5a7.5 7.5 0 0 1-7.5 7.5H8l-5 3 1.7-5.2A7.5 7.5 0 1 1 21 11.5zM8 10h8M8 14h5",
   music: "M9 18V5l10-2v13M9 18a3 3 0 1 1-2-2.8A3 3 0 0 1 9 18zm10-2a3 3 0 1 1-2-2.8A3 3 0 0 1 19 16zM9 8l10-2",
   lock: "M7 11V8a5 5 0 0 1 10 0v3m-11 0h12v10H6z",
+  fingerprint: "M12 11a2 2 0 0 1 2 2v1a7 7 0 0 1-1 3.5M8 14v-1a4 4 0 0 1 8 0v1a9 9 0 0 1-1.5 5M5 12.5V13a10 10 0 0 0 1 4.5M12 3a9 9 0 0 1 9 9v1M12 3a9 9 0 0 0-9 9v1a13 13 0 0 0 .5 3.5",
+  faceId: "M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2M9 10v1.2M15 10v1.2M8.7 15c1.1 1 5.5 1 6.6 0",
+  "face-id": "M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2M9 10v1.2M15 10v1.2M8.7 15c1.1 1 5.5 1 6.6 0",
   key: "M14 7a4 4 0 1 0 2.8 6.8L19 16h2v2h-2v2h-2.2l-2.4-2.4A4 4 0 0 0 14 7zM7 11h0.01",
   arrowLeft: "M15 18l-6-6 6-6m-5.5 6H21",
   edit: "M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3zm12-13 3 3",
@@ -23,6 +26,8 @@ const paths = {
   minus: "M5 12h14",
   arrowRight: "M9 18l6-6-6-6m5.5 6H3",
   "chevron-right": "M9 18l6-6-6-6",
+  "arrow-up-right": "M7 17L17 7M7 7h10v10",
+  "arrow-down-left": "M17 7L7 17M17 17H7V7",
   trash: "M6 7h12m-10 0 1 14h6l1-14M10 7V5h4v2",
   history: "M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5m3-3v6l4 2",
   help: "M12 18h0.01M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.9.8-1.7 1.3-1.7 2.7",
@@ -83,6 +88,12 @@ const paths = {
   "x-circle": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zm-3.5-12.5 7 7m0-7-7 7",
   "user-check": "M9 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 21a6 6 0 0 1 12 0m2-8 2 2 4-4",
   wallet: "M3 8a2 2 0 0 1 2-2h11a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6a3 3 0 0 1-3-3V8Zm14 5h.01",
+  refresh: "M4 4v6h6M20 20v-6h-6M4.5 15a8 8 0 0 0 14.1 3.4M19.5 9A8 8 0 0 0 5.4 5.6",
+  filter: "M4 5h16M7 12h10M10 19h4",
+  "more-vertical": "M12 5h0.01M12 12h0.01M12 19h0.01",
+  moreVertical: "M12 5h0.01M12 12h0.01M12 19h0.01",
+  bluetooth: "M7 7l10 10-5 4V3l5 4L7 17",
+  "file-text-outline": "M6 3h8l4 4v14H6zM14 3v5h5",
 };
 
 function SocialIcon({ name, size, color, strokeWidth }) {
@@ -223,6 +234,25 @@ export default function AppIcon({
             strokeLinejoin="round"
           />
         </>
+      ) : name === "eye" ? (
+        <>
+          <Path
+            d="M2 12S6 5 12 5s10 7 10 7-4 7-10 7-10-7-10-7z"
+            stroke={color}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={strokeWidth} />
+        </>
+      ) : name === "eyeOff" || name === "eye-off" ? (
+        <Path
+          d="M3 3l18 18M9.9 5.1A10.7 10.7 0 0 1 12 5c6 0 10 7 10 7a18.3 18.3 0 0 1-3.22 4.06M6.53 6.63C3.9 8.35 2 12 2 12s4 7 10 7c1.36 0 2.62-.3 3.75-.8M9.9 9.9a3 3 0 0 0 4.24 4.24"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       ) : (
         <Path
           d={paths[name] || paths.user}

@@ -75,6 +75,26 @@ const options = {
         name: "Support",
         description: "Authenticated contact, feedback, and problem reports",
       },
+      {
+        name: "Search",
+        description: "Full-text search across people, posts, skills, and hashtags",
+      },
+      {
+        name: "Recommendations",
+        description: "Job ratings and recommendations for providers",
+      },
+      {
+        name: "Calls",
+        description: "Push notification trigger for in-app WebRTC calling",
+      },
+      {
+        name: "Admin",
+        description: "Admin web panel authentication and support inbox",
+      },
+      {
+        name: "System",
+        description: "Health check",
+      },
     ],
 
     components: {
@@ -302,6 +322,10 @@ const options = {
     swaggerGlob(srcDir, "hiring", "*.js"),
     swaggerGlob(srcDir, "notifications", "*.js"),
     swaggerGlob(srcDir, "support", "*.js"),
+    swaggerGlob(srcDir, "search", "*.js"),
+    swaggerGlob(srcDir, "recommendations", "*.js"),
+    swaggerGlob(srcDir, "calls", "*.js"),
+    swaggerGlob(srcDir, "admin", "*.js"),
   ],
 };
 

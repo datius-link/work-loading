@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -166,8 +167,14 @@ export default function MyRequests() {
       <CachedDataNotice visible={showingCached}/>
       {error?<View style={s.errorBox}><Text style={s.errorText}>{error}</Text><TouchableOpacity style={s.retryBtn} onPress={load}><Text style={s.retryText}>{language==="sw"?"Jaribu tena":"Retry"}</Text></TouchableOpacity></View>:null}
 
-      {/* Filter bar — fixed in place (no horizontal scroll), evenly laid out together */}
-      <View style={s.filters}>
+      {/* Filter bar — compact horizontal-scroll pills, matching Browse's
+         filter row style so every Jobs sub-tab shares the same top bar look. */}
+      <ScrollView
+        horizontal
+        style={s.filtersScroll}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.filters}
+      >
         {FILTERS.map((f) => {
           const active = filter === f.key;
           const count =
@@ -190,9 +197,10 @@ export default function MyRequests() {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       <FlatList
+        style={s.listFlex}
         data={filtered}
         keyExtractor={(i) => String(i.id)}
         showsVerticalScrollIndicator={false}
@@ -297,15 +305,21 @@ const createStyles=(theme)=>StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  // Filters — fixed row, wraps instead of scrolling so every option stays
-  // visible together instead of being scrollable off-screen.
+  // Explicit, non-flexible height so this row never stretches to fill the
+  // remaining screen — without this the horizontal ScrollView could grab
+  // all the vertical space left after the header, pushing the actual list
+  // (and its single/few rows) down with a large blank gap above them.
+  filtersScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  // Filters — compact horizontal-scroll pills, matching Browse's filterRow
+  // (same height, radius, colors) so the Jobs sub-tabs feel like one bar.
   filters: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    gap: 8,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
-    gap: 6,
+    paddingVertical: 10,
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -314,9 +328,9 @@ const createStyles=(theme)=>StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 20,
+    height: 30,
+    paddingHorizontal: 13,
+    borderRadius: 15,
     backgroundColor: theme.colors.surfaceSoft,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -331,8 +345,8 @@ const createStyles=(theme)=>StyleSheet.create({
     color: theme.colors.textMuted,
   },
   chipActiveTxt: {
-    color: theme.colors.primary,
-    fontWeight: "700",
+    color: theme.colors.primaryStrong,
+    fontWeight: "800",
   },
   chipBadge: {
     backgroundColor: theme.colors.surface,
@@ -355,7 +369,13 @@ const createStyles=(theme)=>StyleSheet.create({
     color: theme.colors.onPrimary,
   },
 
-  // List
+  // List — explicit flex:1 so it reliably claims all space left below the
+  // filter row (matches the "ScrollView needs a concrete flex to resolve"
+  // pattern already used in CreateJobModal's sheet), instead of the rows
+  // rendering wherever an unstyled ScrollView happens to settle.
+  listFlex: {
+    flex: 1,
+  },
   list: {
     paddingHorizontal: 16,
     paddingTop: 2,

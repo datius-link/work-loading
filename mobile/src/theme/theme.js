@@ -40,6 +40,11 @@ export const createTheme = (mode = "light") => ({
     primary: "#0B6B63",
     primaryDark: mode === "dark" ? "#073F3A" : "#08544D",
     onPrimary: "#FFFFFF",
+    // A dimmed version of onPrimary for placeholder/secondary text sitting on
+    // a solid `primary` fill (e.g. the Home search pill) — without this,
+    // placeholder copy was rendering in the exact same white as typed text,
+    // so there was no visual distinction between the two.
+    onPrimaryMuted: "rgba(255,255,255,0.68)",
     primarySoft: mode === "dark" ? "#0F3E3B" : "#E6F4F2",
     // "#0B6B63" reads fine on white but is too low-luminance to use as
     // text/icon color against dark surfaces or primarySoft in dark mode —

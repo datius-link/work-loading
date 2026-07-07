@@ -16,6 +16,7 @@ import {
 } from "./auth.controller.js";
 
 import { requireAnyToken } from "./auth.anyToken.middleware.js";
+import { otpAttemptLimiter, passwordAttemptLimiter } from "../utils/rateLimit.js";
 
 const router = express.Router();
 
@@ -76,7 +77,7 @@ router.post("/register", register);
  *       200:
  *         description: Login successful
  */
-router.post("/login", login);
+router.post("/login", passwordAttemptLimiter, login);
 
 /**
  * @swagger
@@ -100,7 +101,7 @@ router.post("/login", login);
  *       200:
  *         description: Verification successful
  */
-router.post("/verify-provider", verifyProvider);
+router.post("/verify-provider", otpAttemptLimiter, verifyProvider);
 
 /**
  * @swagger
@@ -213,6 +214,7 @@ router.post("/password/forgot", forgotPassword);
  */
 router.post(
   "/password/verify-code",
+  otpAttemptLimiter,
   verifyPasswordResetCode
 );
 
@@ -261,6 +263,7 @@ router.post("/password/reset", resetPassword);
  */
 router.post(
   "/viewer/request-code",
+  passwordAttemptLimiter,
   requestViewerCode
 );
 
@@ -285,7 +288,7 @@ router.post(
  *       200:
  *         description: Viewer verified
  */
-router.post("/viewer/verify", verifyViewerCode);
+router.post("/viewer/verify", otpAttemptLimiter, verifyViewerCode);
 
 /**
  * @swagger

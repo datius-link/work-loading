@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as authToken from "../authToken.js";
+import type * as calls from "../calls.js";
 import type * as jobMessages from "../jobMessages.js";
 import type * as realtimeEvents from "../realtimeEvents.js";
 import type * as storage from "../storage.js";
@@ -19,6 +21,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  authToken: typeof authToken;
+  calls: typeof calls;
   jobMessages: typeof jobMessages;
   realtimeEvents: typeof realtimeEvents;
   storage: typeof storage;

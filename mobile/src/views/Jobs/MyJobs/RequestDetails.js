@@ -17,6 +17,7 @@ import { formatDeadline, formatJobDate, formatRelativeDate } from "../jobDate";
 import { NavHeader, SectionHeading, statusConfig, tokenColors } from "../jobsUI";
 import { useLanguage } from "../../../LanguageContext";
 import { useAppTheme } from "../../../theme";
+import { useCall } from "../../../calling/CallProvider";
 
 // ─── Progress timeline ──────────────────────────────────────────────────────
 // Where the job is in its lifecycle, once you've been assigned/hired.
@@ -350,6 +351,7 @@ export default function RequestDetails() {
   const insets     = useSafeAreaInsets();
   const { width }  = useWindowDimensions();
   const isWide     = width >= 900;
+  const call = useCall();
 
   const routeJob = route.params?.job || null;
   const [detailJob,        setDetailJob]        = useState(null);
@@ -577,6 +579,14 @@ export default function RequestDetails() {
                     <AppIcon name="phone" size={14} color="#FFFFFF" />
                   </TouchableOpacity>
                 ) : null}
+                {call?.supported && headerPerson.uuid ? (
+                  <TouchableOpacity
+                    style={[s.personActionBtn, { backgroundColor: theme.colors.primary }]}
+                    onPress={() => call.startCall({ calleeUuid: headerPerson.uuid, calleeName: headerPerson.username || headerPerson.role, calleePhoto: headerPerson.profile_pic, jobId: job?.id })}
+                  >
+                    <AppIcon name="phone" size={14} color="#FFFFFF" />
+                  </TouchableOpacity>
+                ) : null}
                 {gotJob ? (
                   <TouchableOpacity style={s.personActionBtn} onPress={() => navigation.navigate("JobWorkspace", { jobId: job.id, jobCode: job.job_code, tab: "chat" })}>
                     <AppIcon name="message-circle" size={14} color="#FFFFFF" />
@@ -672,6 +682,15 @@ export default function RequestDetails() {
                 <TouchableOpacity style={s.actionBtn} onPress={() => Linking.openURL(`tel:${headerPerson.phone}`)}>
                   <AppIcon name="phone" size={16} color={theme.colors.primaryStrong} />
                   <Text style={s.actionBtnTxt}>{tx("Call", "Piga Simu")}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {call?.supported && headerPerson?.uuid ? (
+                <TouchableOpacity
+                  style={s.actionBtn}
+                  onPress={() => call.startCall({ calleeUuid: headerPerson.uuid, calleeName: headerPerson.username || headerPerson.role, calleePhoto: headerPerson.profile_pic, jobId: job?.id })}
+                >
+                  <AppIcon name="message-circle" size={16} color={theme.colors.primaryStrong} />
+                  <Text style={s.actionBtnTxt}>{tx("App Call", "Simu ya App")}</Text>
                 </TouchableOpacity>
               ) : null}
               {closed ? (

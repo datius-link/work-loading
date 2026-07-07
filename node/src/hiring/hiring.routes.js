@@ -148,24 +148,346 @@ router.post("/direct-hire", createDirectHire);
  */
 router.get("/requests", listRequests);
 
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/workspace:
+ *   get:
+ *     summary: Get the workspace details for an active job
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Workspace loaded
+ */
 router.get("/jobs/:jobId/workspace", getJobWorkspace);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/messages:
+ *   get:
+ *     summary: List messages in a job workspace
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Messages loaded
+ *   post:
+ *     summary: Send a message in a job workspace
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [text]
+ *             properties:
+ *               text:
+ *                 type: string
+ *                 example: "I will be there at 9am tomorrow."
+ *     responses:
+ *       201:
+ *         description: Message sent
+ */
 router.get("/jobs/:jobId/messages", listJobMessages);
 router.post("/jobs/:jobId/messages", sendJobMessage);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/start-suggest:
+ *   post:
+ *     summary: Suggest job start (provider side)
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Start suggestion sent
+ */
 router.post("/jobs/:jobId/start-suggest", suggestJobStart);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/start-confirm:
+ *   post:
+ *     summary: Confirm job start (client side)
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Job started
+ */
 router.post("/jobs/:jobId/start-confirm", confirmJobStart);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/complete-suggest:
+ *   post:
+ *     summary: Suggest job completion (provider side)
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Completion suggestion sent
+ */
 router.post("/jobs/:jobId/complete-suggest", suggestJobCompletion);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/complete-confirm:
+ *   post:
+ *     summary: Confirm job completion (client side)
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Job marked complete
+ */
 router.post("/jobs/:jobId/complete-confirm", confirmJobCompletion);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/dispute:
+ *   post:
+ *     summary: Raise a dispute on job closeout
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Work was not done as agreed."
+ *     responses:
+ *       200:
+ *         description: Dispute raised
+ */
 router.post("/jobs/:jobId/dispute", disputeJobCloseout);
 
-// ── Job lifecycle v2 (assigned -> start_requested -> working -> submitted
-//    -> completed, with a submitted <-> revision_requested loop) ──────────
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/start-request:
+ *   post:
+ *     summary: Provider requests to start work
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Start request sent
+ */
 router.post("/jobs/:jobId/start-request", requestJobStart);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/submit-work:
+ *   post:
+ *     summary: Provider submits completed work
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 example: "Work is done, please review."
+ *               media:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/MediaItem'
+ *     responses:
+ *       201:
+ *         description: Work submitted
+ */
 router.post("/jobs/:jobId/submit-work", submitJobWork);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/accept-submission:
+ *   post:
+ *     summary: Client accepts the submitted work
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Submission accepted, job completed
+ */
 router.post("/jobs/:jobId/accept-submission", acceptJobSubmission);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/request-revision:
+ *   post:
+ *     summary: Client requests a revision on submitted work
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [feedback]
+ *             properties:
+ *               feedback:
+ *                 type: string
+ *                 example: "Please repaint the second wall too."
+ *     responses:
+ *       200:
+ *         description: Revision requested
+ */
 router.post("/jobs/:jobId/request-revision", requestJobRevision);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/submissions:
+ *   get:
+ *     summary: List all work submissions for a job
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Submissions loaded
+ */
 router.get("/jobs/:jobId/submissions", listJobSubmissions);
+
+/**
+ * @swagger
+ * /api/hiring/jobs/{jobId}/activity:
+ *   get:
+ *     summary: List activity log for a job workspace
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Activity log loaded
+ */
 router.get("/jobs/:jobId/activity", listJobActivity);
 
+/**
+ * @swagger
+ * /api/hiring/jobs/{id}/publish:
+ *   post:
+ *     summary: Publish a draft job publicly
+ *     tags: [Hiring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Job published
+ */
 router.post("/jobs/:id/publish", publishJobPublicly);
 
 /**

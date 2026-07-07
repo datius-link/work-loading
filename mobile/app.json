@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "e-kazi",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,20 +19,43 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dmcaltd.ekazi"
+      "bundleIdentifier": "com.dmcaltd.ekazi",
+      "bitcode": false
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B6B63"
       },
-      "usesCleartextTraffic": true,
       "package": "com.dmcaltd.ekazi",
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.READ_CALL_LOG",
+        "android.permission.MANAGE_OWN_CALLS",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.INTERNET",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+        "android.permission.CALL_PHONE",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -55,7 +78,21 @@
           "icon": "./assets/adaptive-icon.png",
           "color": "#0B6B63"
         }
+      ],
+      "@config-plugins/react-native-webrtc",
+      "@config-plugins/react-native-callkeep",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow e-kazi to use Face ID to unlock the app quickly."
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8c6c93b3-3e9d-4fff-ac77-6cfa0a8f4734"
+      }
+    },
+    "owner": "e-kazi"
   }
 }

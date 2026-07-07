@@ -15,5 +15,10 @@ module.exports = (() => {
     "svg"
   ];
 
+  config.resolver.extraNodeModules = {
+    ...config.resolver.extraNodeModules,
+    buffer: require.resolve("buffer"),
+  };
+
   return config;
 })();

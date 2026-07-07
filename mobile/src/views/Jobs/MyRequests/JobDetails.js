@@ -22,6 +22,7 @@ import { useAppTheme } from "../../../theme";
 import AppIcon from "../../../icons/AppIcon";
 import { formatJobDate, formatRelativeDate } from "../jobDate";
 import { NavHeader, SectionHeading, statusConfig, tokenColors } from "../jobsUI";
+import { useCall } from "../../../calling/CallProvider";
 
 function mediaUrls(media) {
   if (!Array.isArray(media)) return [];
@@ -132,6 +133,7 @@ export default function JobDetails() {
   const { theme, mode } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const jobId = route.params?.jobId;
+  const call = useCall();
 
   const [job, setJob] = useState(null);
   const [applications, setApplications] = useState([]);
@@ -523,6 +525,15 @@ export default function JobDetails() {
                   <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate("JobWorkspace", { jobId: job.id, jobCode: job.job_code })}>
                     <AppIcon name="briefcase" size={15} color={theme.colors.primaryStrong} />
                     <Text style={styles.actionBtnTxt}>Open Workspace</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {workspaceReady && call?.supported && directProvider?.uuid ? (
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => call.startCall({ calleeUuid: directProvider.uuid, calleeName: directProvider.username || directProvider.full_name, calleePhoto: directProvider.profile_pic, jobId: job.id })}
+                  >
+                    <AppIcon name="message-circle" size={15} color={theme.colors.primaryStrong} />
+                    <Text style={styles.actionBtnTxt}>App Call</Text>
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity style={styles.actionBtn} onPress={shareJob}>

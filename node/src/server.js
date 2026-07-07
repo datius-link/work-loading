@@ -11,7 +11,9 @@ import profilesRoutes from "./profiles/profiles.routes.js";
 import recommendationsRoutes from "./recommendations/recommendations.routes.js";
 import searchRoutes from "./search/search.routes.js";
 import supportRoutes from "./support/support.routes.js";
+import callsRoutes from "./calls/calls.routes.js";
 import adminRoutes from "./admin/admin.routes.js";
+import devicesRoutes from "./devices/devices.routes.js";
 
 import { setupSwagger } from "./config/swagger.js";
 
@@ -28,17 +30,14 @@ app.use(express.json());
 app.use(
   express.urlencoded({
     extended: true,
-  })
+  }),
 );
 
 setupSwagger(app);
 
 app.use("/api/auth", authRoutes);
 
-app.use(
-  "/api/service-provider",
-  providerProfileRoutes
-);
+app.use("/api/service-provider", providerProfileRoutes);
 
 app.use("/api/posts", postsRoutes);
 app.use("/api/hiring", hiringRoutes);
@@ -47,6 +46,8 @@ app.use("/api/profiles", profilesRoutes);
 app.use("/api/recommendations", recommendationsRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/calls", callsRoutes);
+app.use("/api/devices", devicesRoutes);
 
 // The admin panel API is deliberately NOT mounted at the obvious "/api/admin"
 // path — anyone scanning "/api/*" for common route names would find that
@@ -54,7 +55,10 @@ app.use("/api/support", supportRoutes);
 // be rotated without a code change if it ever leaks. This is an obscurity
 // layer on top of the real protection, which is still the admin JWT check
 // in admin.middleware.js — never rely on the prefix alone.
-app.use(process.env.ADMIN_API_PREFIX || "/api/admin", adminRoutes);
+
+const ADMIN_API_PREFIX = process.env.ADMIN_API_PREFIX || "/api/admin";
+
+app.use(ADMIN_API_PREFIX, adminRoutes);
 
 app.get("/health", (_req, res) => {
   return res.status(200).json({
@@ -92,22 +96,14 @@ async function startServer() {
     console.log("✅ Migrations up to date");
 
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(
-        `🚀 Server running on port ${PORT}`
-      );
+      console.log(`🚀 Server running on port ${PORT}`);
 
-      console.log(
-        `📚 Swagger Docs: http://localhost:${PORT}/api-docs`
-      );
+      console.log(`📚 Swagger Docs: http://localhost:${PORT}/api-docs`);
 
-      console.log(
-        `❤️ Health Check: http://localhost:${PORT}/health`
-      );
+      console.log(`❤️ Health Check: http://localhost:${PORT}/health`);
     });
   } catch (err) {
-    console.error(
-      "❌ Failed to start server"
-    );
+    console.error("❌ Failed to start server");
 
     console.error(err);
   }
