@@ -56,7 +56,7 @@ button {
   font-family: inherit;
 }
 
-/* ── Auth screen ─────────────────────────────────────────────────────── */
+/* -- Auth screen --------------------------------------------------------- */
 .auth-screen {
   min-height: 100vh;
   display: flex;
@@ -184,7 +184,7 @@ button {
   background: var(--surface-soft);
 }
 
-/* ── App shell ───────────────────────────────────────────────────────── */
+/* -- App shell ------------------------------------------------------------ */
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -373,7 +373,12 @@ button {
   font-weight: 800;
 }
 
-/* ── Cards / stats / empty states ───────────────────────────────────── */
+.section-hint {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+/* -- Cards / stats / empty states ----------------------------------------- */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -397,12 +402,34 @@ button {
   cursor: pointer;
   text-align: left;
   font-family: inherit;
+  position: relative;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .stat-card-action:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.09);
+}
+
+/* A small trailing chevron marks cards as clickable/navigable at a glance --
+   otherwise a clickable "Open support requests" tile looks identical to the
+   static "Open disputes" tile next to it until the user happens to hover. */
+.stat-card-action::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid var(--teal-dark);
+  border-right: 2px solid var(--teal-dark);
+  transform: rotate(45deg);
+  opacity: 0.7;
+}
+
+.stat-card-compact.stat-card-action::after {
+  top: 14px;
+  right: 14px;
 }
 
 .stat-card-compact {
@@ -465,13 +492,30 @@ button {
   max-width: 380px;
 }
 
-/* ── Filter bar (Support Inbox) ──────────────────────────────────────── */
+/* -- Filter bar (Support Inbox) -------------------------------------------- */
 .filter-bar {
   margin-top: 20px;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 18px;
   align-items: center;
+}
+
+/* Each filter group (type, status) gets its own small caption so a
+   first-time viewer can tell at a glance what the row of pills filters by,
+   instead of two unlabeled rows of buttons that look identical in kind. */
+.chip-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chip-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
 .search-field {
@@ -527,7 +571,7 @@ button {
   color: var(--teal-dark);
 }
 
-/* ── Support inbox: list + detail split ─────────────────────────────── */
+/* -- Support inbox: list + detail split ------------------------------------ */
 .inbox-layout {
   margin-top: 18px;
   display: grid;
@@ -633,6 +677,32 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 8px;
+}
+
+.inbox-empty-hint {
+  font-size: 12.5px;
+  max-width: 320px;
+}
+
+/* Back button for the Support Inbox detail pane. Hidden on desktop (the
+   list is always visible alongside the detail there, so "back" has no
+   meaning); shown only inside the < 900px overlay layout below. */
+.back-to-list {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  color: var(--teal-dark);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.back-to-list:hover {
+  text-decoration: underline;
 }
 
 .inbox-detail {
@@ -750,7 +820,7 @@ button {
   color: #166534;
 }
 
-/* ── Loader ──────────────────────────────────────────────────────────── */
+/* -- Loader ------------------------------------------------------------ */
 .full-screen-loader {
   min-height: 100vh;
   display: flex;
@@ -773,8 +843,17 @@ button {
   }
 }
 
-/* ── Responsive ──────────────────────────────────────────────────────── */
-@media (max-width: 860px) {
+/* -- Responsive ------------------------------------------------------------
+   Breakpoint: 900px.
+   This is a desktop-first admin panel, not a mobile app -- the sidebar is a
+   permanent, always-visible column on any normal desktop/laptop browser
+   window (including a snapped/half-width window down to ~900px wide). Only
+   below 900px -- a genuinely narrow window or an actual phone/small-tablet
+   screen -- does the sidebar turn into a hamburger-triggered slide-in drawer
+   with a backdrop. Nothing in this block should ever be visible at typical
+   desktop widths (1280px+, 1440px+, etc.); if you find yourself seeing the
+   hamburger icon on a normal-sized desktop window, this rule is wrong. */
+@media (max-width: 900px) {
   .nav-toggle {
     display: flex;
   }
@@ -814,12 +893,35 @@ button {
     padding: 18px;
   }
 
+  /* Support Inbox: side-by-side list + detail doesn't fit below 900px, so
+     stack them. By default (no message selected) only the list is useful
+     to see, so the empty detail placeholder is hidden; once a message is
+     selected (.has-selection, set from SupportInboxPage.jsx) the detail
+     pane takes over as a full-screen-feeling overlay with its own
+     "Back to inbox" button, rather than showing both panes half-cropped. */
   .inbox-layout {
     grid-template-columns: 1fr;
+    position: relative;
   }
 
   .inbox-list {
-    max-height: 320px;
+    max-height: none;
+  }
+
+  .inbox-layout.has-selection .inbox-list {
+    display: none;
+  }
+
+  .inbox-layout:not(.has-selection) .inbox-detail {
+    display: none;
+  }
+
+  .inbox-detail {
+    min-height: 0;
+  }
+
+  .back-to-list {
+    display: inline-flex;
   }
 }
 

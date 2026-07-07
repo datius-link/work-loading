@@ -24,9 +24,12 @@ function initials(name) {
 // on whatever single page the admin app was loaded at.
 export default function AdminLayout({ activeView, onChangeView, children }) {
   const { admin, logout } = useAdminAuth();
-  // Sidebar is a permanent column on wide screens and an overlay drawer on
-  // narrow ones (see index.css @media rules) — this only controls the
-  // drawer's open/closed state on mobile.
+  // Sidebar is a permanent column at >= 900px (any normal desktop window)
+  // and an overlay drawer below that (see the "@media (max-width: 900px)"
+  // block in index.css) — this state only controls the drawer's
+  // open/closed state on narrow screens; it's simply unused/inert on desktop
+  // since .nav-toggle/.sidebar-close are hidden there and .sidebar ignores
+  // the "open" class outside that media query.
   const [navOpen, setNavOpen] = useState(false);
 
   const activeLabel = NAV_ITEMS.find((item) => item.key === activeView)?.label || "";

@@ -41,8 +41,16 @@ export default function DashboardPage({ onNavigate }) {
 
       {error ? <div className="form-error" style={{ marginTop: 16 }}>{error}</div> : null}
 
+      {/* Clickable cards get a "stat-card-action" affordance (hover lift +
+          a trailing chevron, added in CSS) so it's visually obvious which
+          tiles open the Support Inbox and which are just read-only status. */}
       <div className="card-grid">
-        <button type="button" className="stat-card stat-card-action" onClick={() => onNavigate?.("support")}>
+        <button
+          type="button"
+          className="stat-card stat-card-action"
+          onClick={() => onNavigate?.("support")}
+          aria-label="Open support requests — view in Support Inbox"
+        >
           <div className="stat-icon"><Icon name="inbox" size={20} /></div>
           <div className="stat-label">Open support requests</div>
           <div className="stat-value">{loading ? "…" : summary?.open_support_requests ?? 0}</div>
@@ -65,6 +73,7 @@ export default function DashboardPage({ onNavigate }) {
       </div>
 
       <h2 className="section-title">Support requests by type</h2>
+      <p className="section-hint">Click a category to jump straight to those messages in the Support Inbox.</p>
       <div className="card-grid card-grid-tight">
         {Object.entries(TYPE_META).map(([key, meta]) => (
           <button
@@ -72,6 +81,7 @@ export default function DashboardPage({ onNavigate }) {
             key={key}
             className="stat-card stat-card-action stat-card-compact"
             onClick={() => onNavigate?.("support", { type: key })}
+            aria-label={`View ${meta.label} in Support Inbox`}
           >
             <div className="stat-icon"><Icon name={meta.icon} size={18} /></div>
             <div className="stat-label">{meta.label}</div>

@@ -107,37 +107,48 @@ export default function SupportInboxPage({ initialType = "" }) {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="chip-row">
-          {TYPES.map((t) => (
-            <button
-              key={t.key || "all-types"}
-              type="button"
-              className={"chip" + (type === t.key ? " active" : "")}
-              onClick={() => setType(t.key)}
-            >
-              {t.icon ? <Icon name={t.icon} size={13} /> : null}
-              {t.label}
-            </button>
-          ))}
+        <div className="chip-group">
+          <span className="chip-group-label">Type</span>
+          <div className="chip-row">
+            {TYPES.map((t) => (
+              <button
+                key={t.key || "all-types"}
+                type="button"
+                className={"chip" + (type === t.key ? " active" : "")}
+                onClick={() => setType(t.key)}
+              >
+                {t.icon ? <Icon name={t.icon} size={13} /> : null}
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="chip-row">
-          {STATUSES.map((s) => (
-            <button
-              key={s.key || "all-statuses"}
-              type="button"
-              className={"chip" + (status === s.key ? " active" : "")}
-              onClick={() => setStatus(s.key)}
-            >
-              {s.icon ? <Icon name={s.icon} size={13} /> : null}
-              {s.label}
-            </button>
-          ))}
+        <div className="chip-group">
+          <span className="chip-group-label">Status</span>
+          <div className="chip-row">
+            {STATUSES.map((s) => (
+              <button
+                key={s.key || "all-statuses"}
+                type="button"
+                className={"chip" + (status === s.key ? " active" : "")}
+                onClick={() => setStatus(s.key)}
+              >
+                {s.icon ? <Icon name={s.icon} size={13} /> : null}
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {error ? <div className="form-error" style={{ marginTop: 12 }}>{error}</div> : null}
 
-      <div className="inbox-layout">
+      {/* Desktop (>= 900px): list and detail side by side, as normal.
+          Narrow (< 900px): the two panes are stacked by index.css, and
+          "has-selection" (added once a message is picked) slides the detail
+          pane in as a full-screen overlay with its own back button below,
+          instead of squeezing both into one cramped column. */}
+      <div className={"inbox-layout" + (selected ? " has-selection" : "")}>
         <div className="inbox-list">
           {loading ? (
             <div className="inbox-empty">Loading…</div>
@@ -145,6 +156,9 @@ export default function SupportInboxPage({ initialType = "" }) {
             <div className="inbox-empty">
               <Icon name="inbox" size={26} />
               <p>Nothing here yet.</p>
+              <p className="inbox-empty-hint">
+                Contact Us messages, feedback, and problem reports submitted from the app will appear here.
+              </p>
             </div>
           ) : (
             requests.map((r) => {
@@ -180,10 +194,18 @@ export default function SupportInboxPage({ initialType = "" }) {
           {!selected ? (
             <div className="inbox-empty">
               <Icon name="inbox" size={26} />
-              <p>Select a message to view details.</p>
+              <p>Select a message on the left to view its details.</p>
             </div>
           ) : (
             <>
+              {/* Only shown on narrow widths (see .back-to-list in index.css)
+                  where the detail pane becomes a full-screen overlay — this
+                  is the way back to the list without a router/URL to rely on. */}
+              <button type="button" className="back-to-list" onClick={() => setSelectedId(null)}>
+                <Icon name="chevronLeft" size={16} />
+                Back to inbox
+              </button>
+
               <div className="detail-header">
                 <div>
                   <div className="detail-type">
