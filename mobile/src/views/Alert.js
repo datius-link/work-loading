@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
+  SectionList,
   RefreshControl,
   StyleSheet,
   Text,
@@ -17,7 +17,7 @@ import AppIcon from "../icons/AppIcon";
 import LoginModal from "./Auth/LoginModal";
 import { cachedGet } from "../utils/offlineCache";
 import CachedDataNotice from "../components/CachedDataNotice";
-import { typeTone, notificationDestination } from "../notifications/notificationRouting";
+import { typeTone, notificationDestination, notificationSection } from "../notifications/notificationRouting";
 import { getNotificationsModule } from "../notifications/notificationRuntime";
 
 const T = {
@@ -34,6 +34,9 @@ const T = {
     emptyBody: "Messages, follows, likes, comments, mentions, job updates, applications, and followed posts will appear here.",
     retry: "Try again",
     unreadLabel: "Unread",
+    sectionMessages: "Messages",
+    sectionApplications: "Applications",
+    sectionActivity: "Activity",
   },
   sw: {
     title: "Notifications",
@@ -48,6 +51,9 @@ const T = {
     emptyBody: "Ujumbe, follows, likes, comments, mentions, updates za kazi, maombi na posts za unaowafuata zitaonekana hapa.",
     retry: "Jaribu tena",
     unreadLabel: "Haijasomwa",
+    sectionMessages: "Ujumbe",
+    sectionApplications: "Maombi",
+    sectionActivity: "Shughuli",
   },
 };
 
@@ -73,6 +79,25 @@ export default function Alerts() {
   const [showLogin, setShowLogin] = useState(false);
   const [showingCached, setShowingCached] = useState(false);
   const unreadCount = useMemo(() => notifications.filter((item) => !item?.read).length, [notifications]);
+
+  // Only "messages" and "applications" get their own section header — they're
+  // the two categories that actually pile up (a chat can have many messages,
+  // a popular job many applicants) and benefit from being grouped instead of
+  // interleaved. Everything else (follows, likes, comments, job updates,
+  // followed posts) stays together in one chronological "Activity" section
+  // rather than getting a header each, per the same split used for the OS
+  // push notification header (see pushService.js#CATEGORY_HEADERS).
+  const sections = useMemo(() => {
+    const buckets = { messages: [], applications: [], activity: [] };
+    for (const item of notifications) {
+      buckets[notificationSection(item)].push(item);
+    }
+    const out = [];
+    if (buckets.messages.length) out.push({ key: "messages", title: t.sectionMessages, data: buckets.messages });
+    if (buckets.applications.length) out.push({ key: "applications", title: t.sectionApplications, data: buckets.applications });
+    if (buckets.activity.length) out.push({ key: "activity", title: t.sectionActivity, data: buckets.activity });
+    return out;
+  }, [notifications, t]);
 
   // Keep the OS app icon badge (iOS, and Android launchers that support it)
   // in sync with what the user actually sees on this screen.
@@ -218,10 +243,17 @@ export default function Alerts() {
         </View>
       </View>
       <CachedDataNotice visible={showingCached} />
-      <FlatList
-        data={notifications}
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderItem}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>{section.title}</Text>
+            <Text style={styles.sectionHeaderCount}>{section.data.length}</Text>
+          </View>
+        )}
+        stickySectionHeadersEnabled={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -267,6 +299,25 @@ const createStyles = (theme) =>
     summaryText: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "800" },
     list: { paddingHorizontal: theme.spacing.md, paddingVertical: 8, paddingBottom: theme.spacing.xxl },
     listEmpty: { flexGrow: 1 },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingTop: 14,
+      paddingBottom: 6,
+      backgroundColor: theme.colors.bg,
+    },
+    sectionHeaderText: { color: theme.colors.text, fontSize: 15, fontWeight: "900" },
+    sectionHeaderCount: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontWeight: "800",
+      backgroundColor: theme.colors.bgElevated,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 8,
+      overflow: "hidden",
+    },
     timelineRow: {
       flexDirection: "row",
       alignItems: "flex-start",

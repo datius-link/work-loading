@@ -349,8 +349,11 @@ export async function createJob(req, res) {
       .whereNot("uuid", me.uuid)
       .select("uuid");
 
+    const alreadyNotified = new Set();
+
     if (providers.length) {
       for (const provider of providers) {
+        alreadyNotified.add(provider.uuid);
         try {
           await insertNotification(db, {
             profile_uuid: provider.uuid,
@@ -365,6 +368,38 @@ export async function createJob(req, res) {
           console.error("createJob relevant-provider notification error:", notificationErr);
         }
       }
+    }
+
+    // Followers get a lighter-weight "someone you follow posted a job" ping,
+    // separate from the skill-matched "relevant job" notification above —
+    // this is about who you follow, not what services you offer. Anyone
+    // already notified as a relevant provider is skipped so they don't get
+    // two pushes for the same job post.
+    try {
+      const poster = await db("profiles").where({ uuid: me.uuid }).select("username", "full_name").first();
+      const posterName = poster?.full_name || poster?.username || "Someone you follow";
+      const followers = await db("profile_followers")
+        .where({ provider_uuid: me.uuid })
+        .select("follower_uuid");
+      for (const { follower_uuid } of followers) {
+        if (alreadyNotified.has(follower_uuid)) continue;
+        try {
+          await insertNotification(db, {
+            profile_uuid: follower_uuid,
+            actor_uuid: me.uuid,
+            system: "hiring",
+            type: "followed_job_posted",
+            title: notificationJobTitle(job),
+            body: `@${poster?.username || "user"} posted a job: ${job.title}`,
+            job_id: job.id,
+            meta: { job_code: job.job_code, action: "open_job_post", poster_name: posterName },
+          });
+        } catch (notificationErr) {
+          console.error("createJob follower notification error:", notificationErr);
+        }
+      }
+    } catch (followersErr) {
+      console.error("createJob followers lookup error:", followersErr);
     }
 
     try {

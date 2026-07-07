@@ -7,6 +7,7 @@ const CATEGORY_LABELS = {
   job_status: "Job Updates",
   applications: "Applications",
   direct_hire: "Direct Hire",
+  calls: "Calls",
   general: "General",
 };
 
@@ -44,7 +45,12 @@ export async function ensureAndroidNotificationChannelsAsync() {
 
         return Notifications.setNotificationChannelAsync(channelId, {
           name: `${label}${suffix}`,
-          importance: Notifications.AndroidImportance.HIGH,
+          // Calls ring even under Do Not Disturb-adjacent conditions and
+          // reliably show as a heads-up banner, which is why they get MAX
+          // instead of the HIGH used for every other category — this is
+          // what gives CallKeep's native ringing screen the best chance of
+          // actually surfacing when the app is backgrounded.
+          importance: category === "calls" ? Notifications.AndroidImportance.MAX : Notifications.AndroidImportance.HIGH,
           sound: combo.sound ? "default" : undefined,
           enableVibrate: combo.vibration,
           vibrationPattern: combo.vibration ? [0, 250, 250, 250] : undefined,

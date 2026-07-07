@@ -611,6 +611,27 @@ export async function toggleLike(req, res) {
   }
 
   await db("post_likes").insert({ post_id: postId, profile_uuid: profileUuid });
+
+  // Never notify on unlike, and never notify yourself for liking your own post.
+  try {
+    const post = await db("posts").where({ id: postId }).first();
+    if (post && post.profile_uuid && post.profile_uuid !== profileUuid) {
+      const liker = await db("profiles").where({ uuid: profileUuid }).select("username").first();
+      await insertNotification(db, {
+        profile_uuid: post.profile_uuid,
+        actor_uuid: profileUuid,
+        post_id: post.id,
+        system: "posts",
+        type: "post_like",
+        title: "New like",
+        body: `@${liker?.username || "Someone"} liked your post`,
+        meta: { actor_uuid: profileUuid },
+      });
+    }
+  } catch (notificationErr) {
+    console.error("toggleLike notification error:", notificationErr);
+  }
+
   return res.json({ liked: true });
 }
 
@@ -658,6 +679,29 @@ export async function createComment(req, res) {
       .returning("*");
 
     const comment = await fetchCommentById(inserted.id);
+
+    // Never notify yourself for commenting on your own post. Replies to
+    // someone else's comment still notify the post owner, not the parent
+    // commenter — that mirrors the existing recommendations/rating pattern
+    // of "one notification per event, to the person who owns the thing."
+    try {
+      if (post.profile_uuid && post.profile_uuid !== profileUuid) {
+        const commenter = await db("profiles").where({ uuid: profileUuid }).select("username").first();
+        await insertNotification(db, {
+          profile_uuid: post.profile_uuid,
+          actor_uuid: profileUuid,
+          post_id: post.id,
+          system: "posts",
+          type: "post_comment",
+          title: "New comment",
+          body: `@${commenter?.username || "Someone"} commented on your post: "${text.trim().slice(0, 100)}"`,
+          meta: { actor_uuid: profileUuid, comment_id: inserted.id },
+        });
+      }
+    } catch (notificationErr) {
+      console.error("createComment notification error:", notificationErr);
+    }
+
     return res.json({ success: true, comment });
   } catch (err) {
     console.error("createComment error:", err);
