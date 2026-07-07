@@ -2,9 +2,11 @@ import React, { useMemo } from "react";
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useAppTheme } from "../../../../theme";
+import AppIcon from "../../../../icons/AppIcon";
 import { Card, SectionHeading, InfoRow } from "../../../Jobs/jobsUI";
 import { formatJobDate, formatRelativeDate } from "../../../Jobs/jobDate";
 import { useLanguage } from "../../../../LanguageContext";
+import { useCall } from "../../../../calling/CallProvider";
 
 function avatarUri(u) {
   if (u?.profile_pic) return u.profile_pic;
@@ -26,6 +28,7 @@ export default function WorkspaceDetails({ job }) {
   const { language } = useLanguage();
   const s = useMemo(() => createStyles(theme), [theme]);
   const tx = (en, sw) => language === "sw" ? sw : en;
+  const call = useCall();
 
   if (!job) return null;
 
@@ -74,6 +77,15 @@ export default function WorkspaceDetails({ job }) {
           </View>
           {otherParty.phone_number && <InfoRow icon="phone" label={tx("Phone", "Simu")} value={otherParty.phone_number} />}
           {otherParty.email && <InfoRow icon="mail" label="Email" value={otherParty.email} />}
+          {call?.supported && otherParty.uuid ? (
+            <TouchableOpacity
+              style={s.callBtn}
+              onPress={() => call.startCall({ calleeUuid: otherParty.uuid, calleeName: otherParty.username || otherParty.full_name, calleePhoto: otherParty.profile_pic, jobId: job.id, jobTitle: job.title })}
+            >
+              <AppIcon name="phone" size={14} color={theme.colors.onPrimary} />
+              <Text style={s.callBtnTxt}>{tx("Call in-app", "Piga simu ndani ya app")}</Text>
+            </TouchableOpacity>
+          ) : null}
         </Card>
       ) : null}
     </ScrollView>
@@ -109,4 +121,16 @@ const createStyles = (theme) =>
       borderColor: theme.colors.primary,
     },
     profileBtnTxt: { color: theme.colors.primary, fontSize: 12, fontWeight: "700" },
+
+    callBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      minHeight: 42,
+      borderRadius: 10,
+      marginTop: 10,
+      backgroundColor: theme.colors.primary,
+    },
+    callBtnTxt: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: "800" },
   });

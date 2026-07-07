@@ -40,6 +40,16 @@ async function cleanupTickets(tickets, batch) {
   );
 }
 
+// Only these two categories get a dedicated "header" on the push itself —
+// they're the ones that actually pile up (many chat messages, many
+// applicants on a popular job), so leading with the category name instead of
+// the specific job context makes the notification shade scannable. Every
+// other category (follows, likes, comments, job status, direct hire, calls)
+// keeps its normal specific title, mirroring the same messages/applications
+// split used for section headers in the in-app Notifications screen (see
+// mobile/src/notifications/notificationRouting.js#notificationSection).
+const CATEGORY_HEADERS = { messages: "Messages", applications: "Applications" };
+
 // Sends a real OS push notification for a notification row that was just
 // inserted (see notificationSettings.js#insertNotification). Any failure here
 // is logged and swallowed - a push delivery problem should never break the
@@ -66,6 +76,19 @@ export async function sendPushForNotification(notification) {
       body = messagePreviewBody(previewSetting, notification.meta?.sender_name, notification.meta?.message_preview);
     }
 
+    // Demote the specific title (e.g. "Job QHWU - Develop website") to an
+    // iOS subtitle line, and promote the category name to the header both
+    // platforms actually render: on Android that's the bold title line; on
+    // iOS it's title + subtitle stacked. Android has no public "subText"
+    // field through Expo's remote push payload, so the title swap is what
+    // carries the header there.
+    let subtitle;
+    const headerLabel = CATEGORY_HEADERS[category];
+    if (headerLabel) {
+      subtitle = title;
+      title = headerLabel;
+    }
+
     const data = {
       notification_id: notification.id,
       type: notification.type,
@@ -82,6 +105,7 @@ export async function sendPushForNotification(notification) {
       .map((row) => ({
         to: row.expo_push_token,
         title,
+        ...(subtitle ? { subtitle } : {}),
         body,
         data,
         sound: soundEnabled ? "default" : null,

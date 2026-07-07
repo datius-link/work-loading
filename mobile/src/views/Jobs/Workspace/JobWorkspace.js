@@ -17,6 +17,7 @@ import WorkspaceTopBar  from "./WorkspaceTopBar";
 import WorkspaceChat    from "./workspace/WorkspaceChat";
 import WorkspaceProgress from "./workspace/WorkspaceProgress";
 import WorkspaceDetails  from "./workspace/WorkspaceDetails";
+import WorkspaceCalls   from "./workspace/WorkspaceCalls";
 import { useLanguage } from "../../../LanguageContext";
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export default function JobWorkspace() {
   const [tab,        setTab]        = useState(route.params?.tab || "chat");
   const [notice,     setNotice]     = useState(null);
   const [sending,    setSending]    = useState(false);
+  const [missedCallCount, setMissedCallCount] = useState(0);
   const liveMessages = useQuery(convexApi.jobMessages.list, jobId ? { jobId: String(jobId) } : "skip");
   const workspaceSignal = useQuery(
     convexApi.realtimeEvents.latest,
@@ -87,13 +89,31 @@ export default function JobWorkspace() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    if (["chat", "progress", "details"].includes(route.params?.tab)) {
+    if (["chat", "progress", "calls", "details"].includes(route.params?.tab)) {
       setTab(route.params.tab);
     }
   }, [route.params?.tab]);
   useEffect(() => {
     if (workspaceSignal?._id) load();
   }, [workspaceSignal?._id, load]);
+
+  // Just enough of the call history fetched separately from the Calls tab
+  // itself (which loads the full list only once it's actually opened) to
+  // drive the little missed-call badge on the tab bar — cleared locally the
+  // moment the user actually opens the tab, same as an unread count.
+  useEffect(() => {
+    if (!jobId) return;
+    viewerRequest("get", `/calls/job/${jobId}`)
+      .then((res) => {
+        const rows = Array.isArray(res?.data?.calls) ? res.data.calls : [];
+        setMissedCallCount(rows.filter((c) => c.outcome === "missed" && c.direction === "incoming").length);
+      })
+      .catch(() => {});
+  }, [jobId, tab]);
+
+  useEffect(() => {
+    if (tab === "calls") setMissedCallCount(0);
+  }, [tab]);
 
   const notifyWorkspaceChanged = useCallback(
     async (event) => {
@@ -255,6 +275,7 @@ export default function JobWorkspace() {
         tab={tab}
         onBack={() => nav.goBack()}
         onTabChange={setTab}
+        missedCallCount={missedCallCount}
       />
 
       <View style={{ flex: 1 }}>
@@ -275,6 +296,13 @@ export default function JobWorkspace() {
             onJobUpdate={setJob}
             onNotice={setNotice}
             onRealtimeChange={notifyWorkspaceChanged}
+          />
+        )}
+        {tab === "calls" && (
+          <WorkspaceCalls
+            jobId={jobId}
+            jobTitle={job.title}
+            otherParty={job.contact_details?.viewer_role === "hirer" ? job.contact_details?.service_provider : job.contact_details?.hirer}
           />
         )}
         {tab === "details" && (

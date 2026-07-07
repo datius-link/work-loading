@@ -45,12 +45,36 @@ export function typeTone(item) {
   return TYPE_STYLES.general;
 }
 
+// Which section of the in-app Notifications screen an item belongs to.
+// Only "messages" and "applications" get their own header there (and their
+// own header line on the OS push, see pushService.js#CATEGORY_HEADERS on the
+// server) — everything else (follows, likes, comments, job updates, direct
+// hire, followed posts) shares one chronological "Activity" section instead
+// of getting a header per type, since most of those are one-off/low-volume.
+export function notificationSection(item) {
+  const raw = `${item?.type || ""} ${item?.system || ""} ${item?.title || ""}`.toLowerCase();
+  if (raw.includes("message")) return "messages";
+  if (raw.includes("application") || raw.includes("applicant") || raw.includes("provider_withdrew")) return "applications";
+  return "activity";
+}
+
 export function notificationDestination(item) {
   const raw = `${item?.type || ""} ${item?.system || ""} ${item?.title || ""}`.toLowerCase();
   const action = String(item?.meta?.action || "").toLowerCase();
   const jobId = item?.job_id || item?.meta?.job_id;
   const post = item?.meta?.post || null;
   const postId = item?.post_id || item?.meta?.post_id;
+
+  // Incoming/missed call pushes both belong on the workspace's Calls tab —
+  // if the call is still actually ringing when this is tapped, CallProvider's
+  // own global incomingFor subscription (see CallProvider.js) will already be
+  // showing the CallOverlay on top of whatever screen this lands on; if it's
+  // already resolved (missed, declined, ended) by the time they tap, the
+  // Calls tab is exactly where the new history row is waiting.
+  const isCall = raw.includes("call") && !raw.includes("recall");
+  if (jobId && isCall) {
+    return { name: "JobWorkspace", params: { jobId, tab: "calls" } };
+  }
 
   const isMessage = raw.includes("message") || action.includes("message");
   const isProgress =
