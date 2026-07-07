@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import { setBiometricLoginEnabled } from "./biometricAuth";
 
 export const USER_SESSION_KEYS = {
   token: "user_token",
@@ -8,6 +9,13 @@ export const USER_SESSION_KEYS = {
   profile: "user_profile",
   email: "user_email",
 };
+
+// If "Nikumbuke" (remember me) was left unchecked at login, we still persist
+// the session normally so the rest of the app works this run — but we flag
+// it as ephemeral. consumeEphemeralSessionIfAny() is called once at app cold
+// start (App.js) and wipes any session left flagged this way, so an
+// un-remembered login doesn't survive closing/reopening the app.
+const EPHEMERAL_FLAG_KEY = "user_session_ephemeral";
 
 let cachedUserSession = null;
 const userSessionListeners = new Set();
@@ -78,7 +86,7 @@ export async function getUserToken() {
   return AsyncStorage.getItem(USER_SESSION_KEYS.token);
 }
 
-export async function saveUserSession({ token, user, viewer, email }) {
+export async function saveUserSession({ token, user, viewer, email, remember = true }) {
   if (!token) return null;
 
   const account = user || viewer || null;
@@ -95,14 +103,38 @@ export async function saveUserSession({ token, user, viewer, email }) {
   }
 
   await AsyncStorage.multiSet(entries);
+  if (remember) {
+    await AsyncStorage.removeItem(EPHEMERAL_FLAG_KEY);
+  } else {
+    await AsyncStorage.setItem(EPHEMERAL_FLAG_KEY, "1");
+  }
   const saved = await getUserSession();
   cachedUserSession = saved;
   notifyUserSession(saved);
   return saved;
 }
 
+// Called once at app cold start (App.js), before anything else reads the
+// session. If the last login had "Nikumbuke" unchecked, this wipes it so the
+// user lands back on the login screen instead of silently staying signed in.
+export async function consumeEphemeralSessionIfAny() {
+  try {
+    const flag = await AsyncStorage.getItem(EPHEMERAL_FLAG_KEY);
+    if (flag !== "1") return false;
+    await clearUserSession();
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
 export async function clearUserSession() {
-  await AsyncStorage.multiRemove(Object.values(USER_SESSION_KEYS));
+  await AsyncStorage.multiRemove([...Object.values(USER_SESSION_KEYS), EPHEMERAL_FLAG_KEY]);
+  // A full logout also turns off biometric quick-login: the flag lives in
+  // device storage, not per-account, so leaving it on would let a different
+  // person who later logs into this same device inherit an app-lock they
+  // never opted into.
+  await setBiometricLoginEnabled(false);
   cachedUserSession = null;
   notifyUserSession({
     token: null,

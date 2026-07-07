@@ -4,7 +4,7 @@ import { ConvexReactClient } from "convex/react";
 import { ConvexProvider } from "convex/react";
 
 import React, { useEffect, useState } from "react";
-import { StatusBar, StyleSheet, Text, View } from "react-native";
+import { Image, StatusBar, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -17,7 +17,7 @@ import Txt from "./src/Txt";
 import NetworkBanner from "./src/components/NetworkBanner";
 import NotificationBanner from "./src/components/NotificationBanner";
 import { initOfflineCache } from "./src/utils/offlineCache";
-import { getUserSession, subscribeUserSession } from "./src/utils/userSession";
+import { consumeEphemeralSessionIfAny, getUserSession, subscribeUserSession } from "./src/utils/userSession";
 import { navigationRef } from "./src/notifications/navigationRef";
 import {
   attachNotificationListeners,
@@ -26,6 +26,10 @@ import {
   registerDeviceForPush,
   unregisterDeviceForPush,
 } from "./src/notifications/pushNotifications";
+import { registerBackgroundCallTask } from "./src/notifications/backgroundCallTask";
+import { CallProvider } from "./src/calling/CallProvider";
+import CallOverlay from "./src/calling/CallOverlay";
+import BiometricLockOverlay from "./src/components/BiometricLockOverlay";
 
 /* ---------------------------
    MAIN USER SCREENS
@@ -141,7 +145,9 @@ export default function App() {
         <ThemeProvider>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaProvider>
-              <AppShell />
+              <CallProvider>
+                <AppShell />
+              </CallProvider>
             </SafeAreaProvider>
           </GestureHandlerRootView>
         </ThemeProvider>
@@ -155,7 +161,13 @@ function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    initOfflineCache();
+    // Must resolve before anything else reads the session (BiometricLockOverlay,
+    // MainTabs guards, etc.) — otherwise a "Nikumbuke" = off login from last
+    // time would flash in as still signed-in before being wiped.
+    (async () => {
+      await consumeEphemeralSessionIfAny();
+      initOfflineCache();
+    })();
     const timeout = setTimeout(() => setShowSplash(false), 900);
     return () => clearTimeout(timeout);
   }, []);
@@ -167,6 +179,7 @@ function AppShell() {
     let cancelled = false;
 
     initPushNotifications();
+    registerBackgroundCallTask();
     const detachListeners = attachNotificationListeners();
 
     // Requirement: request permission / register a token on app startup if
@@ -200,6 +213,8 @@ function AppShell() {
       {showSplash ? <SplashScreen /> : <RootNavigator />}
       <NetworkBanner />
       <NotificationBanner />
+      <CallOverlay />
+      <BiometricLockOverlay />
     </View>
   );
 }
@@ -209,8 +224,8 @@ function SplashScreen() {
 
   return (
     <View style={[rootStyles.splash, { backgroundColor: theme.colors.bg }]}>
-      <View style={[rootStyles.logoMark, { backgroundColor: theme.colors.primarySoft }]}>
-        <AppIcon name="logo" size={52} color={theme.colors.primary} />
+      <View style={[rootStyles.logoMark, { backgroundColor: theme.colors.primarySoft, overflow: "hidden" }]}>
+        <Image source={require("./assets/icon.png")} style={rootStyles.logoImage} />
       </View>
       <Text style={[rootStyles.splashTitle, { color: theme.colors.text }]}>e-kazi</Text>
       <Txt en="Work. Service. Trust." sw="Kazi. Huduma. Uaminifu." style={[rootStyles.splashSub, { color: theme.colors.textMuted }]} />
@@ -287,6 +302,10 @@ const rootStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 18,
+  },
+  logoImage: {
+    width: 92,
+    height: 92,
   },
   splashTitle: {
     fontSize: 34,

@@ -309,13 +309,22 @@ export async function requestViewerCode(req, res) {
     if (password.length < 4) return res.status(400).json({ message: "Password must be at least 4 characters" });
     if (!["login", "register"].includes(mode)) return res.status(400).json({ message: "Invalid user auth mode" });
     if (mode === "register" && !email.includes("@")) return res.status(400).json({ message: "Valid email required" });
-    if (mode === "login" && loginIdentifier.length < 3) return res.status(400).json({ message: "Email or username required" });
+    if (mode === "login" && loginIdentifier.length < 3) return res.status(400).json({ message: "Phone number, email, or username required" });
 
     let profile = null;
-    if (mode === "login" && !loginIdentifier.includes("@")) {
-      profile = await db("profiles")
-        .whereRaw("LOWER(username) = ?", [loginIdentifier.replace(/^@/, "")])
-        .first();
+    if (mode === "login") {
+      const phoneCandidate = !loginIdentifier.includes("@") ? normalizePhoneNumber(identifier) : null;
+      if (phoneCandidate) {
+        profile = await db("profiles").where({ phone_number: phoneCandidate }).first();
+      }
+      if (!profile && !loginIdentifier.includes("@")) {
+        profile = await db("profiles")
+          .whereRaw("LOWER(username) = ?", [loginIdentifier.replace(/^@/, "")])
+          .first();
+      }
+      if (!profile && loginIdentifier.includes("@")) {
+        profile = await db("profiles").where({ email }).first();
+      }
     } else {
       profile = await db("profiles").where({ email }).first();
     }

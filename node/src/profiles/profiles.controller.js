@@ -1,5 +1,6 @@
 import db from "../db/index.js";
 import { normalizePhoneList, normalizePhoneNumber } from "../utils/phone.js";
+import { comparePassword, hashPassword } from "../utils/hash.js";
 
 const PHONE_OTP_TTL_MS = 10 * 60 * 1000;
 const phoneOtps = new Map();
@@ -224,6 +225,64 @@ export async function verifyMyPhoneOtp(req, res) {
   }
 }
 
+export async function changeMyPassword(req, res) {
+  try {
+    const uuid = req.user?.uuid || req.viewer?.uuid;
+    if (!uuid) return res.status(401).json({ message: "Authorization required" });
+
+    const currentPassword = String(req.body.current_password || req.body.currentPassword || "");
+    const newPassword = String(req.body.new_password || req.body.newPassword || "");
+    if (!currentPassword) return res.status(400).json({ message: "Current password is required" });
+    if (newPassword.length < 4) return res.status(400).json({ message: "New password must be at least 4 characters" });
+
+    const profile = await db("profiles").where({ uuid }).first();
+    if (!profile) return res.status(404).json({ message: "Profile not found" });
+    if (!profile.password) return res.status(400).json({ message: "No password set on this account yet" });
+
+    const ok = await comparePassword(currentPassword, profile.password);
+    if (!ok) return res.status(403).json({ message: "Current password is incorrect" });
+
+    if (await comparePassword(newPassword, profile.password)) {
+      return res.status(400).json({ message: "New password must be different from the current password" });
+    }
+
+    await db("profiles").where({ uuid }).update({
+      password: await hashPassword(newPassword),
+      updated_at: db.fn.now(),
+    });
+
+    return res.json({ success: true, message: "Password changed successfully" });
+  } catch (err) {
+    console.error("changeMyPassword error:", err);
+    return res.status(500).json({ message: "Failed to change password" });
+  }
+}
+
+// Verify-only check: confirms the caller knows their current password without
+// changing anything. Used to gate sensitive toggles (e.g. enabling/disabling
+// biometric login) the same way password confirms sensitive profile edits.
+export async function verifyMyPassword(req, res) {
+  try {
+    const uuid = req.user?.uuid || req.viewer?.uuid;
+    if (!uuid) return res.status(401).json({ message: "Authorization required" });
+
+    const password = String(req.body.password || req.body.current_password || req.body.currentPassword || "");
+    if (!password) return res.status(400).json({ message: "Password is required" });
+
+    const profile = await db("profiles").where({ uuid }).first();
+    if (!profile) return res.status(404).json({ message: "Profile not found" });
+    if (!profile.password) return res.status(400).json({ message: "No password set on this account yet" });
+
+    const ok = await comparePassword(password, profile.password);
+    if (!ok) return res.status(403).json({ message: "Current password is incorrect" });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("verifyMyPassword error:", err);
+    return res.status(500).json({ message: "Failed to verify password" });
+  }
+}
+
 export async function getMyConnections(req, res) {
   try {
     const uuid = req.user?.uuid || req.viewer?.uuid;
@@ -257,6 +316,9 @@ export async function updateMyProfile(req, res) {
     const uuid = req.user?.uuid || req.viewer?.uuid;
     if (!uuid) return res.status(401).json({ message: "Authorization required" });
 
+    const existing = await db("profiles").where({ uuid }).first();
+    if (!existing) return res.status(404).json({ message: "Profile not found" });
+
     const {
       username,
       email,
@@ -275,7 +337,38 @@ export async function updateMyProfile(req, res) {
       socials,
       privacy_settings,
       privacySettings: privacySettingsBody,
+      current_password,
+      currentPassword,
     } = req.body;
+
+    // Username / email / phone number are login credentials — changing any of
+    // them requires the account's current password, even though the session
+    // itself is already authenticated. This closes a gap where a stolen/left-open
+    // session could silently take over an account's login identity.
+    const nextUsername = typeof username === "string" ? username.trim() : undefined;
+    const nextEmail = typeof email === "string" ? email.trim().toLowerCase() : undefined;
+    let nextPhone;
+    if (Array.isArray(phone_numbers) || Array.isArray(phoneNumbers)) {
+      nextPhone = normalizePhoneList(phone_numbers || phoneNumbers || [])[0] || null;
+    } else if (typeof phone_number === "string" || typeof phoneNumber === "string") {
+      const rawPhone = String(phone_number ?? phoneNumber ?? "").trim();
+      nextPhone = rawPhone ? normalizePhoneNumber(rawPhone) : null;
+    }
+
+    const changingUsername = nextUsername !== undefined && nextUsername.toLowerCase() !== (existing.username || "").toLowerCase();
+    const changingEmail = nextEmail !== undefined && nextEmail !== (existing.email || "");
+    const changingPhone = nextPhone !== undefined && nextPhone !== (existing.phone_number || null);
+
+    if ((changingUsername || changingEmail || changingPhone) && existing.password) {
+      const suppliedPassword = String(current_password || currentPassword || "");
+      if (!suppliedPassword) {
+        return res.status(403).json({ message: "Current password required to change login details" });
+      }
+      const passwordOk = await comparePassword(suppliedPassword, existing.password);
+      if (!passwordOk) {
+        return res.status(403).json({ message: "Current password is incorrect" });
+      }
+    }
 
     const payload = {
       updated_at: db.fn.now(),
