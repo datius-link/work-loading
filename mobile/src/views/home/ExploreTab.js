@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -29,7 +29,7 @@ function shufflePosts(items) {
   return copy;
 }
 
-export default function ExploreTab({ navigation, searchQuery = "" }) {
+const ExploreTab = forwardRef(function ExploreTab({ navigation, searchQuery = "" }, ref) {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
@@ -94,8 +94,20 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
 
       if (append) {
         setPosts((prev) => {
+          if (options.cycle) {
+            // Looping the feed back to page 1 on purpose re-introduces posts
+            // already in `prev` (same real `id`, needed intact for
+            // likes/comments/state updates elsewhere). Give each cycled copy
+            // its own `_renderKey` so FlatList's keyExtractor never sees two
+            // entries with the same key — real `id` stays untouched.
+            const cycleStamp = Date.now();
+            const cycled = fetchedPosts.map((post, i) => ({
+              ...post,
+              _renderKey: `${post.id}-cycle-${cycleStamp}-${i}`,
+            }));
+            return [...prev, ...cycled];
+          }
           const merged = [...prev, ...fetchedPosts];
-          if (options.cycle) return merged;
           const unique = merged.filter(
             (item, index, self) =>
               index === self.findIndex((p) => p.id === item.id)
@@ -155,6 +167,12 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
     fetchPosts(1, false);
   };
 
+  // Exposed so a parent header (e.g. Home's overflow menu) can trigger a
+  // feed refresh without duplicating the fetch logic here.
+  useImperativeHandle(ref, () => ({
+    refresh: onRefresh,
+  }));
+
   const handleLoadMore = () => {
     if (loadingMore || loading) return;
 
@@ -191,7 +209,7 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
     itemVisiblePercentThreshold: 80,
   }), []);
 
-  const keyExtractor = useCallback((item) => String(item.id), []);
+  const keyExtractor = useCallback((item) => item._renderKey || String(item.id), []);
 
   const renderItem = useCallback(({ item }) => {
     return (
@@ -262,8 +280,9 @@ export default function ExploreTab({ navigation, searchQuery = "" }) {
       )}
     </View>
   );
-}
+});
 
+export default ExploreTab;
 
 const createStyles = (theme) =>
   StyleSheet.create({

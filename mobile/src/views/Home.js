@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   ScrollView,
   StyleSheet,
@@ -13,22 +15,32 @@ import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ExploreTab from "./home/ExploreTab";
 import { useAppTheme } from "../theme";
+import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
 import { api } from "../api/api";
-import OverflowMenu from "../components/OverflowMenu";
-import SupportActionSheet from "./Settings/SupportActionSheet";
 
-function avatarFor(user) {
+const T = {
+  en: { tagline: "Find work nearby", searchPlaceholder: "Search e-kazi" },
+  sw: { tagline: "Pata kazi karibu nawe", searchPlaceholder: "Tafuta e-kazi" },
+};
+
+function colorParam(color) {
+  return String(color || "").replace("#", "");
+}
+
+function avatarFor(user, theme) {
   if (user?.profile_pic) return user.profile_pic;
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
     user?.full_name || user?.username || "U"
-  )}&background=0B6B63&color=fff`;
+  )}&background=${colorParam(theme.colors.primary)}&color=${colorParam(theme.colors.onPrimary)}`;
 }
 
 export default function Home() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
+  const { language } = useLanguage();
+  const t = T[language] || T.en;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const inputRef = useRef(null);
   const requestRef = useRef(null);
@@ -37,7 +49,14 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState({ users: [], hashtags: [] });
   const [searching, setSearching] = useState(false);
-  const [showSupportActions, setShowSupportActions] = useState(false);
+
+  // Keep the logo anchored while the brand text and search controls swap.
+  const searchAnim = useRef(new Animated.Value(0)).current;
+  const brandTextOpacity = searchAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+  const brandTextShift = searchAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
+  const toggleOpacity = searchAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+  const toggleScale = searchAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.8] });
+  const barScaleX = searchAnim.interpolate({ inputRange: [0, 1], outputRange: [0.1, 1] });
 
   useEffect(() => {
     const plain = query.replace(/^[@#]+/, "").trim();
@@ -83,6 +102,26 @@ export default function Home() {
     setResults({ users: [], hashtags: [] });
   };
 
+  const openSearch = () => {
+    setSearchOpen(true);
+    Animated.timing(searchAnim, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+    setTimeout(() => inputRef.current?.focus(), 220);
+  };
+
+  const closeSearchAnimated = () => {
+    Animated.timing(searchAnim, {
+      toValue: 0,
+      duration: 220,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => closeSearch());
+  };
+
   const submitSearch = (value = query) => {
     const clean = String(value || "").trim();
     if (!clean.replace(/^[@#]+/, "").trim()) return;
@@ -103,56 +142,77 @@ export default function Home() {
   const showDropdown = searchOpen && query.replace(/^[@#]+/, "").trim().length > 0;
   const noResults = !searching && results.users.length === 0 && results.hashtags.length === 0;
 
-  const menuItems = [
-    { icon: "refresh", en: "Refresh", sw: "Onyesha upya", onPress: () => exploreRef.current?.refresh() },
-    { icon: "briefcase", en: "Filter jobs", sw: "Chuja kazi", onPress: () => navigation.navigate("Jobs", { initialTab: "browse" }) },
-    { icon: "warning", en: "Report a problem", sw: "Ripoti tatizo", onPress: () => setShowSupportActions(true) },
-    { icon: "help", en: "Go to Help", sw: "Nenda Msaadani", onPress: () => navigation.navigate("Settings", { openScreen: "help" }) },
-  ];
-
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <View style={styles.logoIconWrap}>
-          <AppIcon name="logo" size={23} color={theme.colors.primary} />
+        <View style={styles.topSide}>
+          <View style={styles.brandRow} pointerEvents="box-none">
+            <View style={styles.logoBadge}>
+              <Image source={require("../../assets/icon.png")} style={styles.logoImage} />
+              <View style={styles.logoDot} />
+            </View>
+            <Animated.View
+              style={[
+                styles.brandText,
+                { opacity: brandTextOpacity, transform: [{ translateX: brandTextShift }] },
+              ]}
+              pointerEvents={searchOpen ? "none" : "auto"}
+            >
+              <Text style={styles.brandName}>
+                e-<Text style={styles.brandNameAccent}>kazi</Text>
+              </Text>
+              <Text style={styles.brandTag} numberOfLines={1}>
+                {t.tagline}
+              </Text>
+            </Animated.View>
+          </View>
+
+          <Animated.View
+            style={[
+              styles.searchToggle,
+              { opacity: toggleOpacity, transform: [{ translateY: -3 }, { scale: toggleScale }] },
+            ]}
+            pointerEvents={searchOpen ? "none" : "auto"}
+          >
+            <TouchableOpacity style={styles.searchToggleBtn} onPress={openSearch} activeOpacity={0.85}>
+              <AppIcon name="search" size={18} color={theme.colors.onPrimary} />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
 
-        <View style={[styles.searchWrap, searchOpen && styles.searchWrapOpen]}>
-          <TouchableOpacity
-            style={styles.searchIconBtn}
-            onPress={() => {
-              if (searchOpen) closeSearch();
-              else {
-                setSearchOpen(true);
-                setTimeout(() => inputRef.current?.focus(), 80);
-              }
-            }}
-          >
-            <AppIcon name={searchOpen ? "close" : "search"} size={19} color={theme.colors.primary} />
-          </TouchableOpacity>
-          {searchOpen ? (
+        <Animated.View
+          style={[
+            styles.searchBarAbs,
+            { top: insets.top + 7 },
+            { opacity: searchAnim, transform: [{ scaleX: barScaleX }] },
+          ]}
+          pointerEvents={searchOpen ? "auto" : "none"}
+        >
+          <View style={styles.searchBarPill}>
+            <View style={styles.searchBarIconWrap}>
+              <AppIcon name="search" size={16} color={theme.colors.onPrimary} />
+            </View>
             <TextInput
               ref={inputRef}
               value={query}
               onChangeText={setQuery}
               onSubmitEditing={() => submitSearch()}
-              placeholder="Search people, skills, #hashtags"
-              placeholderTextColor={theme.colors.textMuted}
-              style={styles.searchInput}
+              placeholder={t.searchPlaceholder}
+              placeholderTextColor={theme.colors.onPrimaryMuted}
+              style={styles.searchBarInput}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="search"
             />
-          ) : null}
-        </View>
-
-        <View style={styles.menuWrap}>
-          <OverflowMenu items={menuItems} iconColor={theme.colors.primary} />
-        </View>
+            <TouchableOpacity style={styles.searchCloseBtn} onPress={closeSearchAnimated} hitSlop={8}>
+              <AppIcon name="close" size={14} color={theme.colors.onPrimary} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       </View>
 
       {showDropdown ? (
-        <View style={[styles.dropdown, { top: insets.top + 59 }]}>
+        <View style={[styles.dropdown, { top: insets.top + 76 }]}>
           {searching ? (
             <View style={styles.loadingRow}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -161,13 +221,13 @@ export default function Home() {
           ) : noResults ? (
             <TouchableOpacity style={styles.emptyRow} onPress={() => submitSearch()}>
               <AppIcon name="search" size={18} color={theme.colors.textMuted} />
-              <Text style={styles.muted}>Search all results for “{query.trim()}”</Text>
+              <Text style={styles.muted}>Search all results for "{query.trim()}"</Text>
             </TouchableOpacity>
           ) : (
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               {results.users.map((user) => (
                 <TouchableOpacity key={user.uuid} style={styles.resultRow} onPress={() => openUser(user)}>
-                  <Image source={{ uri: avatarFor(user) }} style={styles.avatar} />
+                  <Image source={{ uri: avatarFor(user, theme) }} style={styles.avatar} />
                   <View style={styles.resultText}>
                     <Text style={styles.username}>@{user.username || "user"}</Text>
                     <Text style={styles.fullName} numberOfLines={1}>{user.full_name || "e-kazi user"}</Text>
@@ -185,7 +245,7 @@ export default function Home() {
               ))}
               <TouchableOpacity style={styles.allResults} onPress={() => submitSearch()}>
                 <AppIcon name="search" size={17} color={theme.colors.primary} />
-                <Text style={styles.allResultsText}>See all results for “{query.trim()}”</Text>
+                <Text style={styles.allResultsText}>See all results for "{query.trim()}"</Text>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -193,7 +253,6 @@ export default function Home() {
       ) : null}
 
       <ExploreTab ref={exploreRef} navigation={navigation} />
-      <SupportActionSheet visible={showSupportActions} onClose={() => setShowSupportActions(false)} />
     </View>
   );
 }
@@ -202,49 +261,124 @@ const createStyles = (theme) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.bg },
     header: {
-      flexDirection: "row",
-      alignItems: "center",
       paddingHorizontal: 16,
-      paddingBottom: 12,
+      paddingBottom: 14,
       backgroundColor: theme.colors.surface,
       borderBottomWidth: 1,
       borderColor: theme.colors.border,
       zIndex: 20,
     },
-    logoIconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.primarySoft,
-    },
-    menuWrap: {
-      width: 44,
-      height: 44,
-      marginLeft: "auto",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    searchWrap: {
-      width: 44,
-      height: 44,
-      marginLeft: 12,
-      marginRight: 12,
+    topSide: {
+      minHeight: 52,
       flexDirection: "row",
       alignItems: "center",
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: theme.colors.primary,
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    logoBadge: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: theme.colors.primarySoft,
+      overflow: "visible",
     },
-    searchWrapOpen: {
+    logoImage: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+    },
+    logoDot: {
+      position: "absolute",
+      top: -3,
+      right: -3,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: theme.colors.warning,
+      borderWidth: 2,
+      borderColor: theme.colors.surface,
+    },
+    brandRow: {
       flex: 1,
-      width: undefined,
-      borderRadius: 22,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minWidth: 0,
     },
-    searchIconBtn: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
-    searchInput: { flex: 1, paddingRight: 12, color: theme.colors.text, fontSize: 14, fontWeight: "700" },
+    brandText: {
+      flexShrink: 1,
+      justifyContent: "center",
+      minWidth: 0,
+    },
+    brandName: {
+      fontSize: 20,
+      fontWeight: "900",
+      color: theme.colors.text,
+      letterSpacing: 0,
+    },
+    brandNameAccent: {
+      color: theme.colors.primaryStrong,
+    },
+    brandTag: {
+      marginTop: 3,
+      fontSize: 11,
+      fontWeight: "700",
+      color: theme.colors.textMuted,
+      letterSpacing: 0,
+      textTransform: "uppercase",
+    },
+    searchToggle: {
+      width: 48,
+      height: 48,
+      flexShrink: 0,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    searchToggleBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      backgroundColor: theme.colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    searchBarAbs: {
+      position: "absolute",
+      left: 76,
+      right: 16,
+      height: 52,
+      zIndex: 5,
+      justifyContent: "center",
+      transformOrigin: "right center",
+    },
+    searchBarPill: {
+      height: 48,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderRadius: 16,
+      paddingLeft: 15,
+      paddingRight: 7,
+      backgroundColor: theme.colors.primary,
+    },
+    searchBarIconWrap: { opacity: 0.85 },
+    searchBarInput: {
+      flex: 1,
+      color: theme.colors.onPrimary,
+      fontSize: 14,
+      fontWeight: "700",
+      paddingVertical: 0,
+    },
+    searchCloseBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.primaryDark,
+    },
     dropdown: {
       position: "absolute",
       left: 0,
@@ -254,10 +388,7 @@ const createStyles = (theme) =>
       backgroundColor: theme.colors.surface,
       borderBottomWidth: 1,
       borderColor: theme.colors.border,
-      shadowColor: "#000",
-      shadowOpacity: 0.12,
-      shadowRadius: 14,
-      elevation: 12,
+      ...theme.shadow.card,
     },
     loadingRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 18 },
     emptyRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 18 },
