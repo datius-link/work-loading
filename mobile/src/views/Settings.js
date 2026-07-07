@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRoute } from "@react-navigation/native";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
@@ -9,16 +10,27 @@ import { useUserSession } from "../utils/userSession";
 import { api, getFriendlyApiError, viewerRequest } from "../api/api";
 import Txt from "../Txt";
 import PrivacySettings from "./Settings/PrivacySettings";
+import ChangePassword from "./Settings/ChangePassword";
 import NotificationSettings, { DEFAULT_NOTIFICATION_SETTINGS } from "./Settings/NotificationSettings";
 import HelpCenter from "./Settings/HelpCenter";
 import ContactUs from "./Settings/ContactUs";
 import PrivacyPolicy from "./Settings/PrivacyPolicy";
 import AboutEkazi from "./Settings/AboutEkazi";
-import BluetoothDemo from "./Settings/BluetoothDemo";
+import BluetoothShare from "./Settings/BluetoothShare";
 import SupportActionSheet from "./Settings/SupportActionSheet";
+import UserFeedback from "./Settings/UserFeedback";
 import { cachedGet } from "../utils/offlineCache";
 import CachedDataNotice from "../components/CachedDataNotice";
 import { setCachedNotificationSettings } from "../notifications/notificationSettingsCache";
+import {
+  biometricLabel,
+  isBiometricBoundToProfile,
+  isBiometricHardwareReady,
+  promptBiometricUnlock,
+  setBiometricLoginEnabled,
+} from "../utils/biometricAuth";
+import { getDeviceId, getDeviceName } from "../utils/deviceId";
+import { triggerAppLock } from "../utils/appLock";
 
 const DEFAULT_PRIVACY = {
   show_phone_in_jobs: true,
@@ -35,10 +47,11 @@ export default function Settings() {
   const { theme, mode, toggleTheme } = useAppTheme();
   const { language, setLanguage } = useLanguage();
   const insets = useSafeAreaInsets();
+  const route = useRoute();
   const { email, profile, user, clearSession, refresh } = useUserSession();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [query, setQuery] = useState("");
-  const [activeScreen, setActiveScreen] = useState(null);
+  const [activeScreen, setActiveScreen] = useState(route.params?.openScreen || null);
   const [showLogin, setShowLogin] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
   const [showSupportActions, setShowSupportActions] = useState(false);
@@ -46,7 +59,96 @@ export default function Settings() {
   const [savingPrivacy, setSavingPrivacy] = useState(false);
   const [showingCached, setShowingCached] = useState(false);
   const [settingsError, setSettingsError] = useState("");
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricLabelText, setBiometricLabelText] = useState("Face ID");
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricPasswordModal, setBiometricPasswordModal] = useState(false);
+  const [biometricPasswordPending, setBiometricPasswordPending] = useState(false);
+  const [biometricPasswordInput, setBiometricPasswordInput] = useState("");
+  const [biometricPasswordBusy, setBiometricPasswordBusy] = useState(false);
+  const [biometricPasswordError, setBiometricPasswordError] = useState("");
   const isDark = mode === "dark";
+
+  const profileUuid = profile?.uuid || user?.uuid || null;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Bound to THIS profile specifically — biometric is exclusive per
+      // device, so if a different account last enabled it here, this one
+      // must show the toggle as off, not silently inherit someone else's.
+      const [ready, boundToMe, label] = await Promise.all([
+        isBiometricHardwareReady(),
+        isBiometricBoundToProfile(profileUuid),
+        biometricLabel(),
+      ]);
+      if (cancelled) return;
+      setBiometricSupported(ready);
+      setBiometricEnabled(ready && boundToMe);
+      setBiometricLabelText(label);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileUuid]);
+
+  // Turning biometric login on OR off is security-relevant, so both directions
+  // require the account password first (not just a biometric self-check) —
+  // matches the same "password confirms sensitive account changes" rule used
+  // for editing email/phone/username.
+  const toggleBiometric = (nextValue) => {
+    setBiometricPasswordPending(nextValue);
+    setBiometricPasswordInput("");
+    setBiometricPasswordError("");
+    setBiometricPasswordModal(true);
+  };
+
+  const closeBiometricPasswordModal = () => {
+    if (biometricPasswordBusy) return;
+    setBiometricPasswordModal(false);
+    setBiometricPasswordInput("");
+    setBiometricPasswordError("");
+  };
+
+  const confirmBiometricPasswordChange = async () => {
+    if (!biometricPasswordInput.trim() || biometricPasswordBusy) return;
+    setBiometricPasswordBusy(true);
+    setBiometricPasswordError("");
+    try {
+      await viewerRequest("post", "/profiles/me/verify-password", { password: biometricPasswordInput });
+      if (biometricPasswordPending) {
+        // Only when enabling: also confirm the device's own biometric sensor
+        // actually works before flipping the flag on.
+        const confirmed = await promptBiometricUnlock(`Enable ${biometricLabelText} for e-kazi`);
+        if (!confirmed) {
+          setBiometricPasswordBusy(false);
+          return;
+        }
+      }
+      await setBiometricLoginEnabled(biometricPasswordPending, profileUuid);
+      setBiometricEnabled(biometricPasswordPending);
+      setBiometricPasswordModal(false);
+      setBiometricPasswordInput("");
+      // Best-effort server sync so trust can be enforced/audited/revoked
+      // server-side too, not just on this device — never blocks the UI.
+      (async () => {
+        try {
+          const deviceId = await getDeviceId();
+          if (biometricPasswordPending) {
+            await viewerRequest("post", "/devices/trust", { device_id: deviceId, device_name: getDeviceName() });
+          } else {
+            await viewerRequest("post", "/devices/untrust", { device_id: deviceId });
+          }
+        } catch (_err) {
+          // ignore — device trust sync is best-effort
+        }
+      })();
+    } catch (err) {
+      setBiometricPasswordError(getFriendlyApiError(err, language));
+    } finally {
+      setBiometricPasswordBusy(false);
+    }
+  };
   const nextLanguage = language === "en" ? "sw" : "en";
   const nextLanguageLabel = language === "en" ? "Kiswahili" : "English";
 
@@ -54,6 +156,12 @@ export default function Settings() {
     const q = query.trim().toLowerCase();
     return !q;
   };
+
+  // Allow other screens (e.g. Home's overflow menu) to deep-link straight
+  // into a Settings sub-screen via navigation.navigate("Settings", { openScreen: "help" }).
+  useEffect(() => {
+    if (route.params?.openScreen) setActiveScreen(route.params.openScreen);
+  }, [route.params?.openScreen]);
 
   useEffect(() => {
     const uuid = profile?.uuid || user?.uuid;
@@ -119,22 +227,25 @@ export default function Settings() {
   };
 
   const searchItems = [
+    { icon: "lock", en: "Change Password", sw: "Badili Nywila", terms: "change password nywila security usalama", action: () => openProtected("changePassword") },
     { icon: "shield", en: "Privacy", sw: "Faragha", terms: "privacy contacts faragha mawasiliano", action: () => openProtected("privacy") },
     { icon: "bell", en: "Notification Settings", sw: "Mipangilio ya Notifications", terms: "notification messages jobs sound vibration popup ujumbe kazi sauti", action: () => openProtected("notifications") },
     { icon: "globe", en: "Language", sw: "Lugha", terms: "language english swahili kiswahili lugha", action: () => setLanguage(nextLanguage) },
     { icon: isDark ? "moon" : "sun", en: "Theme", sw: "Muonekano", terms: "theme appearance dark light muonekano nyeusi nyepesi", action: toggleTheme },
     { icon: "help", en: "Help", sw: "Msaada", terms: "help faq support msaada", action: () => setActiveScreen("help") },
     { icon: "mail", en: "Contact us", sw: "Wasiliana nasi", terms: "contact us support wasiliana msaada", action: () => openProtected("contact") },
+    { icon: "message", en: "Send Feedback", sw: "Tuma Maoni", terms: "feedback suggestion bug maoni pendekezo", action: () => openProtected("feedback") },
     { icon: "more-horizontal", en: "Support Actions", sw: "Hatua za Msaada", terms: "feedback report problem support maoni ripoti", action: () => email ? setShowSupportActions(true) : setShowLogin(true) },
     { icon: "file-text", en: "Privacy Policy", sw: "Sera ya Faragha", terms: "legal privacy policy sheria sera faragha", action: () => setActiveScreen("privacyPolicy") },
     { icon: "logo", en: "About e-kazi", sw: "Kuhusu e-kazi", terms: "about version kuhusu toleo", action: () => setActiveScreen("about") },
-    { icon: "activity", en: "Bluetooth Demo", sw: "Bluetooth Demo", terms: "bluetooth demo assignment", action: () => setActiveScreen("bluetooth") },
+    { icon: "bluetooth", en: "Bluetooth Share", sw: "Bluetooth Share", terms: "bluetooth share quick share nearby", action: () => setActiveScreen("bluetooth") },
   ];
   const normalizedQuery = query.trim().toLowerCase();
   const searchResults = normalizedQuery
     ? searchItems.filter((item) => `${item.en} ${item.sw} ${item.terms}`.toLowerCase().includes(normalizedQuery)).slice(0, 7)
     : [];
 
+  if (activeScreen === "changePassword") return <ChangePassword onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "privacy") {
     return <PrivacySettings onBack={() => setActiveScreen(null)} privacy={privacy} saving={savingPrivacy} onChange={updatePrivacy} />;
   }
@@ -150,9 +261,10 @@ export default function Settings() {
   }
   if (activeScreen === "help") return <HelpCenter onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "contact") return <ContactUs onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "feedback") return <UserFeedback onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "privacyPolicy") return <PrivacyPolicy onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "about") return <AboutEkazi version={APP_VERSION} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "bluetooth") return <BluetoothDemo onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "bluetooth") return <BluetoothShare onBack={() => setActiveScreen(null)} />;
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
@@ -218,6 +330,29 @@ export default function Settings() {
                   <Divider styles={styles} />
                 </>
               ) : null}
+              {email && visible("change password nywila security usalama") ? (
+                <>
+                  <SettingRow icon="lock" en="Change Password" sw="Badili Nywila" bodyEn="Update the password you use to login." bodySw="Sasisha nywila unayotumia kuingia." onPress={() => openProtected("changePassword")} styles={styles} theme={theme} />
+                  <Divider styles={styles} />
+                </>
+              ) : null}
+              {email && biometricSupported && visible("fingerprint face id biometric login unlock alama za vidole") ? (
+                <>
+                  <View style={styles.row}>
+                    <IconBox name="fingerprint" styles={styles} theme={theme} />
+                    <View style={styles.rowText}>
+                      <Txt en={`Sign in with ${biometricLabelText}`} sw={`Ingia kwa ${biometricLabelText}`} style={styles.rowTitle} />
+                      <Txt en={`Skip typing your password — use ${biometricLabelText} to open e-kazi.`} sw={`Ruka kuandika password — tumia ${biometricLabelText} kufungua e-kazi.`} style={styles.rowBody} />
+                    </View>
+                    <Switch
+                      value={biometricEnabled}
+                      onValueChange={toggleBiometric}
+                      trackColor={{ true: theme.colors.primary }}
+                    />
+                  </View>
+                  <Divider styles={styles} />
+                </>
+              ) : null}
               {visible("privacy contacts faragha mawasiliano") ? (
                 <>
                   <SettingRow icon="shield" en="Privacy" sw="Faragha" bodyEn="Job contact and profile visibility." bodySw="Mawasiliano ya kazi na mwonekano wa profaili." onPress={() => openProtected("privacy")} styles={styles} theme={theme} />
@@ -274,6 +409,8 @@ export default function Settings() {
               <Divider styles={styles} />
               <SettingRow icon="mail" en="Contact us" sw="Wasiliana nasi" bodyEn="Send a private support message." bodySw="Tuma ujumbe wa faragha wa msaada." onPress={() => openProtected("contact")} styles={styles} theme={theme} />
               <Divider styles={styles} />
+              <SettingRow icon="message" en="Send Feedback" sw="Tuma Maoni" bodyEn="Share suggestions or bugs about the app." bodySw="Toa mapendekezo au hitilafu za app." onPress={() => openProtected("feedback")} styles={styles} theme={theme} />
+              <Divider styles={styles} />
               <SettingRow icon="more-horizontal" en="Support Actions" sw="Hatua za Msaada" bodyEn="Send feedback or report a problem." bodySw="Tuma maoni au ripoti tatizo." onPress={() => email ? setShowSupportActions(true) : setShowLogin(true)} styles={styles} theme={theme} />
             </View>
           </>
@@ -300,7 +437,7 @@ export default function Settings() {
                 <Txt en={APP_VERSION} sw={APP_VERSION} style={styles.version} />
               </View>
               <Divider styles={styles} />
-              <SettingRow icon="activity" en="Bluetooth Demo" sw="Bluetooth Demo" bodyEn="Simulated assignment demo." bodySw="Demo ya assignment iliyosimuliwa." onPress={() => setActiveScreen("bluetooth")} styles={styles} theme={theme} />
+              <SettingRow icon="bluetooth" en="Bluetooth Share" sw="Bluetooth Share" bodyEn="Send text or photos to a nearby device over real Bluetooth." bodySw="Tuma maandishi au picha kwa kifaa cha karibu kupitia Bluetooth halisi." onPress={() => setActiveScreen("bluetooth")} styles={styles} theme={theme} />
               {email ? (
                 <>
                   <Divider styles={styles} />
@@ -335,10 +472,78 @@ export default function Settings() {
                 style={styles.confirmBtn}
                 onPress={async () => {
                   setShowLogout(false);
-                  await clearSession();
+                  // Biometric trust is exclusive per device — for the ONE
+                  // account that currently has it enabled here, a regular
+                  // Logout re-locks the app (same screen as reopening it)
+                  // instead of destroying the session, so biometric can
+                  // still get them back in. Any other account still gets a
+                  // real, full logout. "Not you?" on the lock screen is the
+                  // one place that always fully signs out.
+                  const boundToMe = await isBiometricBoundToProfile(profileUuid);
+                  if (boundToMe) {
+                    triggerAppLock();
+                  } else {
+                    await clearSession();
+                  }
                 }}
               >
                 <Txt en="Logout" sw="Toka" style={styles.confirmText} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={biometricPasswordModal} transparent animationType="fade" onRequestClose={closeBiometricPasswordModal}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.logoutIcon}><AppIcon name="lock" size={21} color={theme.colors.primary} /></View>
+            <Txt
+              en={biometricPasswordPending ? `Confirm your password to enable ${biometricLabelText}` : `Confirm your password to disable ${biometricLabelText}`}
+              sw={biometricPasswordPending ? `Thibitisha nywila kuwasha ${biometricLabelText}` : `Thibitisha nywila kuzima ${biometricLabelText}`}
+              style={styles.sheetTitle}
+            />
+            <Txt
+              en="For your security, enter your account password to continue."
+              sw="Kwa usalama wako, weka nywila ya akaunti yako kuendelea."
+              style={styles.sheetBody}
+            />
+            {biometricPasswordPending ? (
+              <Txt
+                en={`Anyone who can unlock this phone with ${biometricLabelText} will also be able to open this e-kazi account. Only one account can have ${biometricLabelText} enabled on this phone at a time.`}
+                sw={`Mtu yeyote anayeweza kufungua simu hii kwa ${biometricLabelText} ataweza pia kufungua akaunti hii ya e-kazi. Akaunti moja tu inaweza kuwa na ${biometricLabelText} imewashwa kwenye simu hii kwa wakati mmoja.`}
+                style={styles.biometricWarningText}
+              />
+            ) : null}
+            <TextInput
+              placeholder={language === "sw" ? "Nywila" : "Password"}
+              placeholderTextColor={theme.colors.textVeryMuted}
+              secureTextEntry
+              autoFocus
+              value={biometricPasswordInput}
+              onChangeText={setBiometricPasswordInput}
+              style={styles.passwordConfirmInput}
+            />
+            {!!biometricPasswordError ? (
+              <Txt en={biometricPasswordError} sw={biometricPasswordError} style={styles.passwordConfirmError} />
+            ) : null}
+            <View style={styles.sheetActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={closeBiometricPasswordModal} disabled={biometricPasswordBusy}>
+                <Txt en="Cancel" sw="Ghairi" style={styles.cancelText} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.confirmBtn,
+                  { backgroundColor: theme.colors.primary },
+                  (!biometricPasswordInput.trim() || biometricPasswordBusy) && styles.confirmBtnDisabled,
+                ]}
+                onPress={confirmBiometricPasswordChange}
+                disabled={!biometricPasswordInput.trim() || biometricPasswordBusy}
+              >
+                {biometricPasswordBusy ? (
+                  <ActivityIndicator color={theme.colors.onPrimary} />
+                ) : (
+                  <Txt en="Confirm" sw="Thibitisha" style={styles.confirmText} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -413,4 +618,19 @@ const createStyles = (theme) =>
     cancelText: { color: theme.colors.text, fontSize: 12, fontWeight: "900" },
     confirmBtn: { flex: 1, minHeight: 43, borderRadius: 9, backgroundColor: theme.colors.danger, alignItems: "center", justifyContent: "center" },
     confirmText: { color: theme.colors.onPrimary, fontSize: 12, fontWeight: "900" },
+    passwordConfirmInput: {
+      width: "100%",
+      minHeight: 46,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 10,
+      backgroundColor: theme.colors.surfaceSoft,
+      color: theme.colors.text,
+      paddingHorizontal: 12,
+      fontSize: 14,
+      marginTop: 14,
+    },
+    passwordConfirmError: { color: theme.colors.danger, fontSize: 12, fontWeight: "700", marginTop: 8, alignSelf: "flex-start" },
+    biometricWarningText: { color: theme.colors.warning, fontSize: 11.5, lineHeight: 16, marginTop: 10, textAlign: "center" },
+    confirmBtnDisabled: { opacity: 0.5 },
   });
