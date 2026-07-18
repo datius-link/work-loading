@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -6,6 +6,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -207,7 +208,20 @@ function BiometricCard({ theme, kinds, status, onPress }) {
   );
 }
 
-export default function LoginModal({ visible, onClose, onSuccess, initialMode = "login" }) {
+export default function LoginModal({
+  visible,
+  onClose,
+  onSuccess,
+  initialMode = "login",
+  // "sheet" (default) keeps the original bottom-sheet modal used across the
+  // app; "screen" renders the same auth logic as a full standalone screen
+  // (used by the Login/Register/VerifyEmail routes) — no tabs, a back
+  // control, and a server+database connectivity check before login.
+  presentation = "sheet",
+  // Screen mode only: navigate to the sibling auth screen (Login <-> Register).
+  onSwitchScreen,
+}) {
+  const isScreen = presentation === "screen";
   const navigation = useNavigation();
   const { theme } = useAppTheme();
   const { language } = useLanguage();
@@ -239,6 +253,11 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
   const [showBiometricHint, setShowBiometricHint] = useState(false);
   const [pendingBiometricProfileUuid, setPendingBiometricProfileUuid] = useState(null);
   const [tabsWidth, setTabsWidth] = useState(0);
+  // Assignment requirement (and good UX): the Login screen checks internet +
+  // database connectivity before login. GET /health on the API hits the
+  // server, which only reports "ok" when its Postgres connection is alive —
+  // so one ping covers both. "checking" | "online" | "offline".
+  const [connStatus, setConnStatus] = useState("checking");
   const dragStartY = useRef(0);
   const dragStartX = useRef(0);
   const segAnim = useRef(new Animated.Value(initialMode === "login" ? 0 : 1)).current;
@@ -347,6 +366,24 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
       cancelled = true;
     };
   }, [visible, mode]);
+
+  const checkConnection = useCallback(async () => {
+    setConnStatus("checking");
+    try {
+      const base = String(api?.defaults?.baseURL || "").replace(/\/api\/?$/, "");
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${base}/health`, { signal: controller.signal });
+      clearTimeout(timer);
+      setConnStatus(res.ok ? "online" : "offline");
+    } catch (_err) {
+      setConnStatus("offline");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isScreen && visible) checkConnection();
+  }, [isScreen, visible, checkConnection]);
 
   const emailValue = email.trim();
   const emailValid = emailValue.includes("@") && emailValue.includes(".");
@@ -569,6 +606,18 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
 
   const handleRequestCode = async () => {
     if (!authValid || loading) return;
+    // Screen mode: block the attempt while the server/database is unreachable
+    // (the assignment's "check database and internet connections before
+    // login") — and immediately re-probe so the chip updates if it came back.
+    if (isScreen && connStatus === "offline") {
+      setErrorMessage(
+        language === "sw"
+          ? "Hakuna muunganisho na server/database. Angalia intaneti yako kisha ujaribu tena."
+          : "No server/database connection. Check your internet and try again."
+      );
+      checkConnection();
+      return;
+    }
     try {
       setLoading(true);
       setErrorMessage("");
@@ -838,6 +887,187 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
     </>
   );
 
+  // Shared by both presentations: the sheet modal body and the full-screen
+  // routes render exactly the same step machine (auth → otp → biometric-offer
+  // → success) so behavior never drifts between the two.
+  const stepContent = (
+    <>
+      {step === "auth" ? (
+        <>
+          <Txt
+            en={isScreen ? (mode === "login" ? "Welcome back" : "Create account") : "User account"}
+            sw={isScreen ? (mode === "login" ? "Karibu tena" : "Fungua akaunti") : "Akaunti ya mtumiaji"}
+            style={styles.title}
+          />
+          {isScreen ? (
+            <TouchableOpacity
+              onPress={connStatus === "offline" ? checkConnection : undefined}
+              activeOpacity={connStatus === "offline" ? 0.7 : 1}
+              style={styles.connRow}
+            >
+              <View
+                style={[
+                  styles.connDot,
+                  {
+                    backgroundColor:
+                      connStatus === "online"
+                        ? theme.colors.success
+                        : connStatus === "offline"
+                          ? theme.colors.danger
+                          : theme.colors.textMuted,
+                  },
+                ]}
+              />
+              <Txt
+                en={
+                  connStatus === "online"
+                    ? "Server & database connected"
+                    : connStatus === "offline"
+                      ? "Offline — tap to retry"
+                      : "Checking server & database…"
+                }
+                sw={
+                  connStatus === "online"
+                    ? "Server na database vimeunganishwa"
+                    : connStatus === "offline"
+                      ? "Hakuna muunganisho — gusa kujaribu tena"
+                      : "Inakagua server na database…"
+                }
+                style={styles.connText}
+              />
+            </TouchableOpacity>
+          ) : null}
+          {!isScreen ? (
+            <View style={styles.tabs} onLayout={(e) => setTabsWidth(e.nativeEvent.layout.width)}>
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.tabIndicator,
+                  {
+                    width: segIndicatorWidth,
+                    transform: [
+                      {
+                        translateX: segAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, segIndicatorWidth],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+              <TouchableOpacity style={styles.tabBtn} onPress={() => switchMode("login")} activeOpacity={0.85}>
+                <Txt en="Login" sw="Ingia" style={[styles.tabText, mode === "login" && styles.tabTextActive]} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tabBtn} onPress={() => switchMode("register")} activeOpacity={0.85}>
+                <Txt en="Register" sw="Jisajili" style={[styles.tabText, mode === "register" && styles.tabTextActive]} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          <Animated.View style={{ opacity: contentFade, width: "100%" }}>
+            {mode === "login" ? renderLoginContent() : renderRegisterContent()}
+          </Animated.View>
+          {isScreen && onSwitchScreen ? (
+            <TouchableOpacity onPress={onSwitchScreen} style={styles.footerSwitch}>
+              <Txt
+                en={mode === "login" ? "Don't have an account? Register" : "Already have an account? Login"}
+                sw={mode === "login" ? "Huna akaunti? Jisajili" : "Una akaunti tayari? Ingia"}
+                style={styles.forgotText}
+              />
+            </TouchableOpacity>
+          ) : null}
+        </>
+      ) : step === "otp" ? (
+        <OtpStep
+          theme={theme}
+          language={language}
+          email={email}
+          code={code}
+          onChangeCode={setCode}
+          onSubmit={handleVerify}
+          onResend={handleResendOtp}
+          loading={loading}
+          resending={resending}
+          errorMessage={errorMessage}
+        />
+      ) : step === "biometric-offer" ? (
+        <View style={{ alignItems: "center", width: "100%" }}>
+          <View style={styles.offerIconWrap}>
+            <AppIcon name="fingerprint" size={30} color={theme.colors.primary} />
+          </View>
+          <Txt
+            en="Enable Fingerprint or Face ID?"
+            sw="Je, ungependa kuwezesha Fingerprint au Face ID?"
+            style={[styles.title, { textAlign: "center" }]}
+          />
+          <Txt
+            en="Sign in instantly next time, without typing your password."
+            sw="Ingia papo hapo wakati mwingine, bila kuandika nywila."
+            style={[styles.subtitle, { textAlign: "center" }]}
+          />
+          <Txt
+            en={`Anyone who can unlock this phone with ${biometricLabelText} will also be able to open this account. Only one account can have this on per phone.`}
+            sw={`Mtu yeyote anayeweza kufungua simu hii kwa ${biometricLabelText} ataweza pia kufungua akaunti hii. Akaunti moja tu inaweza kuwa nayo kwa wakati mmoja kwenye simu hii.`}
+            style={styles.biometricHintText}
+          />
+          <ScaleButton
+            onPress={handleEnableBiometric}
+            disabled={biometricOfferBusy}
+            style={[styles.continueBtn, biometricOfferBusy && styles.continueDisabled]}
+          >
+            {biometricOfferBusy ? (
+              <ActivityIndicator color={theme.colors.onPrimary} />
+            ) : (
+              <Txt en="Enable" sw="Washa" style={styles.continueText} />
+            )}
+          </ScaleButton>
+          <TouchableOpacity onPress={closeModal} style={styles.forgotBtn} disabled={biometricOfferBusy}>
+            <Txt en="Later" sw="Baadaye" style={styles.forgotText} />
+          </TouchableOpacity>
+        </View>
+      ) : step === "success" ? (
+        <View style={{ alignItems: "center", width: "100%", paddingVertical: 24 }}>
+          <Animated.View style={[styles.successCircle, { transform: [{ scale: successScale }] }]}>
+            <AppIcon name="check" size={34} color={theme.colors.success} strokeWidth={3} />
+          </Animated.View>
+          <Txt en="Welcome!" sw="Karibu!" style={[styles.title, { marginTop: 16 }]} />
+        </View>
+      ) : null}
+    </>
+  );
+
+  const legalModal = (
+    <Modal visible={!!legalScreen} animationType="slide" onRequestClose={() => setLegalScreen(null)}>
+      {legalScreen === "terms" ? (
+        <TermsOfService onBack={() => setLegalScreen(null)} />
+      ) : (
+        <PrivacyPolicy onBack={() => setLegalScreen(null)} />
+      )}
+    </Modal>
+  );
+
+  if (isScreen) {
+    return (
+      <>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.screenRoot}>
+          <ScrollView contentContainerStyle={styles.screenScroll} keyboardShouldPersistTaps="handled">
+            <View style={styles.screenHeader}>
+              <ScaleButton onPress={closeModal} haptic={false} style={styles.closeBtn}>
+                <AppIcon name="close" size={16} color={theme.colors.textMuted} />
+              </ScaleButton>
+              <View style={styles.headerIconWrap}>
+                <EkaziLogo width={34} height={34} />
+              </View>
+              <View style={{ width: 36 }} />
+            </View>
+            {stepContent}
+          </ScrollView>
+        </KeyboardAvoidingView>
+        {legalModal}
+      </>
+    );
+  }
+
   return (
     <>
       <Modal visible={visible} transparent animationType="none" onRequestClose={closeModal}>
@@ -901,105 +1131,12 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
                 </ScaleButton>
               </View>
 
-              {step === "auth" ? (
-                <>
-                  <Txt en="User account" sw="Akaunti ya mtumiaji" style={styles.title} />
-                  <View style={styles.tabs} onLayout={(e) => setTabsWidth(e.nativeEvent.layout.width)}>
-                    <Animated.View
-                      pointerEvents="none"
-                      style={[
-                        styles.tabIndicator,
-                        {
-                          width: segIndicatorWidth,
-                          transform: [
-                            {
-                              translateX: segAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [0, segIndicatorWidth],
-                              }),
-                            },
-                          ],
-                        },
-                      ]}
-                    />
-                    <TouchableOpacity style={styles.tabBtn} onPress={() => switchMode("login")} activeOpacity={0.85}>
-                      <Txt en="Login" sw="Ingia" style={[styles.tabText, mode === "login" && styles.tabTextActive]} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.tabBtn} onPress={() => switchMode("register")} activeOpacity={0.85}>
-                      <Txt en="Register" sw="Jisajili" style={[styles.tabText, mode === "register" && styles.tabTextActive]} />
-                    </TouchableOpacity>
-                  </View>
-                  <Animated.View style={{ opacity: contentFade, width: "100%" }}>
-                    {mode === "login" ? renderLoginContent() : renderRegisterContent()}
-                  </Animated.View>
-                </>
-              ) : step === "otp" ? (
-                <OtpStep
-                  theme={theme}
-                  language={language}
-                  email={email}
-                  code={code}
-                  onChangeCode={setCode}
-                  onSubmit={handleVerify}
-                  onResend={handleResendOtp}
-                  loading={loading}
-                  resending={resending}
-                  errorMessage={errorMessage}
-                />
-              ) : step === "biometric-offer" ? (
-                <View style={{ alignItems: "center", width: "100%" }}>
-                  <View style={styles.offerIconWrap}>
-                    <AppIcon name="fingerprint" size={30} color={theme.colors.primary} />
-                  </View>
-                  <Txt
-                    en="Enable Fingerprint or Face ID?"
-                    sw="Je, ungependa kuwezesha Fingerprint au Face ID?"
-                    style={[styles.title, { textAlign: "center" }]}
-                  />
-                  <Txt
-                    en="Sign in instantly next time, without typing your password."
-                    sw="Ingia papo hapo wakati mwingine, bila kuandika nywila."
-                    style={[styles.subtitle, { textAlign: "center" }]}
-                  />
-                  <Txt
-                    en={`Anyone who can unlock this phone with ${biometricLabelText} will also be able to open this account. Only one account can have this on per phone.`}
-                    sw={`Mtu yeyote anayeweza kufungua simu hii kwa ${biometricLabelText} ataweza pia kufungua akaunti hii. Akaunti moja tu inaweza kuwa nayo kwa wakati mmoja kwenye simu hii.`}
-                    style={styles.biometricHintText}
-                  />
-                  <ScaleButton
-                    onPress={handleEnableBiometric}
-                    disabled={biometricOfferBusy}
-                    style={[styles.continueBtn, biometricOfferBusy && styles.continueDisabled]}
-                  >
-                    {biometricOfferBusy ? (
-                      <ActivityIndicator color={theme.colors.onPrimary} />
-                    ) : (
-                      <Txt en="Enable" sw="Washa" style={styles.continueText} />
-                    )}
-                  </ScaleButton>
-                  <TouchableOpacity onPress={closeModal} style={styles.forgotBtn} disabled={biometricOfferBusy}>
-                    <Txt en="Later" sw="Baadaye" style={styles.forgotText} />
-                  </TouchableOpacity>
-                </View>
-              ) : step === "success" ? (
-                <View style={{ alignItems: "center", width: "100%", paddingVertical: 24 }}>
-                  <Animated.View style={[styles.successCircle, { transform: [{ scale: successScale }] }]}>
-                    <AppIcon name="check" size={34} color={theme.colors.success} strokeWidth={3} />
-                  </Animated.View>
-                  <Txt en="Welcome!" sw="Karibu!" style={[styles.title, { marginTop: 16 }]} />
-                </View>
-              ) : null}
+              {stepContent}
             </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
-      <Modal visible={!!legalScreen} animationType="slide" onRequestClose={() => setLegalScreen(null)}>
-        {legalScreen === "terms" ? (
-          <TermsOfService onBack={() => setLegalScreen(null)} />
-        ) : (
-          <PrivacyPolicy onBack={() => setLegalScreen(null)} />
-        )}
-      </Modal>
+      {legalModal}
     </>
   );
 }
@@ -1358,10 +1495,57 @@ const createStyles = (theme) =>
       paddingHorizontal: 12,
       marginTop: 4,
     },
-    forgotText: { 
-      color: theme.colors.primary, 
-      fontSize: 14, 
+    forgotText: {
+      color: theme.colors.primary,
+      fontSize: 14,
       fontWeight: "800",
       letterSpacing: 0.2,
+    },
+    // --- Full-screen ("screen" presentation) additions ------------------
+    screenRoot: {
+      flex: 1,
+      backgroundColor: theme.colors.surface,
+    },
+    screenScroll: {
+      flexGrow: 1,
+      paddingHorizontal: theme.spacing.lg,
+      paddingBottom: theme.spacing.lg,
+      // Clears the status bar without needing SafeAreaView (Android + iOS).
+      paddingTop: (Platform.OS === "ios" ? 54 : 34) + 8,
+    },
+    screenHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10,
+    },
+    connRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      alignSelf: "flex-start",
+      marginTop: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceSoft,
+    },
+    connDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    connText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: theme.colors.textMuted,
+      letterSpacing: 0.2,
+    },
+    footerSwitch: {
+      alignSelf: "center",
+      paddingVertical: 16,
+      marginTop: 6,
     },
   });

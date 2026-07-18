@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
@@ -49,6 +49,7 @@ export default function Settings() {
   const { language, setLanguage } = useLanguage();
   const insets = useSafeAreaInsets();
   const route = useRoute();
+  const navigation = useNavigation();
   const { email, profile, user, clearSession, refresh } = useUserSession();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [query, setQuery] = useState("");
@@ -341,7 +342,7 @@ export default function Settings() {
             <View style={styles.panel}>
               {!email && visible("login register account ingia jisajili akaunti") ? (
                 <>
-                  <SettingRow icon="login" en="Login / Register" sw="Ingia / Jisajili" bodyEn="One account for hiring and work." bodySw="Akaunti moja kwa kuajiri na kufanya kazi." onPress={() => setShowLogin(true)} styles={styles} theme={theme} />
+                  <SettingRow icon="login" en="Login / Register" sw="Ingia / Jisajili" bodyEn="One account for hiring and work." bodySw="Akaunti moja kwa kuajiri na kufanya kazi." onPress={() => navigation.navigate("Login", { onSuccess: async () => { await refresh(); } })} styles={styles} theme={theme} />
                   <Divider styles={styles} />
                 </>
               ) : null}
