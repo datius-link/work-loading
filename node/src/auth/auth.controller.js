@@ -15,6 +15,7 @@ import {
 } from "./auth.tokens.js";
 import { comparePassword, hashPassword } from "../utils/hash.js";
 import { normalizePhoneNumber } from "../utils/phone.js";
+import { sendOtpEmail } from "../utils/mailer.js";
 
 const OTP_TTL_MINUTES = 10;
 
@@ -59,7 +60,13 @@ async function issueOtp(profileUuid, purpose, reason) {
     expires_at: db.raw(`NOW() + INTERVAL '${OTP_TTL_MINUTES} minutes'`),
   });
 
-  console.log(`[DEV MOCK] ${reason} code for ${profile.email}: ${otp}`);
+  const delivered = await sendOtpEmail(profile.email, otp, reason);
+  if (!delivered) {
+    // No SMTP configured (or the send failed) — surface the code in the
+    // server logs so the flow still works: Render dashboard > Logs, search
+    // for "code for".
+    console.log(`[DEV MOCK] ${reason} code for ${profile.email}: ${otp}`);
+  }
   return otp;
 }
 
