@@ -80,7 +80,7 @@ function formatBudget(v) {
 
 function avatarUri(u) {
   if (u?.profile_pic || u?.profilePic) return u.profile_pic || u.profilePic;
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(u?.username || u?.full_name || "U")}&background=0B6B63&color=fff&bold=true&rounded=true`;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(u?.username || u?.full_name || "U")}&background=1683C7&color=fff&bold=true&rounded=true`;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -856,7 +856,7 @@ const createStyles = (theme) => {
   // itself, since overflow:hidden for the radius would clip the shadow
   // too) make it float above the page instead of ending in a hard edge.
   heroShadow: {
-    shadowColor: "#0B6B63", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.22, shadowRadius: 20, elevation: 10,
+    shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.22, shadowRadius: 20, elevation: 10,
   },
   heroShadowWide: { marginHorizontal: 16, marginTop: 16, borderRadius: 24, overflow: "hidden" },
   // Trimmed padding/gap vs before — less empty air, so the banner reads as

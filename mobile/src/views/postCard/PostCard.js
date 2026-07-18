@@ -58,9 +58,30 @@ const PlayIcon = ({ size = 48 }) => (
   <AppIcon name="play" size={size} color="#fff" filled />
 );
 
+// Replays the pan/zoom crop chosen in the mobile editor (EditMedia.js).
+// offsetXRatio/offsetYRatio were saved as a fraction of the (square) edit
+// frame, so they're reapplied here scaled to this slide's actual width and
+// height — a reasonable, consistent approximation across differently
+// shaped containers without ever touching the original file.
+function mediaTransformStyle(transform, containerWidth, containerHeight) {
+  if (!transform) return null;
+  const scale = Number(transform.scale);
+  const offsetXRatio = Number(transform.offsetXRatio);
+  const offsetYRatio = Number(transform.offsetYRatio);
+  if (![scale, offsetXRatio, offsetYRatio].every((n) => Number.isFinite(n))) return null;
+  return {
+    transform: [
+      { translateX: offsetXRatio * containerWidth },
+      { translateY: offsetYRatio * containerHeight },
+      { scale },
+    ],
+  };
+}
+
 function MediaItem({ item, active: isActive, muted: isMuted, onToggleMute, onLike, mediaHeight, paused, onTogglePause, onZoomImage, styles, theme }) {
   const isVideo = item?.type === "video";
   const contentFit = item?.fit === "contain" ? "contain" : "cover";
+  const transformStyle = !isVideo ? mediaTransformStyle(item?.transform, width, mediaHeight) : null;
   const lastTap = useRef(null);
 
   const player = useVideoPlayer(isVideo ? item?.url : null, (instance) => {
@@ -94,7 +115,7 @@ function MediaItem({ item, active: isActive, muted: isMuted, onToggleMute, onLik
         <VideoView player={player} style={styles.media} contentFit={contentFit} nativeControls={false} />
       ) : (
         <Pressable onPress={() => onZoomImage?.(item?.url)} style={styles.media}>
-          <Image source={{ uri: item?.url }} style={styles.media} resizeMode={contentFit} />
+          <Image source={{ uri: item?.url }} style={[styles.media, transformStyle]} resizeMode={contentFit} />
         </Pressable>
       )}
 
@@ -361,6 +382,9 @@ function PostCard({
         availability_required: payload.availability_required,
         scheduled_for: payload.scheduled_for || null,
         availability_notes: payload.availability_notes || null,
+        budget: payload.budget || null,
+        requirements: payload.requirements || [],
+        skills: payload.skills || [],
         media,
       });
 
@@ -451,7 +475,7 @@ function PostCard({
                 source={{
                   uri:
                     post?.profile_pic ||
-                    `https://ui-avatars.com/api/?name=${displayUsername}&background=0B6B63&color=fff`,
+                    `https://ui-avatars.com/api/?name=${displayUsername}&background=1683C7&color=fff`,
                 }}
                 style={styles.avatar}
               />
@@ -593,7 +617,7 @@ const createStyles = (theme) =>
     containerAuto: { minHeight: 640 },
 
     mediaArea: { width: "100%", backgroundColor: theme.colors.media, position: "relative" },
-    mediaSlide: { width, backgroundColor: theme.colors.media },
+    mediaSlide: { width, backgroundColor: theme.colors.media, overflow: "hidden" },
     media: { width: "100%", height: "100%" },
 
     pauseOverlay: {
@@ -649,12 +673,12 @@ const createStyles = (theme) =>
     location: { color: "#e2e8f0", fontSize: 12, marginTop: 2 },
 
     hireBtn: {
-      backgroundColor: theme.colors.primary,
+      backgroundColor: theme.colors.accent,
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 20,
     },
-    hireBtnText: { color: theme.colors.onPrimary, fontWeight: "700", fontSize: 13 },
+    hireBtnText: { color: theme.colors.onAccent, fontWeight: "700", fontSize: 13 },
 
     zoomRoot: { flex: 1, backgroundColor: "rgba(0,0,0,0.95)" },
     zoomScroll: { flex: 1 },

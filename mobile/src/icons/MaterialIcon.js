@@ -12,6 +12,7 @@ const iconMap = {
   "collections": "image",
   "error": "warning",
   "info": "help",
+  "location-on": "map-pin",
   "pause-circle-filled": "pause",
   "person": "user",
   "photo-library": "image",

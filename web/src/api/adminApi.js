@@ -32,7 +32,7 @@ api.interceptors.request.use((config) => {
 
 // Centralizes the "your session is no longer valid" case so every screen
 // doesn't need its own 401 handling — the AdminAuthContext listens for this.
-export const SESSION_EXPIRED_EVENT = "ekazi-admin-session-expired";
+export const SESSION_EXPIRED_EVENT = "work-loading-admin-session-expired";
 
 api.interceptors.response.use(
   (response) => response,

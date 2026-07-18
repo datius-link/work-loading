@@ -17,6 +17,7 @@ import ExploreTab from "./home/ExploreTab";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
+import EkaziLogo from "../../assets/e-kazi-logo.svg";
 import { api } from "../api/api";
 
 const T = {
@@ -148,7 +149,7 @@ export default function Home() {
         <View style={styles.topSide}>
           <View style={styles.brandRow} pointerEvents="box-none">
             <View style={styles.logoBadge}>
-              <Image source={require("../../assets/icon.png")} style={styles.logoImage} />
+              <EkaziLogo width={34} height={34} />
               <View style={styles.logoDot} />
             </View>
             <Animated.View
@@ -281,13 +282,8 @@ const createStyles = (theme) =>
       borderRadius: 16,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: theme.colors.primarySoft,
+      backgroundColor: "transparent",
       overflow: "visible",
-    },
-    logoImage: {
-      width: 48,
-      height: 48,
-      borderRadius: 16,
     },
     logoDot: {
       position: "absolute",

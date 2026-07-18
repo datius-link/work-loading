@@ -5,6 +5,7 @@ import { useRoute } from "@react-navigation/native";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
+import EkaziLogo from "../../assets/e-kazi-logo.svg";
 import LoginModal from "./Auth/LoginModal";
 import { useUserSession } from "../utils/userSession";
 import { api, getFriendlyApiError, viewerRequest } from "../api/api";
@@ -273,7 +274,12 @@ export default function Settings() {
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 28 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Txt en="Settings" sw="Mipangilio" style={styles.title} />
+        <View style={styles.titleRow}>
+          <View style={styles.logoBadge}>
+            <EkaziLogo width={20} height={20} />
+          </View>
+          <Txt en="Settings" sw="Mipangilio" style={styles.title} />
+        </View>
         <CachedDataNotice visible={showingCached} />
         {settingsError ? (
           <View style={styles.inlineError}>
@@ -582,6 +588,8 @@ const createStyles = (theme) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.colors.bg },
     content: { padding: 14, gap: 9 },
+    titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    logoBadge: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
     title: { color: theme.colors.text, fontSize: 22, fontWeight: "900" },
     searchBox: { height: 41, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, paddingHorizontal: 11 },
     searchInput: { flex: 1, color: theme.colors.text, fontSize: 13, fontWeight: "700" },

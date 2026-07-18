@@ -54,7 +54,7 @@ const TONE = {
   declined: { icon: "phone", colorKey: "textMuted" },
 };
 
-function CallRow({ item, index, theme, tx }) {
+function CallRow({ item, index, theme, tx, styles }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(anim, {
@@ -182,7 +182,7 @@ export default function WorkspaceCalls({ jobId, otherParty, jobTitle }) {
           </Text>
         </View>
       ) : (
-        calls.map((item, index) => <CallRow key={item.id} item={item} index={index} theme={theme} tx={tx} />)
+        calls.map((item, index) => <CallRow key={item.id} item={item} index={index} theme={theme} tx={tx} styles={s} />)
       )}
     </ScrollView>
   );

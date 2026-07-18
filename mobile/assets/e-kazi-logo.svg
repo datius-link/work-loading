@@ -1,0 +1,37 @@
+<svg width="1080" height="1080" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="orangeGrad" x1="0.15" y1="0.05" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#FFB646"></stop>
+      <stop offset="0.5" stop-color="#F4820F"></stop>
+      <stop offset="1" stop-color="#D9600A"></stop>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0.05" y1="0" x2="0.95" y2="1">
+      <stop offset="0" stop-color="#5FC6F0"></stop>
+      <stop offset="0.4" stop-color="#1E86C9"></stop>
+      <stop offset="0.75" stop-color="#0F5A9E"></stop>
+      <stop offset="1" stop-color="#0A3E73"></stop>
+    </linearGradient>
+    <linearGradient id="bladeGloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.75"></stop>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0.15"></stop>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+
+  <path d="M 131.57,24.32 L 131.57,24.32 L 139.50,28.14 L 146.73,15.00 L 175.60,39.22 L 163.91,48.62 L 169.05,55.77 L 172.83,62.31 L 176.45,70.35 L 190.44,64.92 L 196.98,102.03 L 181.98,101.72 L 181.32,110.50 L 157.52,107.43 L 157.88,103.67 L 158.00,99.89 L 157.87,96.11 L 157.49,92.35 L 156.87,88.62 L 156.01,84.93 L 154.91,81.32 L 153.57,77.78 L 152.01,74.33 L 150.23,71.00 L 148.23,67.79 L 146.03,64.71 L 143.63,61.79 L 141.05,59.03 L 138.30,56.44 L 135.38,54.04 L 132.31,51.83 L 129.10,49.83 L 125.77,48.04 L 122.33,46.47 Z" fill="url(#orangeGrad)"></path>
+  <path d="M 149.76,165.18 L 149.76,165.18 L 142.48,170.14 L 150.25,182.97 L 114.84,195.86 L 112.54,181.03 L 103.78,181.91 L 96.22,181.91 L 87.46,181.03 L 85.16,195.86 L 49.75,182.97 L 57.52,170.14 L 50.24,165.18 L 64.80,146.10 L 67.88,148.30 L 71.10,150.29 L 74.44,152.06 L 77.88,153.62 L 81.42,154.94 L 85.04,156.04 L 88.73,156.89 L 92.46,157.51 L 96.22,157.88 L 100.00,158.00 L 103.78,157.88 L 107.54,157.51 L 111.27,156.89 L 114.96,156.04 L 118.58,154.94 L 122.12,153.62 L 125.56,152.06 L 128.90,150.29 L 132.12,148.30 L 135.20,146.10 Z" fill="url(#orangeGrad)"></path>
+  <path d="M 18.68,110.50 L 18.68,110.50 L 18.02,101.72 L 3.02,102.03 L 9.56,64.92 L 23.55,70.35 L 27.17,62.31 L 30.95,55.77 L 36.09,48.62 L 24.40,39.22 L 53.27,15.00 L 60.50,28.14 L 68.43,24.32 L 77.67,46.47 L 74.23,48.04 L 70.90,49.83 L 67.69,51.83 L 64.62,54.04 L 61.70,56.44 L 58.95,59.03 L 56.37,61.79 L 53.97,64.71 L 51.77,67.79 L 49.77,71.00 L 47.99,74.33 L 46.43,77.78 L 45.09,81.32 L 43.99,84.93 L 43.13,88.62 L 42.51,92.35 L 42.13,96.11 L 42.00,99.89 L 42.12,103.67 L 42.48,107.43 Z" fill="url(#orangeGrad)"></path>
+
+  <g transform="translate(100,100)">
+    <g transform="rotate(0)"><path d="M 0,-8 C -6,-8 -10,-14 -13,-24 C -17,-38 -18,-54 -13,-68 C -9,-80 2,-90 14,-93 C 22,-95 28,-90 27,-82 C 25,-70 15,-62 9,-50 C 3,-38 2,-24 7,-10 C 8,-6 6,0 0,-8 Z" fill="url(#blueGrad)"></path></g>
+    <g transform="rotate(120)"><path d="M 0,-8 C -6,-8 -10,-14 -13,-24 C -17,-38 -18,-54 -13,-68 C -9,-80 2,-90 14,-93 C 22,-95 28,-90 27,-82 C 25,-70 15,-62 9,-50 C 3,-38 2,-24 7,-10 C 8,-6 6,0 0,-8 Z" fill="url(#blueGrad)"></path></g>
+    <g transform="rotate(240)"><path d="M 0,-8 C -6,-8 -10,-14 -13,-24 C -17,-38 -18,-54 -13,-68 C -9,-80 2,-90 14,-93 C 22,-95 28,-90 27,-82 C 25,-70 15,-62 9,-50 C 3,-38 2,-24 7,-10 C 8,-6 6,0 0,-8 Z" fill="url(#blueGrad)"></path></g>
+
+    <g transform="rotate(0)"><path d="M -3,-22 C -7,-36 -7,-52 -3,-67" fill="none" stroke="url(#bladeGloss)" stroke-width="5.5" stroke-linecap="round"></path></g>
+    <g transform="rotate(120)"><path d="M -3,-22 C -7,-36 -7,-52 -3,-67" fill="none" stroke="url(#bladeGloss)" stroke-width="5.5" stroke-linecap="round"></path></g>
+    <g transform="rotate(240)"><path d="M -3,-22 C -7,-36 -7,-52 -3,-67" fill="none" stroke="url(#bladeGloss)" stroke-width="5.5" stroke-linecap="round"></path></g>
+
+    <circle r="10.5" fill="#ffffff"></circle>
+    <circle r="10.5" fill="none" stroke="#0A3E73" stroke-width="1.2" opacity="0.45"></circle>
+  </g>
+</svg>

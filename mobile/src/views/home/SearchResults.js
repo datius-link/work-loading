@@ -31,7 +31,7 @@ function avatarFor(user) {
   if (user?.profile_pic) return user.profile_pic;
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
     user?.full_name || user?.username || "U"
-  )}&background=0B6B63&color=fff`;
+  )}&background=1683C7&color=fff`;
 }
 
 function resultItems(tab, data) {

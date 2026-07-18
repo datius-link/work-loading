@@ -358,7 +358,7 @@ export default function EditProfile() {
             <TouchableOpacity onPress={pickImage} style={styles.photoHero} activeOpacity={0.9}>
               {profilePic ? <Image source={{ uri: profilePic }} style={styles.photoBackdrop} blurRadius={18} /> : null}
               <View style={styles.photoShade} />
-              <Image source={{ uri: profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(username || "U")}&background=0B6B63&color=fff` }} style={styles.avatar} />
+              <Image source={{ uri: profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(username || "U")}&background=1683C7&color=fff` }} style={styles.avatar} />
               <View style={styles.cameraBadge}>
                 <AppIcon name="camera" size={15} color="#fff" />
               </View>

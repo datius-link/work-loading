@@ -11,7 +11,7 @@ import { useLanguage } from "../../LanguageContext";
 // theme-aware colors yet. Prefer theme.colors.* (see theme/theme.js) for
 // anything that needs to look correct in both light and dark mode.
 export const C = {
-  teal:"#0B6B63", tealLight:"#E8F5F4", tealMid:"#D0EDEB",
+  teal:"#1683C7", tealLight:"#E8F4FC", tealMid:"#C9E6F8",
   amber:"#F59E0B", amberLight:"#FEF3C7",
   green:"#16A34A", greenLight:"#DCFCE7",
   red:"#DC2626",   redLight:"#FEE2E2",
@@ -83,12 +83,14 @@ export function SectionHeading({label}){
   return <Text style={{fontSize:11,fontWeight:"800",color:theme.colors.textMuted,textTransform:"uppercase",letterSpacing:0.9,marginBottom:10}}>{label}</Text>;
 }
 
-export function PrimaryButton({label,onPress,disabled,loading,icon,danger}){
-  const {theme}=useAppTheme();const bg=danger?theme.colors.danger:theme.colors.primary;
+export function PrimaryButton({label,onPress,disabled,loading,icon,danger,accent}){
+  const {theme}=useAppTheme();
+  const bg=danger?theme.colors.danger:accent?theme.colors.accent:theme.colors.primary;
+  const fg=accent&&!danger?theme.colors.onAccent:theme.colors.onPrimary;
   return(
-    <TouchableOpacity style={[{flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8,minHeight:52,borderRadius:14,backgroundColor:bg,shadowColor:"#0B6B63",shadowOffset:{width:0,height:4},shadowOpacity:0.28,shadowRadius:10,elevation:5},(disabled||loading)&&{opacity:0.5,shadowOpacity:0}]}
+    <TouchableOpacity style={[{flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8,minHeight:52,borderRadius:14,backgroundColor:bg,shadowColor:bg,shadowOffset:{width:0,height:4},shadowOpacity:0.28,shadowRadius:10,elevation:5},(disabled||loading)&&{opacity:0.5,shadowOpacity:0}]}
       onPress={onPress} disabled={disabled||loading} activeOpacity={0.85}>
-      {loading?<ActivityIndicator color={theme.colors.onPrimary}/>:<>{icon?<AppIcon name={icon} size={18} color={theme.colors.onPrimary}/>:null}<Text style={{color:theme.colors.onPrimary,fontSize:16,fontWeight:"800"}}>{label}</Text></>}
+      {loading?<ActivityIndicator color={fg}/>:<>{icon?<AppIcon name={icon} size={18} color={fg}/>:null}<Text style={{color:fg,fontSize:16,fontWeight:"800"}}>{label}</Text></>}
     </TouchableOpacity>
   );
 }

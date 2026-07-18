@@ -84,7 +84,7 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
     if(posting)return;setPosting(true);
     try{
       const media=payload.images?.length?await UploadManager.startUpload(payload.images,"jobs"):[];
-      await viewerRequest("post","/hiring/jobs",{title:payload.title,description:payload.description,service_type:payload.service_type,location:payload.location,tender_closes_at:payload.tender_closes_at,availability_required:payload.availability_required,scheduled_for:payload.scheduled_for||null,availability_notes:payload.availability_notes||null,media});
+      await viewerRequest("post","/hiring/jobs",{title:payload.title,description:payload.description,service_type:payload.service_type,location:payload.location,tender_closes_at:payload.tender_closes_at,availability_required:payload.availability_required,scheduled_for:payload.scheduled_for||null,availability_notes:payload.availability_notes||null,budget_min:payload.budget_min||null,budget_max:payload.budget_max||null,requirements:payload.requirements||[],skills:payload.skills||[],media});
       setShowCreate(false);await load({refresh:true});
       setRetryPayload(null);
       setNotice({type:"success",title:t.postedOk,body:t.postedOkBody});
@@ -157,8 +157,8 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
         <View style={s.emptyIcon}><AppIcon name="briefcase" size={28} color={theme.colors.primary}/></View>
         <Text style={s.emptyTitle}>{t.emptyTitle}</Text>
         <Text style={s.emptyBody}>{t.emptyBody}</Text>
-        <TouchableOpacity style={s.primaryBtn} onPress={openPost}>
-          <AppIcon name="plus" size={17} color={theme.colors.onPrimary}/><Text style={s.primaryTxt}>{t.postJob}</Text>
+        <TouchableOpacity style={s.postBtn} onPress={openPost}>
+          <AppIcon name="plus" size={17} color={theme.colors.onAccent}/><Text style={s.postTxt}>{t.postJob}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -173,7 +173,7 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
             <Text style={s.headerSub}>{t.subtitle}</Text>
           </View>
           <TouchableOpacity style={s.fab} onPress={openPost}>
-            <AppIcon name="plus" size={20} color={theme.colors.onPrimary}/>
+            <AppIcon name="plus" size={20} color={theme.colors.onAccent}/>
           </TouchableOpacity>
         </View>
       )}
@@ -212,7 +212,7 @@ const createStyles=(theme)=>StyleSheet.create({
   header:{flexDirection:"row",alignItems:"center",paddingHorizontal:20,paddingVertical:16,backgroundColor:theme.colors.surface,borderBottomWidth:1,borderBottomColor:theme.colors.border},
   headerTitle:{fontSize:24,fontWeight:"900",color:theme.colors.text},
   headerSub:{fontSize:13,color:theme.colors.textMuted,marginTop:2},
-  fab:{width:44,height:44,borderRadius:22,backgroundColor:theme.colors.primary,alignItems:"center",justifyContent:"center",shadowColor:theme.colors.primary,shadowOffset:{width:0,height:4},shadowOpacity:0.3,shadowRadius:8,elevation:5},
+  fab:{width:44,height:44,borderRadius:22,backgroundColor:theme.colors.accent,alignItems:"center",justifyContent:"center",shadowColor:theme.colors.accent,shadowOffset:{width:0,height:4},shadowOpacity:0.3,shadowRadius:8,elevation:5},
   list:{paddingHorizontal:16,paddingTop:4,paddingBottom:100},
   jobRow:{paddingVertical:10,borderBottomWidth:1,borderBottomColor:theme.colors.border,gap:5},
   cardTop:{flexDirection:"row",justifyContent:"space-between",alignItems:"center"},
@@ -233,6 +233,8 @@ const createStyles=(theme)=>StyleSheet.create({
   emptyBody:{fontSize:14,color:theme.colors.textMuted,textAlign:"center",lineHeight:21},
   primaryBtn:{flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:24,paddingVertical:13,backgroundColor:theme.colors.primary,borderRadius:12,shadowColor:theme.colors.primary,shadowOffset:{width:0,height:4},shadowOpacity:0.25,shadowRadius:8,elevation:4},
   primaryTxt:{color:theme.colors.onPrimary,fontWeight:"800",fontSize:15},
+  postBtn:{flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:24,paddingVertical:13,backgroundColor:theme.colors.accent,borderRadius:12,shadowColor:theme.colors.accent,shadowOffset:{width:0,height:4},shadowOpacity:0.25,shadowRadius:8,elevation:4},
+  postTxt:{color:theme.colors.onAccent,fontWeight:"800",fontSize:15},
   outlineBtn:{paddingHorizontal:24,paddingVertical:12,borderRadius:12,borderWidth:1.5,borderColor:theme.colors.border},
   outlineTxt:{color:theme.colors.text,fontWeight:"700"},
 });

@@ -37,7 +37,7 @@ const COMPLETE_STATUSES = ["completed", "filled", "closed", "rated", "recommende
 
 // ─── Pipeline stage index (5‑stage, revision loop folds into "Submission") ──
 // The visual step labels/icons themselves live in AnimatedJobPipeline.js.
-function pipelineIndex(status) {
+export function pipelineIndex(status) {
   const map = {
     hired: 0, assigned: 0, active: 0,
     start_pending: 1, start_requested: 1, started: 1,

@@ -26,7 +26,7 @@ export default function PostGridItem({ post, size, onPress }) {
       onPress={onPress}
     >
       {imageCoverUri ? (
-        <Image source={{ uri: imageCoverUri }} style={styles.image} resizeMode="cover" />
+        <Image source={{ uri: imageCoverUri }} style={styles.image} resizeMode="cover" pointerEvents="none" />
       ) : isVideo && videoUri ? (
         <VideoCover uri={videoUri} styles={styles} />
       ) : (
@@ -42,7 +42,7 @@ export default function PostGridItem({ post, size, onPress }) {
       )}
 
       {isVideo && (imageCoverUri || videoUri) && (
-        <View style={styles.videoOverlay}>
+        <View style={styles.videoOverlay} pointerEvents="none">
           <View style={styles.playCircleSmall}>
             <PlayIcon size={16} />
           </View>
@@ -50,7 +50,7 @@ export default function PostGridItem({ post, size, onPress }) {
       )}
 
       {hasMultipleMedia && (
-        <View style={styles.countBadge}>
+        <View style={styles.countBadge} pointerEvents="none">
           <Text style={styles.countText}>{post.media.length}</Text>
         </View>
       )}
@@ -80,10 +80,11 @@ function VideoCover({ uri, styles }) {
         style={styles.image}
         contentFit="cover"
         nativeControls={false}
+        pointerEvents="none"
         fullscreenOptions={{ enable: false }}
         onFirstFrameRender={() => setReady(true)}
       />
-      {!ready ? <View style={styles.placeholder} /> : null}
+      {!ready ? <View style={styles.placeholder} pointerEvents="none" /> : null}
     </View>
   );
 }

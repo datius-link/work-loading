@@ -41,6 +41,30 @@ function normalizeList(value) {
   return [];
 }
 
+// Requirements/skills come from a free-text form field on the client
+// (newline or comma separated) or already as an array — normalize either
+// shape into a clean, capped list of display strings.
+function normalizeStringArray(value, max = 20) {
+  let items = [];
+  if (Array.isArray(value)) items = value;
+  else if (typeof value === "string") items = value.split(/\r?\n|,/);
+  return items
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+// Parses free-form budget/offer strings ("TZS 28,000", "28000", 28000.5)
+// into a plain number so it can be persisted as the agreed budget. Returns
+// null when nothing numeric can be found.
+function parseMoney(value) {
+  if (value == null || value === "") return null;
+  const cleaned = String(value).replace(/[^\d.]/g, "");
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
 function normalizeMedia(value, folder = "jobs") {
   if (!Array.isArray(value)) return [];
   return value
@@ -122,8 +146,11 @@ function serializeJob(row) {
     availability_required: !!row.availability_required,
     scheduled_for: row.scheduled_for,
     availability_notes: row.availability_notes,
-    budget_min: row.budget_min,
-    budget_max: row.budget_max,
+    budget_min: row.budget_min != null ? Number(row.budget_min) : null,
+    budget_max: row.budget_max != null ? Number(row.budget_max) : null,
+    final_budget: row.final_budget != null ? Number(row.final_budget) : null,
+    requirements: Array.isArray(row.requirements) ? row.requirements : [],
+    skills: Array.isArray(row.skills) ? row.skills : [],
     media: Array.isArray(row.media) ? row.media : [],
     started_at: row.started_at || null,
     started_by_uuid: row.started_by_uuid || null,
@@ -179,6 +206,10 @@ function serializeJob(row) {
   };
 
   if (row.contact_details) job.contact_details = row.contact_details;
+  // The winning/approved application for a posted job — carries the
+  // provider's original offer so the workspace can show the full
+  // negotiation (employer range -> provider offer -> final agreed budget).
+  if (row.hired_application) job.hired_application = row.hired_application;
   return job;
 }
 
@@ -208,6 +239,10 @@ function contactPayload(profile) {
     username: profile.username || "",
     full_name: profile.full_name || "",
     profile_pic: profile.profile_pic || "",
+    is_verified: !!profile.is_verified,
+    ratings: profile.ratings != null ? Number(profile.ratings) : null,
+    ratings_count: Number(profile.ratings_count || 0),
+    joined_at: profile.created_at || null,
     phone_number: privacy.show_phone_in_jobs ? firstPhone(profile) : null,
     email: privacy.show_email_in_jobs ? profile.email || null : null,
     socials: privacy.show_socials_in_jobs && Array.isArray(profile.socials) ? profile.socials : [],
@@ -317,6 +352,17 @@ export async function createJob(req, res) {
     const availability_required = !!req.body.availability_required;
     const scheduled_for = req.body.scheduled_for || req.body.available_from || null;
     const availability_notes = req.body.availability_notes || null;
+    const requirements = normalizeStringArray(req.body.requirements);
+    const skills = normalizeStringArray(req.body.skills);
+
+    // Employer's budget range for the posted job (what applicants see and
+    // negotiate against). Both bounds are optional independently, but if
+    // both are given the max must not be below the min.
+    let budget_min = parseMoney(req.body.budget_min);
+    let budget_max = parseMoney(req.body.budget_max);
+    if (budget_min != null && budget_max != null && budget_max < budget_min) {
+      [budget_min, budget_max] = [budget_max, budget_min];
+    }
 
     if (!title || !description || !location || !service_type) {
       return res.status(400).json({ message: "Title, description, location and service type are required" });
@@ -333,11 +379,15 @@ export async function createJob(req, res) {
         created_by: me.uuid,
         status: "open",
         tender_closes_at: req.body.tender_closes_at || req.body.deadline || null,
+        budget_min,
+        budget_max,
         media: db.raw("?::jsonb", [JSON.stringify(media)]),
       };
     setIfColumn(jobPayload, columns, "availability_required", availability_required);
     setIfColumn(jobPayload, columns, "scheduled_for", scheduled_for);
     setIfColumn(jobPayload, columns, "availability_notes", availability_notes);
+    setIfColumn(jobPayload, columns, "requirements", db.raw("?::jsonb", [JSON.stringify(requirements)]));
+    setIfColumn(jobPayload, columns, "skills", db.raw("?::jsonb", [JSON.stringify(skills)]));
 
     const [job] = await db("jobs")
       .insert(jobPayload)
@@ -439,6 +489,15 @@ export async function createDirectHire(req, res) {
     const availability_required = !!req.body.availability_required;
     const scheduled_for = req.body.scheduled_for || req.body.available_from || null;
     const availability_notes = req.body.availability_notes || null;
+    const requirements = normalizeStringArray(req.body.requirements);
+    const skills = normalizeStringArray(req.body.skills);
+    // Direct hire is a single named offer, not a range — store it in both
+    // budget_min/budget_max so it reuses the same posted-job budget shape.
+    // It only becomes the job's final_budget once the provider accepts
+    // (see acceptDirectHire below); until then the details screen shows
+    // "Budget not finalized" — there's no separate agreement step, hiring
+    // (accepting) IS the agreement.
+    const offerAmount = parseMoney(req.body.budget);
 
     if (!targetProviderUuid || !title || !description) {
       return res.status(400).json({ message: "Provider, title and description are required" });
@@ -467,12 +526,16 @@ export async function createDirectHire(req, res) {
           target_provider_uuid: targetProviderUuid,
           hire_type: "direct",
           status: "pending",
+          budget_min: offerAmount,
+          budget_max: offerAmount,
           media: db.raw("?::jsonb", [JSON.stringify(media)]),
         };
       setIfColumn(jobPayload, columns, "direct_status", "pending");
       setIfColumn(jobPayload, columns, "availability_required", availability_required);
       setIfColumn(jobPayload, columns, "scheduled_for", scheduled_for);
       setIfColumn(jobPayload, columns, "availability_notes", availability_notes);
+      setIfColumn(jobPayload, columns, "requirements", db.raw("?::jsonb", [JSON.stringify(requirements)]));
+      setIfColumn(jobPayload, columns, "skills", db.raw("?::jsonb", [JSON.stringify(skills)]));
 
       const [created] = await trx("jobs")
         .insert(jobPayload)
@@ -696,6 +759,25 @@ async function workspaceJob(jobIdOrCode, me) {
   }
 
   row.contact_details = await assignedJobContactDetails(row, me);
+
+  // For posted (non-direct) jobs that have been assigned, surface the
+  // winning application so the details screen can show the full
+  // negotiation: employer's posted range -> provider's offer -> final
+  // agreed budget.
+  if (row.hire_type !== "direct" && row.assigned_provider_uuid) {
+    const winningApp = await db("job_applications")
+      .where({ job_id: row.id, profile_uuid: row.assigned_provider_uuid })
+      .whereNull("withdrawn_at")
+      .first();
+    if (winningApp) {
+      row.hired_application = {
+        budget: winningApp.budget || null,
+        message: winningApp.message || "",
+        created_at: winningApp.created_at,
+      };
+    }
+  }
+
   const reputation = await reputationForJob(row.id, row.assigned_provider_uuid, row.created_by, row);
   return { row, job: { ...serializeJob(row), ...reputation }, role: isHirer ? "hirer" : "provider" };
 }
@@ -1502,6 +1584,10 @@ export async function acceptDirectHire(req, res) {
       assigned_provider_uuid: me.uuid,
       updated_at: db.fn.now(),
     };
+    // The employer's direct-hire offer (stored in budget_min == budget_max
+    // at request time) becomes the final budget the moment the provider
+    // accepts.
+    setIfColumn(updatePayload, columns, "final_budget", job.budget_min != null ? job.budget_min : job.budget_max);
     setIfColumn(updatePayload, columns, "direct_status", "accepted");
     setIfColumn(updatePayload, columns, "provider_start_note", String(req.body?.provider_start_note || req.body?.acceptance_note || "").trim() || job.provider_start_note || null);
     setIfColumn(updatePayload, columns, "provider_start_date", providerStartDate || null);
@@ -1775,8 +1861,15 @@ export async function assignProvider(req, res) {
       db("profiles").where({ uuid: me.uuid }).first(),
     ]);
     let assignedJob = null;
+    const columns = await jobsColumns();
     await db.transaction(async (trx) => {
-      const [updated] = await trx("jobs").where({ id: job.id }).update({ status: "active", assigned_provider_uuid: profile_uuid, updated_at: db.fn.now() }).returning("*");
+      // The applicant's own offer (job_applications.budget, a free-text
+      // string like "TZS 28,000") is what actually gets paid — hiring them
+      // IS the agreement, so that becomes the job's final_budget, not the
+      // employer's original posted range.
+      const updatePayload = { status: "active", assigned_provider_uuid: profile_uuid, updated_at: db.fn.now() };
+      setIfColumn(updatePayload, columns, "final_budget", parseMoney(app.budget));
+      const [updated] = await trx("jobs").where({ id: job.id }).update(updatePayload).returning("*");
       assignedJob = updated;
       await logActivity(trx, {
         jobId: updated.id,

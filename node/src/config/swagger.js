@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const srcDir = path.resolve(__dirname, "..");
 const swaggerGlob = (...parts) => path.join(...parts).replace(/\\/g, "/");
+const isProduction = process.env.NODE_ENV === "production";
 
 const options = {
   definition: {
@@ -331,13 +332,42 @@ const options = {
 
 export const swaggerSpec = swaggerJsdoc(options);
 
+function swaggerAuth(req, res, next) {
+  const username = process.env.SWAGGER_USERNAME;
+  const password = process.env.SWAGGER_PASSWORD;
+
+  if (!username || !password) {
+    return res.status(404).json({ message: "Route not found" });
+  }
+
+  const auth = req.headers.authorization || "";
+  const [scheme, encoded] = auth.split(" ");
+
+  if (scheme === "Basic" && encoded) {
+    const provided = Buffer.from(encoded, "base64").toString("utf8");
+
+    if (provided === `${username}:${password}`) {
+      return next();
+    }
+  }
+
+  res.set("WWW-Authenticate", 'Basic realm="e-kazi API Docs"');
+  return res.status(401).json({ message: "Authentication required" });
+}
+
 export function setupSwagger(app) {
-  app.get("/api-docs.json", (_req, res) => {
+  if (isProduction && (!process.env.SWAGGER_USERNAME || !process.env.SWAGGER_PASSWORD)) {
+    return;
+  }
+
+  app.get("/api-docs.json", swaggerAuth, (_req, res) => {
     res.json(swaggerSpec);
   });
 
   app.use(
     "/api-docs",
+
+    swaggerAuth,
 
     swaggerUi.serve,
 

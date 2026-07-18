@@ -8,7 +8,6 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
@@ -23,6 +22,9 @@ import { useAppTheme } from "../../../theme";
 import { getFriendlyApiError, socialRequest } from "../../../api/api";
 import { UploadManager } from "../../../utils/UploadManager";
 import { useLanguage } from "../../../LanguageContext";
+import { getUserSession } from "../../../utils/userSession";
+import { searchPlaces } from "../../../utils/placesAutocomplete";
+import HiringNoticeModal from "../../Jobs/HiringNoticeModal";
 
 const { width, height } = Dimensions.get("window");
 const MEDIA_HEIGHT = 400;
@@ -48,6 +50,9 @@ export default function PostDetails({ route, navigation }) {
   const [uploadStatus, setUploadStatus] = useState(UPLOAD_STATUS.PENDING);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedMedia, setUploadedMedia] = useState([]);
+  const [notice, setNotice] = useState(null);
+  const [successPost, setSuccessPost] = useState(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   // Mention / hashtag logic
   const [suggestions, setSuggestions] = useState([]);
@@ -56,8 +61,17 @@ export default function PostDetails({ route, navigation }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isCaptionFocused, setIsCaptionFocused] = useState(false);
+  const [isLocationFocused, setIsLocationFocused] = useState(false);
+  // Measured (via onLayout) y-offset of each section inside the ScrollView's
+  // content, so we can scroll the actually-focused input above the keyboard
+  // instead of the previous hardcoded y:300 (which only ever worked for the
+  // caption field and left location covered by the keyboard entirely).
+  const [captionSectionY, setCaptionSectionY] = useState(0);
+  const [locationSectionY, setLocationSectionY] = useState(0);
+  const [locationSuggestions, setLocationSuggestions] = useState([]);
 
   const flatListRef = useRef(null);
+  const locationSearchRef = useRef({ timer: null, controller: null });
   const videoPlayersRef = useRef([]);
   const captionInputRef = useRef(null);
   const captionContainerRef = useRef(null);
@@ -70,10 +84,13 @@ export default function PostDetails({ route, navigation }) {
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
-        // Scroll to caption when keyboard opens
+        // Scroll whichever input is actually focused above the keyboard.
         setTimeout(() => {
-          if (scrollViewRef.current && isCaptionFocused) {
-            scrollViewRef.current.scrollTo({ y: 300, animated: true });
+          if (!scrollViewRef.current) return;
+          if (isCaptionFocused) {
+            scrollViewRef.current.scrollTo({ y: Math.max(captionSectionY - 16, 0), animated: true });
+          } else if (isLocationFocused) {
+            scrollViewRef.current.scrollTo({ y: Math.max(locationSectionY - 16, 0), animated: true });
           }
         }, 100);
       }
@@ -90,12 +107,44 @@ export default function PostDetails({ route, navigation }) {
       keyboardWillShow.remove();
       keyboardWillHide.remove();
     };
-  }, [isCaptionFocused]);
+  }, [isCaptionFocused, isLocationFocused, captionSectionY, locationSectionY]);
+
+  // Street-level location autocomplete (debounced ~350ms — Nominatim's free
+  // usage policy asks for roughly 1 request/second, so we can't search on
+  // every keystroke). Aborts the in-flight request if the user keeps typing.
+  useEffect(() => {
+    const handle = locationSearchRef.current;
+    if (handle.timer) clearTimeout(handle.timer);
+    if (handle.controller) handle.controller.abort();
+
+    if (!isLocationFocused || !location.trim()) {
+      setLocationSuggestions([]);
+      return;
+    }
+
+    handle.timer = setTimeout(() => {
+      const controller = new AbortController();
+      handle.controller = controller;
+      searchPlaces(location, { signal: controller.signal })
+        .then((results) => {
+          if (isMounted.current) setLocationSuggestions(results);
+        })
+        .catch((err) => {
+          if (err?.name !== "AbortError" && isMounted.current) setLocationSuggestions([]);
+        });
+    }, 350);
+
+    return () => {
+      if (handle.timer) clearTimeout(handle.timer);
+    };
+  }, [location, isLocationFocused]);
 
   useEffect(() => {
     isMounted.current = true;
     if (!mediaList.length) {
-      Alert.alert("No media", "Please select media first.");
+      // Shouldn't be reachable through normal navigation (EditMedia always
+      // passes media) — just bail out quietly rather than flashing a
+      // dialog the user has no time to read before the screen unmounts.
       navigation.goBack();
       return;
     }
@@ -133,17 +182,18 @@ export default function PostDetails({ route, navigation }) {
 
   const handleBack = async () => {
     if (uploadStatus === UPLOAD_STATUS.UPLOADING) {
-      Alert.alert("Cancel upload?", "Post is still uploading.", [
-        { text: "Continue", style: "cancel" },
-        {
-          text: "Cancel",
-          style: "destructive",
-          onPress: async () => {
-            await releaseAllVideos();
-            navigation.goBack();
-          },
+      setNotice({
+        type: "warning",
+        title: "Cancel upload?",
+        body: "Your post is still uploading. Leaving now will stop it.",
+        primaryLabel: "Continue editing",
+        secondaryLabel: "Cancel upload",
+        onSecondary: async () => {
+          setNotice(null);
+          await releaseAllVideos();
+          navigation.goBack();
         },
-      ]);
+      });
     } else {
       await releaseAllVideos();
       navigation.goBack();
@@ -152,6 +202,7 @@ export default function PostDetails({ route, navigation }) {
 
   // Upload logic
   const startUpload = () => {
+    setNotice(null);
     setUploadStatus(UPLOAD_STATUS.UPLOADING);
     setUploadProgress(0);
 
@@ -170,40 +221,46 @@ export default function PostDetails({ route, navigation }) {
       console.log("Upload error:", err);
       if (!isMounted.current) return;
       setUploadStatus(UPLOAD_STATUS.ERROR);
-      Alert.alert(
-        language==="sw"?"Media haijapakiwa":"Media upload failed",
-        language==="sw"
-          ?"Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena."
-          :"Media upload failed because of connection problem. Try again."
-      );
+      setNotice({
+        type: "error",
+        title: language === "sw" ? "Media haijapakiwa" : "Media upload failed",
+        body: language === "sw"
+          ? "Media haijapakiwa kwa sababu ya tatizo la mtandao. Jaribu tena."
+          : "Media upload failed because of connection problem. Try again.",
+        primaryLabel: language === "sw" ? "Jaribu tena" : "Try again",
+        onPrimary: () => startUpload(),
+      });
     };
 
-    // FIX 2: Replace empty catch with real error logging
     UploadManager.startUpload(mediaList, postType).catch((err) => {
       console.error("START UPLOAD ERROR:", err);
     });
   };
 
-  // Share
+  // Share — guarded against double taps (isSharing) so rapidly pressing
+  // Share can't create duplicate posts. The draft (caption/media/location)
+  // is only ever cleared after the backend confirms success, never on
+  // failure, so a failed publish doesn't lose the user's work.
   const handleShare = async () => {
+    if (isSharing) return;
+
     if (uploadStatus !== UPLOAD_STATUS.DONE) {
-      Alert.alert("Please wait", "Media still uploading.");
+      setNotice({ type: "warning", title: "Please wait", body: "Your media is still uploading." });
       return;
     }
 
     if (!caption.trim()) {
-      Alert.alert("Caption required", "Please write something.");
+      setNotice({ type: "warning", title: "Caption required", body: "Please write something before sharing." });
       return;
     }
 
-    try {
-      // VALIDATE MEDIA
-      if (!uploadedMedia || uploadedMedia.length === 0) {
-        Alert.alert("Upload Error", "No uploaded media found.");
-        return;
-      }
+    if (!uploadedMedia || uploadedMedia.length === 0) {
+      setNotice({ type: "error", title: "Upload error", body: "No uploaded media found. Please try uploading again.", primaryLabel: "Try again", onPrimary: () => startUpload() });
+      return;
+    }
 
-      // CREATE PAYLOAD
+    setIsSharing(true);
+    try {
       const payload = {
         type: postType,
         caption: caption.trim(),
@@ -213,42 +270,75 @@ export default function PostDetails({ route, navigation }) {
           url: m.url,
           type: m.type,
           fit: m.fit || "cover",
+          transform: m.transform || null,
         })),
 
         created_at: new Date().toISOString(),
       };
 
-      // SEND POST REQUEST
       const response = await socialRequest("post", "/posts", payload, {
         preferredAuthActor: "viewer",
       });
 
       console.log("POST SUCCESS:", response.data);
 
-      // RESET UPLOAD STATE
       UploadManager.reset();
 
-      Alert.alert(
-        "Success!",
-        "Post shared successfully.",
-        [
-          {
-            text: "OK",
-            onPress: () => navigation.popToTop(),
-          },
-        ]
-      );
+      // Build the published post from data we already have — no need for
+      // a dedicated "get post by id" endpoint just to show it back to the
+      // user immediately.
+      const session = await getUserSession().catch(() => null);
+      const profile = session?.profile || session?.user || {};
+      setSuccessPost({
+        id: response?.data?.postId,
+        type: postType === "reel" ? "clip" : postType,
+        caption: payload.caption,
+        location: payload.location,
+        created_at: payload.created_at,
+        username: profile.username,
+        full_name: profile.full_name || profile.fullName,
+        profile_pic: profile.profile_pic || profile.profilePic,
+        likes_count: 0,
+        comments_count: 0,
+        media: payload.media,
+      });
     } catch (err) {
       console.log(
         "POST ERROR:",
         err?.response?.data || err.message || err
       );
 
-      Alert.alert(
-        language === "sw" ? "Post haikutumwa" : "Post failed",
-        getFriendlyApiError(err, language)
-      );
+      setNotice({
+        type: "error",
+        title: language === "sw" ? "Post haikutumwa" : "Post failed",
+        body: getFriendlyApiError(err, language),
+        primaryLabel: language === "sw" ? "Jaribu tena" : "Try again",
+        onPrimary: () => handleShare(),
+      });
+    } finally {
+      setIsSharing(false);
     }
+  };
+
+  const goToPublishedPost = () => {
+    const post = successPost;
+    setSuccessPost(null);
+    // Clear CreatePost/EditMedia/PostDetails off the stack FIRST — posting is
+    // done, so there's nothing to "go back" into. Only after that do we push
+    // the media viewer, so it opens on top of the profile (back from it
+    // returns to the profile, not into the posting flow).
+    navigation.popToTop();
+    if (!post) return;
+    navigation.navigate("PostFeedView", {
+      posts: [post],
+      initialPostId: post.id,
+      preferredAuthActor: "viewer",
+    });
+  };
+
+  const finishAfterPublish = () => {
+    setSuccessPost(null);
+    navigation.popToTop();
   };
 
   // Mention and hashtag logic
@@ -277,7 +367,7 @@ export default function PostDetails({ route, navigation }) {
       return;
     }
     
-    const endpoint = type === "users" ? "/posts/mentions/users" : "/posts/mentions/services";
+    const endpoint = type === "users" ? "/posts/mentions/users" : "/posts/mentions/hashtags";
 
     try {
       const res = await socialRequest("get", endpoint, undefined, {
@@ -285,12 +375,23 @@ export default function PostDetails({ route, navigation }) {
         preferredAuthActor: "viewer",
       });
       const data = res?.data || [];
-      const formattedSuggestions = data.map((item) => ({
-        id: item.id || item.username || item,
-        name: item.name || item.username || item,
-        value: item.username || item,
-        type: type === "users" ? "user" : "service",
-      }));
+      const formattedSuggestions =
+        type === "users"
+          ? data.map((item) => ({
+              id: item.id || item.username || item,
+              name: item.name || item.username || item,
+              value: item.username || item,
+              type: "user",
+            }))
+          : // Real hashtags people have already used (post_mentions), ranked
+            // by how often each appears — this now actually dropdowns like
+            // @ mentions do, instead of listing provider service categories.
+            data.map((item) => ({
+              id: item.value,
+              name: item.value,
+              value: item.value,
+              type: "hashtag",
+            }));
       
       setSuggestions(formattedSuggestions);
       setShowSuggestions(formattedSuggestions.length > 0);
@@ -316,7 +417,7 @@ export default function PostDetails({ route, navigation }) {
       const q = lastWord.slice(1);
       setTrigger("#");
       setKeyword(q);
-      fetchMentions("services", q);
+      fetchMentions("hashtags", q);
     } else if (trigger) {
       setTrigger(null);
       setSuggestions([]);
@@ -329,7 +430,7 @@ export default function PostDetails({ route, navigation }) {
     setIsCaptionFocused(true);
     // If there's already a trigger and keyword, show suggestions
     if (trigger && keyword) {
-      fetchMentions(trigger === "@" ? "users" : "services", keyword);
+      fetchMentions(trigger === "@" ? "users" : "hashtags", keyword);
     }
   };
 
@@ -349,11 +450,11 @@ export default function PostDetails({ route, navigation }) {
       onPress={() => insertSuggestion(item.value)}
     >
       <View style={styles.suggestionIcon}>
-        <Icon 
-          name={item.type === "user" ? "person" : "category"} 
-          size={20} 
-          color={theme.colors.primary} 
-        />
+        {item.type === "user" ? (
+          <Icon name="person" size={20} color={theme.colors.primary} />
+        ) : (
+          <Text style={styles.quickActionSymbol}>#</Text>
+        )}
       </View>
       <View style={styles.suggestionContent}>
         <Text style={styles.suggestionName}>{item.name}</Text>
@@ -460,7 +561,11 @@ export default function PostDetails({ route, navigation }) {
   return (
     <KeyboardAvoidingView
       style={styles.keyboardAvoid}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      // Same fix used in CommentsSheet/LoginModal/CreateJobModal: "undefined"
+      // on Android means KeyboardAvoidingView does nothing at all, so the
+      // keyboard just covers the caption/location inputs instead of the
+      // content lifting above it.
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
     >
       {/* Fixed Header */}
@@ -481,12 +586,13 @@ export default function PostDetails({ route, navigation }) {
         <TouchableOpacity
           style={[
             styles.shareButton,
-            (uploadStatus !== UPLOAD_STATUS.DONE || !caption.trim()) && styles.shareDisabled,
+            (uploadStatus !== UPLOAD_STATUS.DONE || !caption.trim() || isSharing) && styles.shareDisabled,
           ]}
-          disabled={uploadStatus !== UPLOAD_STATUS.DONE || !caption.trim()}
+          disabled={uploadStatus !== UPLOAD_STATUS.DONE || !caption.trim() || isSharing}
           onPress={handleShare}
+          accessibilityLabel="Share post"
         >
-          {uploadStatus === UPLOAD_STATUS.UPLOADING ? (
+          {uploadStatus === UPLOAD_STATUS.UPLOADING || isSharing ? (
             <ActivityIndicator color={theme.colors.onPrimary} size="small" />
           ) : (
             <Text style={styles.shareText}>Share</Text>
@@ -531,10 +637,10 @@ export default function PostDetails({ route, navigation }) {
         </View>
 
         {/* Caption Section */}
-        <View 
+        <View
           ref={captionContainerRef}
           style={styles.captionSection}
-          onLayout={() => {}}
+          onLayout={(e) => setCaptionSectionY(e.nativeEvent.layout.y)}
         >
           <Text style={styles.sectionTitle}>Caption</Text>
           <Text style={styles.sectionHint}>
@@ -566,10 +672,10 @@ export default function PostDetails({ route, navigation }) {
                   captionInputRef.current?.focus();
                 }}
               >
-                <Icon name="alternate-email" size={20} color={theme.colors.primary} />
+                <Text style={styles.quickActionSymbol}>@</Text>
                 <Text style={styles.quickActionText}>Mention</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={styles.quickActionBtn}
                 onPress={() => {
@@ -578,7 +684,7 @@ export default function PostDetails({ route, navigation }) {
                   captionInputRef.current?.focus();
                 }}
               >
-                <Icon name="tag" size={20} color={theme.colors.primary} />
+                <Text style={styles.quickActionSymbol}>#</Text>
                 <Text style={styles.quickActionText}>Hashtag</Text>
               </TouchableOpacity>
             </View>
@@ -592,7 +698,10 @@ export default function PostDetails({ route, navigation }) {
         </View>
 
         {/* Location Section */}
-        <View style={styles.locationSection}>
+        <View
+          style={styles.locationSection}
+          onLayout={(e) => setLocationSectionY(e.nativeEvent.layout.y)}
+        >
           <Text style={styles.sectionTitle}>Location</Text>
           <Text style={styles.sectionHint}>
             Add where you're sharing from (optional)
@@ -604,35 +713,61 @@ export default function PostDetails({ route, navigation }) {
             </View>
             <TextInput
               style={styles.locationInput}
-              placeholder="Enter location..."
+              placeholder="Enter location or street..."
               placeholderTextColor={theme.colors.textMuted}
               value={location}
               onChangeText={setLocation}
+              onFocus={() => setIsLocationFocused(true)}
+              // Delayed so a tap on a dropdown suggestion below still
+              // registers before the dropdown disappears.
+              onBlur={() => setTimeout(() => setIsLocationFocused(false), 150)}
               maxLength={100}
+              accessibilityLabel="Location"
             />
             {location.trim() ? (
               <TouchableOpacity
-                onPress={() => setLocation("")}
+                onPress={() => {
+                  setLocation("");
+                  setLocationSuggestions([]);
+                }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Clear location"
               >
                 <Icon name="close" size={20} color={theme.colors.textMuted} />
               </TouchableOpacity>
             ) : null}
           </View>
 
+          {isLocationFocused && locationSuggestions.length > 0 ? (
+            <View style={styles.locationDropdown}>
+              {locationSuggestions.map((item) => (
+                <TouchableOpacity
+                  key={`${item.name}-${item.region}`}
+                  style={styles.locationOption}
+                  onPress={() => {
+                    setLocation(item.name);
+                    setLocationSuggestions([]);
+                    setIsLocationFocused(false);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="location-on" size={16} color={theme.colors.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.locationOptionText}>{item.name}</Text>
+                    {item.region ? (
+                      <Text style={styles.locationOptionRegion}>{item.region}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+
           <View style={styles.locationFooter}>
             <Text style={styles.charCount}>
               {location.length} / 100
             </Text>
           </View>
-        </View>
-
-        {/* Post Info */}
-        <View style={styles.infoBox}>
-          <Icon name="info" size={18} color={theme.colors.textMuted} />
-          <Text style={styles.infoText}>
-            Your {postType === "reel" ? "reel" : "post"} will be visible to your followers
-          </Text>
         </View>
 
         {/* Spacer for keyboard */}
@@ -675,6 +810,33 @@ export default function PostDetails({ route, navigation }) {
           onPress={() => setShowSuggestions(false)}
         />
       )}
+
+      <HiringNoticeModal
+        visible={!!notice}
+        type={notice?.type}
+        title={notice?.title}
+        body={notice?.body}
+        primaryLabel={notice?.primaryLabel || "OK"}
+        secondaryLabel={notice?.secondaryLabel}
+        onPrimary={notice?.onPrimary}
+        onSecondary={notice?.onSecondary}
+        onClose={() => setNotice(null)}
+      />
+
+      {/* Success — non-blocking, contextual actions instead of a native
+          Alert.alert. The draft is only cleared once we get here, i.e.
+          after the backend has confirmed the post exists. */}
+      <HiringNoticeModal
+        visible={!!successPost}
+        type="success"
+        title="Post shared!"
+        body="Your post is now visible to your followers."
+        primaryLabel="View post"
+        secondaryLabel="Done"
+        onPrimary={goToPublishedPost}
+        onSecondary={finishAfterPublish}
+        onClose={finishAfterPublish}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -882,6 +1044,14 @@ const createStyles = (theme) => StyleSheet.create({
     borderRadius: 20,
     marginRight: 12,
   },
+  quickActionSymbol: {
+    fontSize: 18,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: theme.colors.primary,
+    minWidth: 14,
+    textAlign: "center",
+  },
   quickActionText: {
     marginLeft: 6,
     fontSize: 14,
@@ -941,6 +1111,34 @@ const createStyles = (theme) => StyleSheet.create({
     fontSize: 16,
     color: theme.colors.text,
     paddingVertical: 4,
+  },
+  locationDropdown: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginTop: -4,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  locationOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  locationOptionText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.text,
+  },
+  locationOptionRegion: {
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    marginTop: 1,
   },
   locationFooter: {
     flexDirection: "row",

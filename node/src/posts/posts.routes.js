@@ -13,6 +13,7 @@ import {
   getEngagementSummary,
   searchUsers,
   searchServices,
+  searchHashtags,
   toggleLike,
   getComments,
   createComment,
@@ -190,6 +191,24 @@ router.get(
   "/mentions/services",
   requireViewerOrProviderAuth,
   searchServices
+);
+
+/**
+ * @swagger
+ * /api/posts/mentions/hashtags:
+ *   get:
+ *     summary: Search hashtags for the "#" mention trigger
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Hashtags loaded
+ */
+router.get(
+  "/mentions/hashtags",
+  requireViewerOrProviderAuth,
+  searchHashtags
 );
 
 /**

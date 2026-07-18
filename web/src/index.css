@@ -87,7 +87,7 @@ button {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: var(--teal);
+  background: linear-gradient(135deg, var(--teal), var(--teal-dark));
   color: #fff;
   font-weight: 900;
   font-size: 18px;
@@ -100,6 +100,23 @@ button {
   font-weight: 800;
   font-size: 15px;
   color: var(--text);
+  letter-spacing: -0.2px;
+}
+
+.auth-brand-name em {
+  font-style: normal;
+  color: var(--teal);
+}
+
+.auth-brand-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  border-radius: 999px;
+  padding: 3px 8px;
 }
 
 .auth-subtitle {

@@ -4,7 +4,8 @@ import { ConvexReactClient } from "convex/react";
 import { ConvexProvider } from "convex/react";
 
 import React, { useEffect, useState } from "react";
-import { Image, StatusBar, StyleSheet, Text, View } from "react-native";
+import { StatusBar, StyleSheet, Text, View } from "react-native";
+import EkaziLogo from "./assets/e-kazi-logo.svg";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -28,7 +29,7 @@ import {
 } from "./src/notifications/pushNotifications";
 import { registerBackgroundCallTask } from "./src/notifications/backgroundCallTask";
 import { CallProvider } from "./src/calling/CallProvider";
-import CallOverlay from "./src/calling/CallOverlay";
+import CallStack from "./src/calling/CallStack";
 import BiometricLockOverlay from "./src/components/BiometricLockOverlay";
 
 /* ---------------------------
@@ -213,7 +214,7 @@ function AppShell() {
       {showSplash ? <SplashScreen /> : <RootNavigator />}
       <NetworkBanner />
       <NotificationBanner />
-      <CallOverlay />
+      <CallStack />
       <BiometricLockOverlay />
     </View>
   );
@@ -224,8 +225,8 @@ function SplashScreen() {
 
   return (
     <View style={[rootStyles.splash, { backgroundColor: theme.colors.bg }]}>
-      <View style={[rootStyles.logoMark, { backgroundColor: theme.colors.primarySoft, overflow: "hidden" }]}>
-        <Image source={require("./assets/icon.png")} style={rootStyles.logoImage} />
+      <View style={rootStyles.logoMark}>
+        <EkaziLogo width={68} height={68} />
       </View>
       <Text style={[rootStyles.splashTitle, { color: theme.colors.text }]}>e-kazi</Text>
       <Txt en="Work. Service. Trust." sw="Kazi. Huduma. Uaminifu." style={[rootStyles.splashSub, { color: theme.colors.textMuted }]} />
@@ -302,10 +303,6 @@ const rootStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 18,
-  },
-  logoImage: {
-    width: 92,
-    height: 92,
   },
   splashTitle: {
     fontSize: 34,

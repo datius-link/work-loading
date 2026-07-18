@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -18,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import Txt from "../../Txt";
 import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
+import EkaziLogo from "../../../assets/e-kazi-logo.svg";
 import { api, getFriendlyApiError, viewerRequest } from "../../api/api";
 import { getUserSession, saveUserSession } from "../../utils/userSession";
 import { useNavigation } from "@react-navigation/native";
@@ -887,7 +887,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
               
               <View style={styles.headerRow}>
                 <View style={styles.headerIconWrap}>
-                  <Image source={require("../../../assets/icon.png")} style={styles.headerIconImg} />
+                  <EkaziLogo width={30} height={30} />
                 </View>
                 <View style={{ flex: 1 }} />
                 <ScaleButton onPress={closeModal} haptic={false} style={styles.closeBtn}>
@@ -1080,13 +1080,12 @@ const createStyles = (theme) =>
       borderRadius: 22, 
       alignItems: "center", 
       justifyContent: "center", 
-      backgroundColor: theme.colors.primarySoft,
+      backgroundColor: "transparent",
       overflow: "hidden",
-      borderWidth: 1,
+      borderWidth: 0,
       borderColor: theme.colors.border,
     },
-    headerIconImg: { width: 44, height: 44, resizeMode: "cover" },
-    closeBtn: { 
+    closeBtn: {
       width: 36, 
       height: 36, 
       borderRadius: 18, 

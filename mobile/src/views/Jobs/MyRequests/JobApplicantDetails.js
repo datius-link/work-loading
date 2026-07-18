@@ -21,7 +21,7 @@ const T={
 };
 
 function formatBudget(v){const r=String(v||"").trim();if(!r)return"Not set";if(/^TZS\b/i.test(r))return r;const n=r.replace(/[^\d.]/g,"");return n?`TZS ${Number(n).toLocaleString("en-US")}`:r;}
-function avatarUri(u){if(u?.profilePic||u?.profile_pic)return u.profilePic||u.profile_pic;return`https://ui-avatars.com/api/?name=${encodeURIComponent(u?.username||"P")}&background=0B6B63&color=fff&bold=true&rounded=true`;}
+function avatarUri(u){if(u?.profilePic||u?.profile_pic)return u.profilePic||u.profile_pic;return`https://ui-avatars.com/api/?name=${encodeURIComponent(u?.username||"P")}&background=1683C7&color=fff&bold=true&rounded=true`;}
 
 // Small soft box (icon + label + value) used in the 2x2 offer-summary grid.
 function GridItem({icon,label,value,theme,styles}){
@@ -195,6 +195,7 @@ export default function JobApplicantDetails(){
           <PrimaryButton
             label={isClosed?t.closed:t.hire} icon={isClosed?"lock":"check"}
             disabled={isClosed||hiring} loading={hiring}
+            accent={!isClosed}
             onPress={hireProvider}/>
         )}
       </View>

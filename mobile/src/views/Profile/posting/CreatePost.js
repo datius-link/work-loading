@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   Dimensions,
-  Alert,
   Image,
   ActivityIndicator
 } from "react-native";
@@ -18,6 +17,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from 'expo-file-system';
 import Icon from "../../../icons/MaterialIcon";
 import { useAppTheme } from "../../../theme";
+import HiringNoticeModal from "../../Jobs/HiringNoticeModal";
 
 const { width } = Dimensions.get("window");
 const SIZE = width / 3;
@@ -45,6 +45,8 @@ function CreatePostContent({ navigation, route }) {
   const [type, setType] = useState("moment");
   const [media, setMedia] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [pendingSwitchType, setPendingSwitchType] = useState(null);
 
   /* params sync */
   useEffect(() => {
@@ -58,11 +60,11 @@ function CreatePostContent({ navigation, route }) {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "We need access to your media library to select photos and videos.",
-          [{ text: "OK", style: "default" }]
-        );
+        setNotice({
+          type: "warning",
+          title: "Permission required",
+          body: "We need access to your media library to select photos and videos.",
+        });
       }
     })();
   }, []);
@@ -73,9 +75,12 @@ function CreatePostContent({ navigation, route }) {
 
     try {
       setIsLoading(true);
-      
+
+      // Reel mode requests videos only at the OS-picker level, so images
+      // never show up as selectable in the first place — the validation
+      // below is just a defensive fallback, not the primary guard anymore.
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images", "videos"],
+        mediaTypes: type === "reel" ? ["videos"] : ["images", "videos"],
         allowsMultipleSelection: type === "moment",
         selectionLimit: type === "moment" ? MAX_MOMENT_ITEMS : 1,
         videoMaxDuration: type === "reel" ? MAX_REEL_DURATION : undefined,
@@ -92,7 +97,7 @@ function CreatePostContent({ navigation, route }) {
       const mediaItems = await Promise.all(
         result.assets.map(async (asset, index) => {
           let fileSize = asset.fileSize;
-          
+
           // Get file size if not provided
           if (!fileSize && asset.uri) {
             try {
@@ -107,7 +112,7 @@ function CreatePostContent({ navigation, route }) {
             id: asset.assetId || `media_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
             uri: asset.uri,
             type: asset.type === "video" ? "video" : "image",
-            duration: normalizeDuration(asset.duration),
+            duration: asset.duration != null ? normalizeDuration(asset.duration) : null,
             width: asset.width,
             height: asset.height,
             fileName: asset.fileName || `media_${Date.now()}_${index}`,
@@ -117,30 +122,48 @@ function CreatePostContent({ navigation, route }) {
         })
       );
 
-      /* reel validation */
+      /* reel validation (defensive — the picker already filters to video) */
       if (type === "reel") {
         const video = mediaItems[0];
         if (!video || video.type !== "video") {
-          Alert.alert("Invalid Selection", "Reel must be a video file.");
+          setNotice({ type: "warning", title: "Invalid selection", body: "A reel must be a video file." });
+          setIsLoading(false);
+          return;
+        }
+
+        if (video.duration == null) {
+          setNotice({
+            type: "warning",
+            title: "Couldn't verify video length",
+            body: "We couldn't read this video's duration. Please pick a different clip or try again.",
+          });
           setIsLoading(false);
           return;
         }
 
         if (video.duration > MAX_REEL_DURATION) {
-          Alert.alert("Video Too Long", `Reels must be ${MAX_REEL_DURATION} seconds or less.`);
+          setNotice({
+            type: "warning",
+            title: "Video too long",
+            body: `This video is ${formatDuration(video.duration)}. Reels must be ${MAX_REEL_DURATION} seconds or less.`,
+          });
           setIsLoading(false);
           return;
         }
 
         if (video.duration < MIN_REEL_DURATION) {
-          Alert.alert("Video Too Short", "Reels must be at least 1 second.");
+          setNotice({
+            type: "warning",
+            title: "Video too short",
+            body: `This video is ${formatDuration(video.duration)}. Reels must be at least ${MIN_REEL_DURATION} second.`,
+          });
           setIsLoading(false);
           return;
         }
       }
 
       if (type === "moment" && mediaItems.length > MAX_MOMENT_ITEMS) {
-        Alert.alert("Limit Exceeded", `Moments can have up to ${MAX_MOMENT_ITEMS} items.`);
+        setNotice({ type: "warning", title: "Limit exceeded", body: `Moments can have up to ${MAX_MOMENT_ITEMS} items.` });
         setIsLoading(false);
         return;
       }
@@ -148,11 +171,7 @@ function CreatePostContent({ navigation, route }) {
       setMedia(mediaItems);
     } catch (error) {
       console.error('Picker Error:', error);
-      Alert.alert(
-        "Selection Error",
-        "Failed to select media. Please try again.",
-        [{ text: "OK", style: "default" }]
-      );
+      setNotice({ type: "error", title: "Selection error", body: "Failed to select media. Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -164,38 +183,33 @@ function CreatePostContent({ navigation, route }) {
 
   const switchPostType = (newType) => {
     if (type === newType) return;
-    
+
     if (media.length > 0) {
-      Alert.alert(
-        "Switch Post Type?",
-        "Changing post type will clear your current selection.",
-        [
-          { 
-            text: "Cancel", 
-            style: "cancel" 
-          },
-          {
-            text: "Switch",
-            style: "destructive",
-            onPress: () => {
-              setType(newType);
-              setMedia([]);
-            },
-          },
-        ]
-      );
+      setPendingSwitchType(newType);
+      setNotice({
+        type: "warning",
+        title: "Switch post type?",
+        body: "Changing post type will clear your current selection.",
+        primaryLabel: "Switch",
+        secondaryLabel: "Cancel",
+      });
     } else {
       setType(newType);
     }
   };
 
+  const confirmSwitchType = () => {
+    if (pendingSwitchType) {
+      setType(pendingSwitchType);
+      setMedia([]);
+    }
+    setPendingSwitchType(null);
+    setNotice(null);
+  };
+
   const goNext = () => {
     if (!media.length) {
-      Alert.alert(
-        "No Media Selected",
-        "Please select at least one photo or video to continue.",
-        [{ text: "OK", style: "default" }]
-      );
+      setNotice({ type: "warning", title: "No media selected", body: "Please select at least one photo or video to continue." });
       return;
     }
 
@@ -397,6 +411,18 @@ function CreatePostContent({ navigation, route }) {
           </TouchableOpacity>
         </View>
       )}
+
+      <HiringNoticeModal
+        visible={!!notice}
+        type={notice?.type}
+        title={notice?.title}
+        body={notice?.body}
+        primaryLabel={notice?.primaryLabel || "OK"}
+        secondaryLabel={notice?.secondaryLabel}
+        onPrimary={pendingSwitchType ? confirmSwitchType : () => setNotice(null)}
+        onSecondary={() => { setPendingSwitchType(null); setNotice(null); }}
+        onClose={() => { setPendingSwitchType(null); setNotice(null); }}
+      />
     </View>
   );
 }

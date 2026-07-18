@@ -4,6 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import Txt from "../../Txt";
 import { useAppTheme } from "../../theme";
 import AppIcon from "../../icons/AppIcon";
+import EkaziLogo from "../../../assets/e-kazi-logo.svg";
 import { api, getFriendlyApiError } from "../../api/api";
 import { useLanguage } from "../../LanguageContext";
 
@@ -50,6 +51,9 @@ export default function ResetPassword({ navigation, route }) {
           <AppIcon name="arrowLeft" size={18} color={theme.colors.primary} />
         </TouchableOpacity>
         <Txt en="Reset password" sw="Badili nywila" style={styles.headerTitle} />
+        <View style={styles.logoBadge}>
+          <EkaziLogo width={18} height={18} />
+        </View>
       </View>
       <View style={styles.bodyWrap}>
         <Txt en={`Code sent to ${email}`} sw={`Code imetumwa ${email}`} style={styles.body} />
@@ -101,7 +105,8 @@ const createStyles = (theme) =>
       justifyContent: "center",
       backgroundColor: theme.colors.primarySoft,
     },
-    headerTitle: { color: theme.colors.text, fontSize: 20, fontWeight: "900" },
+    headerTitle: { flex: 1, color: theme.colors.text, fontSize: 20, fontWeight: "900" },
+    logoBadge: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
     bodyWrap: { paddingTop: 16, gap: 12 },
     body: { color: theme.colors.textMuted, fontSize: 14, lineHeight: 20 },
     input: {

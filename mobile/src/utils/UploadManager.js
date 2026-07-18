@@ -67,6 +67,9 @@ export const UploadManager = {
           storageId,
           type: media.type,
           fit: media.fit || "cover",
+          // Pan/zoom crop chosen in EditMedia.js — passed straight through
+          // so PostDetails.js can forward it to the post-create payload.
+          transform: media.transform || null,
           folder: media.folder || folder,
           name: media.fileName || media.name || null,
           mimeType:

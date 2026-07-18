@@ -24,8 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0B6B63"
+        "foregroundImage": "./assets/adaptive-icon.png"
       },
       "package": "com.dmcaltd.ekazi",
       "googleServicesFile": "./google-services.json",
@@ -75,7 +74,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/adaptive-icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#0B6B63"
         }
       ],

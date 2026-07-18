@@ -41,6 +41,10 @@ export function isSpeakerToggleSupported() {
   return !!InCallManager;
 }
 
+export function isBluetoothToggleSupported() {
+  return !!InCallManager?.chooseAudioRoute;
+}
+
 const CallContext = createContext(null);
 
 export function useCall() {
@@ -68,12 +72,21 @@ export function CallProvider({ children }) {
   const [otherParty, setOtherParty] = useState(null); // { uuid, name, photo }
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
+  const [isBluetoothOn, setIsBluetoothOn] = useState(false);
   const [error, setError] = useState(null);
   const [callStartedAt, setCallStartedAt] = useState(null);
+  // Raw RTCIceConnectionState ("new"/"checking"/"connected"/"disconnected"/...)
+  // — exposed so the UI can show "Connecting…"/"Reconnecting…" instead of just
+  // a fixed "Calling…"/timer, without needing any new backend signaling.
+  const [iceState, setIceState] = useState(null);
 
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const appliedIceIndexRef = useRef(0);
+  // Grace window: a brief ICE "disconnected" (network blip) shouldn't
+  // instantly end the call the way "failed"/"closed" do — give it a few
+  // seconds to recover on its own before treating it as a real hangup.
+  const reconnectTimerRef = useRef(null);
   const handledIncomingIdsRef = useRef(new Set());
   // Tracked outside React state (refs, not re-rendered) purely so the
   // history-logging helper and the ICE connection-state callback — both of
@@ -152,6 +165,10 @@ export function CallProvider({ children }) {
   );
 
   const cleanup = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     peerConnectionRef.current?.close?.();
     peerConnectionRef.current = null;
     localStreamRef.current?.getTracks?.().forEach((t) => t.stop());
@@ -162,6 +179,8 @@ export function CallProvider({ children }) {
     setOtherParty(null);
     setIsMuted(false);
     setIsSpeakerOn(false);
+    setIsBluetoothOn(false);
+    setIceState(null);
     setCallStartedAt(null);
     jobRef.current = null;
     initiatedAtRef.current = null;
@@ -177,12 +196,42 @@ export function CallProvider({ children }) {
       };
       // A silent network drop (nobody tapped End) would otherwise leave the
       // call stuck in ACTIVE forever with no duration ever recorded. Once
-      // connected, "disconnected/failed/closed" is treated the same as a
-      // real hangup, just logged as "failed" instead of "completed" so the
-      // history tab can tell the two apart.
+      // connected, "failed/closed" are treated as a real hangup, logged as
+      // "failed" instead of "completed" so the history tab can tell the two
+      // apart. "disconnected" gets a short grace window first (see below) —
+      // it's the state a brief wifi/cellular handover produces even though
+      // the call recovers on its own a moment later, so treating it as an
+      // instant hangup would end a lot of calls that didn't actually drop.
       pc.oniceconnectionstatechange = () => {
+        setIceState(pc.iceConnectionState);
         if (callStateRef.current !== CALL_STATE.ACTIVE) return;
-        if (["disconnected", "failed", "closed"].includes(pc.iceConnectionState)) {
+
+        if (pc.iceConnectionState === "connected") {
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+          }
+          return;
+        }
+
+        if (pc.iceConnectionState === "disconnected") {
+          if (reconnectTimerRef.current) return; // already waiting
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            // Still not back after the grace window - this is a real drop,
+            // not a blip. No ICE restart is attempted (that needs a fresh
+            // signaling round-trip this app doesn't have), so treat it the
+            // same as "failed".
+            if (callStateRef.current === CALL_STATE.ACTIVE && pc.iceConnectionState !== "connected") {
+              logOutcome("failed");
+              endNativeCall();
+              cleanup();
+            }
+          }, 12000);
+          return;
+        }
+
+        if (["failed", "closed"].includes(pc.iceConnectionState)) {
           logOutcome("failed");
           endNativeCall();
           cleanup();
@@ -405,8 +454,8 @@ export function CallProvider({ children }) {
   }, [callId, myToken, setStatusMutation, cleanup, logOutcome]);
 
   // Bridge CallKeep's native ringing-screen buttons (answer/hang up) back
-  // into the same accept/decline/end logic the in-app CallOverlay uses, so
-  // it doesn't matter whether the user tapped the native notification or the
+  // into the same accept/decline/end logic the in-app call UI uses, so it
+  // doesn't matter whether the user tapped the native notification or the
   // in-app buttons — both paths end up in the same place.
   useEffect(() => {
     const offAnswer = onNativeAnswer(() => {
@@ -431,19 +480,45 @@ export function CallProvider({ children }) {
 
   const toggleSpeaker = useCallback(() => {
     if (!InCallManager) return;
+    // Speaker and Bluetooth are alternate routes for the same audio output,
+    // not independent toggles - turning one on turns the other off.
+    if (isBluetoothOn) setIsBluetoothOn(false);
     InCallManager.setForceSpeakerphoneOn(!isSpeakerOn);
     setIsSpeakerOn((prev) => !prev);
-  }, [isSpeakerOn]);
+  }, [isSpeakerOn, isBluetoothOn]);
+
+  const toggleBluetooth = useCallback(async () => {
+    if (!InCallManager?.chooseAudioRoute) return;
+    try {
+      if (isBluetoothOn) {
+        const result = await InCallManager.chooseAudioRoute(isSpeakerOn ? "SPEAKER_PHONE" : "EARPIECE");
+        setIsBluetoothOn(result?.selectedAudioDevice === "BLUETOOTH");
+      } else {
+        if (isSpeakerOn) {
+          InCallManager.setForceSpeakerphoneOn(false);
+          setIsSpeakerOn(false);
+        }
+        const result = await InCallManager.chooseAudioRoute("BLUETOOTH");
+        setIsBluetoothOn(result?.selectedAudioDevice === "BLUETOOTH");
+      }
+    } catch (err) {
+      console.log("chooseAudioRoute error:", err?.message);
+    }
+  }, [isBluetoothOn, isSpeakerOn]);
 
   const value = useMemo(
     () => ({
       supported: isCallingSupported(),
       speakerSupported: isSpeakerToggleSupported(),
+      bluetoothSupported: isBluetoothToggleSupported(),
       callState,
       otherParty,
       jobTitle: jobRef.current?.jobTitle || null,
       isMuted,
       isSpeakerOn,
+      isBluetoothOn,
+      iceState,
+      liveCallStatus: liveCall?.status || null,
       error,
       callStartedAt,
       startCall,
@@ -452,9 +527,27 @@ export function CallProvider({ children }) {
       endCall,
       toggleMute,
       toggleSpeaker,
+      toggleBluetooth,
       clearError: () => setError(null),
     }),
-    [callState, otherParty, isMuted, isSpeakerOn, error, callStartedAt, startCall, acceptCall, declineCall, endCall, toggleMute, toggleSpeaker]
+    [
+      callState,
+      otherParty,
+      isMuted,
+      isSpeakerOn,
+      isBluetoothOn,
+      iceState,
+      liveCall?.status,
+      error,
+      callStartedAt,
+      startCall,
+      acceptCall,
+      declineCall,
+      endCall,
+      toggleMute,
+      toggleSpeaker,
+      toggleBluetooth,
+    ]
   );
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;

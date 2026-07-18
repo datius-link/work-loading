@@ -411,8 +411,8 @@ export default function JobDetails() {
                     </View>
                   ) : null}
                   {job.direct_status === "declined" || job.status === "declined" ? (
-                    <TouchableOpacity style={[styles.directBtn, styles.acceptBtn]} onPress={publishPublicly} disabled={directActioning}>
-                      {directActioning ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Text style={styles.acceptText}>Post Publicly</Text>}
+                    <TouchableOpacity style={[styles.directBtn, styles.postPubliclyBtn]} onPress={publishPublicly} disabled={directActioning}>
+                      {directActioning ? <ActivityIndicator color={theme.colors.onAccent} /> : <Text style={styles.postPubliclyText}>Post Publicly</Text>}
                     </TouchableOpacity>
                   ) : workspaceReady ? (
                     <TouchableOpacity style={[styles.directBtn, styles.acceptBtn]} onPress={() => navigation.navigate("JobWorkspace", {
@@ -558,7 +558,7 @@ const createStyles = (theme) =>
 
     // Hero — branded gradient banner, job facts only (no provider info).
     heroShadow: {
-      shadowColor: "#0B6B63", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.22, shadowRadius: 20, elevation: 10,
+      shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.22, shadowRadius: 20, elevation: 10,
     },
     hero: { padding: 18, paddingBottom: 20, gap: 8, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" },
     heroDecoration: { position: "absolute", left: 0, top: 0 },
@@ -620,6 +620,8 @@ const createStyles = (theme) =>
     directActions: { flexDirection: "row", gap: 10, marginTop: 4 },
     directBtn: { flex: 1, minHeight: 46, borderRadius: theme.radius.xs, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
     acceptBtn: { backgroundColor: theme.colors.primary },
+    postPubliclyBtn: { backgroundColor: theme.colors.accent },
+    postPubliclyText: { color: theme.colors.onAccent, fontSize: 13, fontWeight: "900" },
     declineBtn: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
     acceptText: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: "900" },
     declineText: { color: theme.colors.text, fontSize: 13, fontWeight: "900" },

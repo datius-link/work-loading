@@ -26,7 +26,7 @@ import CustomCamera from "./CustomCamera";
 function avatarUri(u) {
   if (u?.profile_pic) return u.profile_pic;
   const name = encodeURIComponent(u?.username || u?.full_name || "U");
-  return `https://ui-avatars.com/api/?name=${name}&background=0B6B63&color=fff&bold=true&rounded=true`;
+  return `https://ui-avatars.com/api/?name=${name}&background=1683C7&color=fff&bold=true&rounded=true`;
 }
 
 function toTime(value) {

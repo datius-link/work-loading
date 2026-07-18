@@ -286,7 +286,7 @@ export default function JobApplication() {
 
       <View style={[styles.bottomAction, { paddingBottom: insets.bottom + 14 }]}>
         <TouchableOpacity style={[styles.submitBtn, submitting && styles.submitBtnDisabled]} disabled={submitting} onPress={submitApplication}>
-          {submitting ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Text style={styles.submitText}>{existing ? "Update Application" : "Submit Application"}</Text>}
+          {submitting ? <ActivityIndicator color={theme.colors.onAccent} /> : <Text style={styles.submitText}>{existing ? "Update Application" : "Submit Application"}</Text>}
         </TouchableOpacity>
       </View>
       <HiringNoticeModal
@@ -465,10 +465,10 @@ const createStyles = (theme) =>
     submitBtn: {
       minHeight: 56,
       borderRadius: theme.radius.xs,
-      backgroundColor: theme.colors.primary,
+      backgroundColor: theme.colors.accent,
       alignItems: "center",
       justifyContent: "center",
     },
     submitBtnDisabled: { opacity: 0.65 },
-    submitText: { color: theme.colors.onPrimary, fontSize: 17, fontWeight: "900" },
+    submitText: { color: theme.colors.onAccent, fontSize: 17, fontWeight: "900" },
   });

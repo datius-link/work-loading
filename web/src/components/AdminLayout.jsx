@@ -45,8 +45,11 @@ export default function AdminLayout({ activeView, onChangeView, children }) {
 
       <aside className={"sidebar" + (navOpen ? " open" : "")}>
         <div className="sidebar-brand">
-          <span className="auth-brand-mark">e</span>
-          <span className="auth-brand-name">kazi admin</span>
+          <span className="auth-brand-mark">W</span>
+          <span className="auth-brand-name">
+            Work <em>Loading</em>
+          </span>
+          <span className="auth-brand-tag">Admin</span>
           <button type="button" className="sidebar-close" onClick={() => setNavOpen(false)} aria-label="Close menu">
             <Icon name="close" size={18} />
           </button>

@@ -14,6 +14,7 @@ import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import { getFriendlyApiError, viewerRequest } from "../api/api";
 import AppIcon from "../icons/AppIcon";
+import EkaziLogo from "../../assets/e-kazi-logo.svg";
 import LoginModal from "./Auth/LoginModal";
 import { cachedGet } from "../utils/offlineCache";
 import CachedDataNotice from "../components/CachedDataNotice";
@@ -230,6 +231,9 @@ export default function Alerts() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
+          <View style={styles.logoBadge}>
+            <EkaziLogo width={22} height={22} />
+          </View>
           <View style={styles.headerText}>
             <Text style={styles.title}>{t.title}</Text>
             <Text style={styles.subtitle}>{t.subtitle}</Text>
@@ -288,6 +292,7 @@ const createStyles = (theme) =>
       borderBottomColor: theme.colors.border,
     },
     headerTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+    logoBadge: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
     headerText: { flex: 1, minWidth: 0 },
     title: { color: theme.colors.text, fontSize: 24, fontWeight: "900" },
     subtitle: { color: theme.colors.textMuted, fontSize: 13, lineHeight: 18, marginTop: 4 },

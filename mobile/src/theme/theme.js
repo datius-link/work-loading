@@ -3,30 +3,30 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const palette = {
   light: {
-    bg: "#F5F7FA",
+    bg: "#F7F9FC",
     bgElevated: "#FFFFFF",
     surface: "#FFFFFF",
-    surfaceSoft: "#F0F4F8",
-    text: "#0F172A",
-    textSecondary: "#334155",
-    textMuted: "#64748B",
-    textVeryMuted: "#94A3B8",
-    border: "#E2E8F0",
-    borderLight: "#EDF2F7",
-    overlay: "rgba(15,23,42,0.45)",
+    surfaceSoft: "#F1F5F9",
+    text: "#101828",
+    textSecondary: "#344054",
+    textMuted: "#667085",
+    textVeryMuted: "#98A2B3",
+    border: "#DDE3EA",
+    borderLight: "#EAECF0",
+    overlay: "rgba(16,24,40,0.45)",
     media: "#000000",
   },
   dark: {
-    bg: "#071315",
-    bgElevated: "#0D1B1E",
-    surface: "#0D1B1E",
-    surfaceSoft: "#13292D",
+    bg: "#0B111A",
+    bgElevated: "#111927",
+    surface: "#131D2B",
+    surfaceSoft: "#192536",
     text: "#F8FAFC",
-    textSecondary: "#CBD5E1",
-    textMuted: "#94A3B8",
-    textVeryMuted: "#64748B",
-    border: "#1F3A40",
-    borderLight: "#183237",
+    textSecondary: "#D0D5DD",
+    textMuted: "#98A2B3",
+    textVeryMuted: "#667085",
+    border: "#263548",
+    borderLight: "#1D2A3A",
     overlay: "rgba(0,0,0,0.62)",
     media: "#000000",
   },
@@ -37,24 +37,26 @@ export const createTheme = (mode = "light") => ({
   colors: {
     ...palette[mode],
 
-    primary: "#0B6B63",
-    primaryDark: mode === "dark" ? "#073F3A" : "#08544D",
+    primary: mode === "dark" ? "#39A5E6" : "#1683C7",
+    primaryDark: mode === "dark" ? "#1683C7" : "#10689F",
     onPrimary: "#FFFFFF",
     // A dimmed version of onPrimary for placeholder/secondary text sitting on
     // a solid `primary` fill (e.g. the Home search pill) — without this,
     // placeholder copy was rendering in the exact same white as typed text,
     // so there was no visual distinction between the two.
     onPrimaryMuted: "rgba(255,255,255,0.68)",
-    primarySoft: mode === "dark" ? "#0F3E3B" : "#E6F4F2",
-    // "#0B6B63" reads fine on white but is too low-luminance to use as
-    // text/icon color against dark surfaces or primarySoft in dark mode —
-    // it visually disappears (the exact "hidden" look). Use this instead
-    // for teal text/icons that sit on a surface or tint, not as a button fill.
-    primaryStrong: mode === "dark" ? "#3DDBC4" : "#0B6B63",
-    accent: "#1683C7",
+    primarySoft: mode === "dark" ? "#102F45" : "#E8F4FC",
+    // The base `primary` blue reads fine on white but is too low-luminance
+    // to use as text/icon color against dark surfaces or primarySoft in
+    // dark mode — it visually disappears (the exact "hidden" look). Use
+    // this instead for blue text/icons that sit on a surface or tint, not
+    // as a button fill.
+    primaryStrong: mode === "dark" ? "#66BDF0" : "#0F75B5",
+    accent: mode === "dark" ? "#FF9E2C" : "#F5820B",
     onAccent: "#FFFFFF",
-    accentSoft: mode === "dark" ? "#102F45" : "#E7F4FD",
-    brandGradient: ["#0B6B63", "#1683C7"],
+    accentSoft: mode === "dark" ? "#3B2812" : "#FFF1DE",
+    accentDark: mode === "dark" ? "#F5820B" : "#D96B00",
+    brandGradient: mode === "dark" ? ["#1683C7", "#39A5E6"] : ["#10689F", "#1683C7"],
 
     muted: palette[mode].textMuted,
 
@@ -65,8 +67,8 @@ export const createTheme = (mode = "light") => ({
     successSoft: mode === "dark" ? "#10351F" : "#DCFCE7",
     warning: "#F59E0B",
     warningSoft: mode === "dark" ? "#3A2A0F" : "#FEF3C7",
-    orange: "#EA580C",
-    orangeSoft: mode === "dark" ? "#3A1F0F" : "#FFEDD5",
+    orange: mode === "dark" ? "#FF9E2C" : "#F5820B",
+    orangeSoft: mode === "dark" ? "#3B2812" : "#FFF1DE",
     slate: palette[mode].textMuted,
     slateSoft: mode === "dark" ? "#1C2A30" : "#F1F5F9",
   },

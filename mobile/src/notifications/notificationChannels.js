@@ -54,7 +54,7 @@ export async function ensureAndroidNotificationChannelsAsync() {
           sound: combo.sound ? "default" : undefined,
           enableVibrate: combo.vibration,
           vibrationPattern: combo.vibration ? [0, 250, 250, 250] : undefined,
-          lightColor: "#0B6B63",
+          lightColor: "#1683C7",
           lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
         });
       })

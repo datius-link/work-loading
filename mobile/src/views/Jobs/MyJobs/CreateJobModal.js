@@ -52,6 +52,14 @@ const T = {
     errDateFmt: "Use format YYYY-MM-DD.",
     errDatePast: "Closing date must be a future date.",
     errDateLong: "Confirm the closing date first.",
+    budgetSectionTitle: "Budget (optional)",
+    budgetMinPlaceholder: "Min (TZS)",
+    budgetMaxPlaceholder: "Max (TZS)",
+    budgetDirectPlaceholder: "How much will you pay? (TZS)",
+    budgetHint: "Providers will see this range and can offer within it.",
+    budgetDirectHint: "This is your offer — it becomes final once the provider accepts.",
+    requirementsPlaceholder: "Requirements, one per line (optional)\ne.g. Bring your own tools\nArrive before 9 AM",
+    skillsPlaceholder: "Required skills, comma separated (optional) e.g. Cleaning, Deep Cleaning",
   },
   sw: {
     hireTitle: (name) => `Mwajiri ${name}`,
@@ -83,6 +91,14 @@ const T = {
     errDateFmt: "Tumia muundo YYYY-MM-DD.",
     errDatePast: "Tarehe ya kufunga lazima iwe siku zijazo.",
     errDateLong: "Thibitisha tarehe ya kufunga kwanza.",
+    budgetSectionTitle: "Bajeti (hiari)",
+    budgetMinPlaceholder: "Kima cha chini (TZS)",
+    budgetMaxPlaceholder: "Kima cha juu (TZS)",
+    budgetDirectPlaceholder: "Utalipa kiasi gani? (TZS)",
+    budgetHint: "Watoa huduma wataona kiwango hiki na wanaweza kutoa ofa ndani yake.",
+    budgetDirectHint: "Hii ni ofa yako — inakuwa ya mwisho mara mtoa huduma akikubali.",
+    requirementsPlaceholder: "Mahitaji, mstari mmoja kwa kila kimoja (hiari)\nmfano Leta vifaa vyako mwenyewe\nFika kabla ya saa 3 asubuhi",
+    skillsPlaceholder: "Ujuzi unaohitajika, tenganisha kwa koma (hiari) mfano Usafi, Usafi wa Kina",
   },
 };
 
@@ -140,6 +156,11 @@ export default function CreateJobModal({
   const [needsAvailability, setNeedsAvailability] = useState(false);
   const [scheduledFor, setScheduledFor]           = useState("");
   const [availabilityNotes, setAvailabilityNotes] = useState("");
+  const [budgetMin, setBudgetMin]                 = useState("");
+  const [budgetMax, setBudgetMax]                 = useState("");
+  const [directBudget, setDirectBudget]           = useState("");
+  const [requirements, setRequirements]           = useState("");
+  const [skills, setSkills]                       = useState("");
   const [notice, setNotice]                       = useState(null);
   const [showPhotoMenu, setShowPhotoMenu]         = useState(false);
   const [locationFocused, setLocationFocused]     = useState(false);
@@ -174,6 +195,11 @@ export default function CreateJobModal({
     setNeedsAvailability(false);
     setScheduledFor("");
     setAvailabilityNotes("");
+    setBudgetMin("");
+    setBudgetMax("");
+    setDirectBudget("");
+    setRequirements("");
+    setSkills("");
     setShowPhotoMenu(false);
     setLocationFocused(false);
   }
@@ -215,6 +241,12 @@ export default function CreateJobModal({
       if (showLongWarning && !confirmedLongDate)     { setNotice({ type: "error", title: t.errDate, body: t.errDateLong }); return; }
     }
 
+    const requirementsList = requirements.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const skillsList = skills.split(",").map((s) => s.trim()).filter(Boolean);
+    const cleanMin = budgetMin.trim().replace(/[^\d.]/g, "");
+    const cleanMax = budgetMax.trim().replace(/[^\d.]/g, "");
+    const cleanDirectBudget = directBudget.trim().replace(/[^\d.]/g, "");
+
     // Parent's async onSubmit owns the modal lifecycle — do not close here.
     onSubmit?.({
       hiringType:            isDirect ? "direct" : "indirect",
@@ -230,6 +262,11 @@ export default function CreateJobModal({
       availability_required: needsAvailability,
       scheduled_for:         needsAvailability ? scheduledFor.trim() : null,
       availability_notes:    availabilityNotes.trim() || null,
+      budget_min:            !isDirect && cleanMin ? cleanMin : null,
+      budget_max:            !isDirect && cleanMax ? cleanMax : null,
+      budget:                isDirect && cleanDirectBudget ? cleanDirectBudget : null,
+      requirements:          requirementsList,
+      skills:                skillsList,
       images,
     });
   }
@@ -384,6 +421,84 @@ export default function CreateJobModal({
                     ))}
                   </View>
                 ) : null}
+              </View>
+
+              {/* Budget — a range for posted jobs, a single named offer for direct hire.
+                  Feeds the job's agreed-budget logic on the backend, not a placeholder. */}
+              <View style={styles.budgetBlock}>
+                <Text style={styles.budgetLabel}>{t.budgetSectionTitle}</Text>
+                {isDirect ? (
+                  <View style={styles.iconInputRow}>
+                    <View style={styles.iconInputIconWrap}>
+                      <AppIcon name="wallet" size={17} color={theme.colors.textMuted} />
+                    </View>
+                    <TextInput
+                      style={styles.iconInput}
+                      placeholder={t.budgetDirectPlaceholder}
+                      placeholderTextColor={theme.colors.textVeryMuted}
+                      value={directBudget}
+                      onChangeText={setDirectBudget}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.budgetRangeRow}>
+                    <View style={[styles.iconInputRow, styles.budgetRangeInput]}>
+                      <View style={styles.iconInputIconWrap}>
+                        <AppIcon name="wallet" size={17} color={theme.colors.textMuted} />
+                      </View>
+                      <TextInput
+                        style={styles.iconInput}
+                        placeholder={t.budgetMinPlaceholder}
+                        placeholderTextColor={theme.colors.textVeryMuted}
+                        value={budgetMin}
+                        onChangeText={setBudgetMin}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View style={[styles.iconInputRow, styles.budgetRangeInput]}>
+                      <View style={styles.iconInputIconWrap}>
+                        <AppIcon name="wallet" size={17} color={theme.colors.textMuted} />
+                      </View>
+                      <TextInput
+                        style={styles.iconInput}
+                        placeholder={t.budgetMaxPlaceholder}
+                        placeholderTextColor={theme.colors.textVeryMuted}
+                        value={budgetMax}
+                        onChangeText={setBudgetMax}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
+                )}
+                <Text style={styles.budgetHint}>{isDirect ? t.budgetDirectHint : t.budgetHint}</Text>
+              </View>
+
+              {/* Requirements + skills — shown as a checklist / chips on the job details screen */}
+              <View style={[styles.iconInputRow, styles.iconInputRowTextarea]}>
+                <View style={styles.iconInputIconWrapTop}>
+                  <AppIcon name="tasks" size={17} color={theme.colors.textMuted} />
+                </View>
+                <TextInput
+                  style={[styles.iconInput, styles.textarea]}
+                  placeholder={t.requirementsPlaceholder}
+                  placeholderTextColor={theme.colors.textVeryMuted}
+                  value={requirements}
+                  onChangeText={setRequirements}
+                  multiline
+                />
+              </View>
+              <View style={styles.iconInputRow}>
+                <View style={styles.iconInputIconWrap}>
+                  <AppIcon name="award" size={17} color={theme.colors.textMuted} />
+                </View>
+                <TextInput
+                  style={styles.iconInput}
+                  placeholder={t.skillsPlaceholder}
+                  placeholderTextColor={theme.colors.textVeryMuted}
+                  value={skills}
+                  onChangeText={setSkills}
+                />
               </View>
 
               {!isDirect && (
@@ -730,6 +845,32 @@ const createStyles = (theme) =>
       fontWeight: "600",
     },
 
+    budgetBlock: {
+      marginBottom: 12,
+    },
+    budgetLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontWeight: "900",
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+      marginBottom: 8,
+    },
+    budgetRangeRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    budgetRangeInput: {
+      flex: 1,
+      marginBottom: 0,
+    },
+    budgetHint: {
+      marginTop: 6,
+      fontSize: 12,
+      color: theme.colors.textMuted,
+      lineHeight: 17,
+    },
+
     dateBlock: {
       marginBottom: 12,
     },
@@ -891,15 +1032,15 @@ const createStyles = (theme) =>
 
     /* Submit button */
     submitBtn: {
-      backgroundColor: theme.colors.primary,
+      backgroundColor: theme.colors.accent,
       padding: 17,
       borderRadius: theme.radius.xs,
       alignItems: "center",
-      shadowColor: theme.colors.primary,
+      shadowColor: theme.colors.accent,
       shadowOpacity: 0.35,
       shadowRadius: 10,
       shadowOffset: { width: 0, height: 5 },
       elevation: 6,
     },
-    submitText: { color: theme.colors.onPrimary, fontSize: 17, fontWeight: "900" },
+    submitText: { color: theme.colors.onAccent, fontSize: 17, fontWeight: "900" },
   });

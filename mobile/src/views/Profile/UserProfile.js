@@ -53,7 +53,7 @@ function avatarFor(profile) {
   if (primary) return primary;
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
     profile?.username || profile?.full_name || "User"
-  )}&background=0B6B63&color=fff&bold=true&length=2&fontsize=0.33&rounded=true`;
+  )}&background=1683C7&color=fff&bold=true&length=2&fontsize=0.33&rounded=true`;
 }
 
 function parseSocialItem(item) {
@@ -339,6 +339,9 @@ export default function UserProfile() {
         availability_required: payload.availability_required,
         scheduled_for: payload.scheduled_for || null,
         availability_notes: payload.availability_notes || null,
+        budget: payload.budget || null,
+        requirements: payload.requirements || [],
+        skills: payload.skills || [],
         media,
       });
       setShowHireModal(false);
@@ -382,17 +385,23 @@ export default function UserProfile() {
   const renderMediaTab = () => {
     if (!posts.length)
       return <EmptyState icon="image" title={t.noPosts} subtitle={t.noPostsBody} theme={theme} />;
+    const openPost = (post) => {
+      const mediaPosts = posts.filter((item) => Array.isArray(item?.media) && item.media.length > 0);
+      navigation.navigate("PostFeedView", {
+        posts: mediaPosts.length ? mediaPosts : posts,
+        initialPostId: post.id,
+        preferredAuthActor: "viewer",
+      });
+    };
     return (
       <View style={styles.mediaGrid}>
         {posts.map((post) => (
-          <TouchableOpacity
+          <PostGridItem
             key={String(post.id)}
-            style={styles.mediaItem}
-            activeOpacity={0.9}
-            onPress={() => navigation.navigate("PostFeedView", { posts, initialPostId: post.id, preferredAuthActor: "viewer" })}
-          >
-            <PostGridItem post={post} />
-          </TouchableOpacity>
+            post={post}
+            size={GRID_ITEM_SIZE}
+            onPress={() => openPost(post)}
+          />
         ))}
       </View>
     );
@@ -495,7 +504,7 @@ export default function UserProfile() {
 
         <View style={styles.publicCoverWrap}>
           <Image source={{ uri: coverPhoto }} style={styles.publicCoverImage} blurRadius={16} />
-          <LinearGradient colors={["rgba(11,107,99,0.12)", "rgba(11,107,99,0.52)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.publicCover} />
+          <LinearGradient colors={["rgba(22,131,199,0.12)", "rgba(22,131,199,0.52)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.publicCover} />
           <View style={styles.publicAvatarRing}>
             <Image source={{ uri: avatarFor(profile) }} style={styles.publicAvatar} />
           </View>
@@ -520,7 +529,7 @@ export default function UserProfile() {
                   <Text style={[styles.publicFollowText, following && styles.publicFollowingText]}>{following ? t.following : t.follow}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.publicHireBtn} onPress={() => setShowHireModal(true)} activeOpacity={0.85}>
-                  <AppIcon name="briefcase" size={15} color={theme.colors.text} />
+                  <AppIcon name="briefcase" size={15} color={theme.colors.onAccent} />
                   <Text style={styles.publicHireText}>{t.hire}</Text>
                 </TouchableOpacity>
               </View>
@@ -639,8 +648,8 @@ const createStyles = (theme) => StyleSheet.create({
   publicFollowingBtn: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
   publicFollowText: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: "900" },
   publicFollowingText: { color: theme.colors.primary },
-  publicHireBtn: { minHeight: 38, borderRadius: theme.radius.xs, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  publicHireText: { color: theme.colors.text, fontSize: 13, fontWeight: "900" },
+  publicHireBtn: { minHeight: 38, borderRadius: theme.radius.xs, backgroundColor: theme.colors.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  publicHireText: { color: theme.colors.onAccent, fontSize: 13, fontWeight: "900" },
   publicBio: { color: theme.colors.textSecondary, fontSize: 14.5, lineHeight: 21, marginTop: 14 },
   publicStatsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 18, paddingVertical: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.colors.border },
   publicStatBlock: { flex: 1, alignItems: "center" },

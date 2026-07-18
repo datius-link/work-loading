@@ -31,8 +31,11 @@ export default function LoginPage() {
     <div className="auth-screen">
       <div className="auth-card">
         <div className="auth-brand">
-          <span className="auth-brand-mark">e</span>
-          <span className="auth-brand-name">kazi admin</span>
+          <span className="auth-brand-mark">W</span>
+          <span className="auth-brand-name">
+            Work <em>Loading</em>
+          </span>
+          <span className="auth-brand-tag">Admin</span>
         </div>
         <h1>Sign in</h1>
         <p className="auth-subtitle">Manage feedback, complaints, and job disputes.</p>
@@ -44,7 +47,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@ekazi.co"
+              placeholder="you@workloading.co"
               autoComplete="username"
               required
             />

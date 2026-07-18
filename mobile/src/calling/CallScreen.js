@@ -3,10 +3,10 @@ import { Animated, Easing, Image, Modal, StyleSheet, Text, TouchableOpacity, Vie
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppIcon from "../icons/AppIcon";
-import { createTheme } from "../theme";
+import { useAppTheme } from "../theme";
 import { useCall } from "./CallProvider";
 
-function useElapsedSeconds(startedAt) {
+export function useElapsedSeconds(startedAt) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     if (!startedAt) return undefined;
@@ -17,7 +17,7 @@ function useElapsedSeconds(startedAt) {
   return seconds;
 }
 
-function formatElapsed(totalSeconds) {
+export function formatElapsed(totalSeconds) {
   const m = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
   const s = String(totalSeconds % 60).padStart(2, "0");
   return `${m}:${s}`;
@@ -30,47 +30,51 @@ function formatElapsed(totalSeconds) {
 function avatarSource(person) {
   if (person?.photo) return { uri: person.photo };
   const name = encodeURIComponent(person?.name || "e-kazi user");
-  return { uri: `https://ui-avatars.com/api/?name=${name}&background=0B6B63&color=fff&bold=true&rounded=true&size=256` };
+  return { uri: `https://ui-avatars.com/api/?name=${name}&background=1683C7&color=fff&bold=true&rounded=true&size=256` };
 }
 
-// Call screens read best as an immersive, always-dark surface (WhatsApp,
-// Messenger, Bolt all do this regardless of the phone's own light/dark
-// setting) — so this pins the app's own dark palette rather than reacting to
-// the user's theme toggle, while still pulling every color from the real
-// theme system instead of inventing new hex values.
-const callTheme = createTheme("dark");
+// Calling → Ringing → Connecting → Connected → Reconnecting, derived purely
+// from data CallProvider already has (liveCallStatus from the Convex row,
+// iceState from the peer connection) — no new backend signaling needed.
+export function statusTextFor(call, elapsed) {
+  if (call.callState === "incoming") return "Incoming call…";
+  if (call.callState === "outgoing") return call.liveCallStatus === "ringing" ? "Ringing…" : "Calling…";
+  if (call.callState === "active") {
+    if (call.iceState === "disconnected") return "Reconnecting…";
+    if (call.iceState === "connected" || call.iceState === "completed") return formatElapsed(elapsed);
+    return "Connecting…";
+  }
+  return "";
+}
 
-// Rendered once, globally, from AppShell — it appears over whatever screen
-// is currently active, exactly like a WhatsApp/Bolt call screen would,
-// regardless of which tab or workspace the user happens to be looking at.
-export default function CallOverlay() {
+// Rendered from CallStack only while the user has requested the full-screen
+// view (as opposed to the banner or the minimized floating bubble) — this
+// component owns its own <Modal>, mounting/unmounting it based on whether it
+// should currently be shown, exactly like the single always-fullscreen
+// overlay this replaced.
+export default function CallScreen({ isFullscreenRequested, onMinimize }) {
   const call = useCall();
+  const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [imgError, setImgError] = useState(false);
-  // Called unconditionally (rules of hooks) even while idle/hidden — it's a
-  // no-op until callStartedAt is set.
   const elapsed = useElapsedSeconds(call?.callStartedAt);
 
   const pulse = useRef(new Animated.Value(0)).current;
   const breathe = useRef(new Animated.Value(0)).current;
-  // Entrance: the whole card slides up + fades in the moment a call
-  // appears, and the same value reverses out when it disappears, instead of
-  // the screen just snapping in/out of existence.
   const enter = useRef(new Animated.Value(0)).current;
-  // Crosses the status line over to its next value (e.g. "Calling…" ->
-  // "01:04") instead of it jump-cutting.
   const statusFade = useRef(new Animated.Value(1)).current;
   const acceptGlow = useRef(new Animated.Value(0)).current;
+
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const isIncoming = call?.callState === "incoming";
   const isOutgoing = call?.callState === "outgoing";
   const isActive = call?.callState === "active";
   const isRinging = isIncoming || isOutgoing;
-  const visible = !!call && call.callState !== "idle";
-  // Kept mounted for the short exit-animation window even after the call
-  // itself has gone idle, instead of the whole screen hard-cutting away the
-  // instant callState flips (Modal + its children would otherwise unmount
-  // before Animated ever gets a frame to animate the fade/slide-out).
+  const visible = !!call && call.callState !== "idle" && !!isFullscreenRequested;
+  // Kept mounted for the short exit-animation window even after the screen
+  // itself should have gone away, instead of hard-cutting the fade/slide-out
+  // the instant `visible` flips.
   const [shouldRender, setShouldRender] = useState(visible);
 
   useEffect(() => {
@@ -136,7 +140,8 @@ export default function CallOverlay() {
     return () => loop.stop();
   }, [isIncoming, acceptGlow]);
 
-  const statusText = isIncoming ? "Incoming call…" : isOutgoing ? "Calling…" : isActive ? formatElapsed(elapsed) : "";
+  const statusText = call ? statusTextFor(call, elapsed) : "";
+  const isReconnecting = isActive && call?.iceState === "disconnected";
   const prevStatusText = useRef(statusText);
   useEffect(() => {
     if (prevStatusText.current === statusText) return;
@@ -157,7 +162,7 @@ export default function CallOverlay() {
 
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={() => {}}>
-      <LinearGradient colors={[callTheme.colors.primaryDark, callTheme.colors.bg, callTheme.colors.bg]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={[theme.colors.primaryDark, theme.colors.bg, theme.colors.bg]} style={StyleSheet.absoluteFill} />
       <Animated.View
         style={[
           styles.safe,
@@ -169,6 +174,17 @@ export default function CallOverlay() {
           },
         ]}
       >
+        <TouchableOpacity
+          style={[styles.minimizeButton, { top: insets.top + 8 }]}
+          onPress={onMinimize}
+          activeOpacity={0.75}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <View style={{ transform: [{ rotate: "90deg" }] }}>
+            <AppIcon name="chevron-right" size={18} color={theme.colors.text} />
+          </View>
+        </TouchableOpacity>
+
         <View style={styles.center}>
           <Animated.View style={[styles.avatarWrap, { transform: [{ scale: breatheScale }] }]}>
             <Animated.View style={[styles.pulseRing, { opacity: isRinging ? ringOpacity : 0, transform: [{ scale: ringScale }] }]} />
@@ -181,39 +197,52 @@ export default function CallOverlay() {
           <Text style={styles.name} numberOfLines={1}>{person?.name || "e-kazi user"}</Text>
           {call.jobTitle ? (
             <View style={styles.jobPill}>
-              <AppIcon name="briefcase" size={11} color={callTheme.colors.primary} />
+              <AppIcon name="briefcase" size={11} color={theme.colors.primaryStrong} />
               <Text style={styles.jobPillText} numberOfLines={1}>{call.jobTitle}</Text>
             </View>
           ) : null}
-          <Animated.Text style={[styles.status, { opacity: statusFade }]}>{statusText}</Animated.Text>
+          <Animated.Text style={[styles.status, isReconnecting && styles.statusWarning, { opacity: statusFade }]}>{statusText}</Animated.Text>
           {call.error ? <Text style={styles.error}>{call.error}</Text> : null}
         </View>
 
         {isIncoming ? (
           <View style={styles.actionsRow}>
-            <RoundButton icon="close" color={callTheme.colors.danger} label="Decline" onPress={call.declineCall} />
-            <Animated.View style={{ shadowOpacity: glowShadow, shadowRadius: 18, shadowColor: callTheme.colors.success, shadowOffset: { width: 0, height: 0 } }}>
-              <RoundButton icon="phone" color={callTheme.colors.success} label="Accept" onPress={call.acceptCall} pulse />
+            <RoundButton theme={theme} icon="close" color={theme.colors.danger} label="Decline" onPress={call.declineCall} />
+            <Animated.View style={{ shadowOpacity: glowShadow, shadowRadius: 18, shadowColor: theme.colors.success, shadowOffset: { width: 0, height: 0 } }}>
+              <RoundButton theme={theme} icon="phone" color={theme.colors.success} label="Accept" onPress={call.acceptCall} pulse />
             </Animated.View>
           </View>
         ) : (
           <View style={styles.actionsRow}>
             <RoundButton
+              theme={theme}
               icon={call.isMuted ? "volumeOff" : "volumeUp"}
-              color={call.isMuted ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.14)"}
+              color={call.isMuted ? theme.colors.surfaceSoft : "rgba(120,120,120,0.18)"}
               label={call.isMuted ? "Unmute" : "Mute"}
               onPress={call.toggleMute}
               active={call.isMuted}
               small
             />
-            <RoundButton icon="close" color={callTheme.colors.danger} label={isOutgoing ? "Cancel" : "End"} onPress={call.endCall} />
+            <RoundButton theme={theme} icon="close" color={theme.colors.danger} label={isOutgoing ? "Cancel" : "End"} onPress={call.endCall} />
             {call.speakerSupported ? (
               <RoundButton
+                theme={theme}
                 icon="volumeUp"
-                color={call.isSpeakerOn ? callTheme.colors.primary : "rgba(255,255,255,0.14)"}
+                color={call.isSpeakerOn ? theme.colors.primary : "rgba(120,120,120,0.18)"}
                 label="Speaker"
                 onPress={call.toggleSpeaker}
                 active={call.isSpeakerOn}
+                small
+              />
+            ) : null}
+            {call.bluetoothSupported ? (
+              <RoundButton
+                theme={theme}
+                icon="bluetooth"
+                color={call.isBluetoothOn ? theme.colors.primary : "rgba(120,120,120,0.18)"}
+                label="Bluetooth"
+                onPress={call.toggleBluetooth}
+                active={call.isBluetoothOn}
                 small
               />
             ) : null}
@@ -224,10 +253,11 @@ export default function CallOverlay() {
   );
 }
 
-function RoundButton({ icon, color, label, onPress, small, pulse, active }) {
+function RoundButton({ theme, icon, color, label, onPress, small, pulse, active }) {
   const press = useRef(new Animated.Value(1)).current;
   const onPressIn = () => Animated.spring(press, { toValue: 0.88, useNativeDriver: true, speed: 40 }).start();
   const onPressOut = () => Animated.spring(press, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <TouchableOpacity
       style={styles.buttonWrap}
@@ -245,7 +275,7 @@ function RoundButton({ icon, color, label, onPress, small, pulse, active }) {
           { backgroundColor: color, transform: [{ scale: press }] },
         ]}
       >
-        <AppIcon name={icon} size={small ? 18 : 26} color="#FFFFFF" />
+        <AppIcon name={icon} size={small ? 18 : 26} color={small && !active ? theme.colors.text : theme.colors.onPrimary} />
       </Animated.View>
       <Text style={styles.buttonLabel}>{label}</Text>
     </TouchableOpacity>
@@ -254,57 +284,70 @@ function RoundButton({ icon, color, label, onPress, small, pulse, active }) {
 
 const AVATAR_SIZE = 132;
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, justifyContent: "space-between", paddingHorizontal: 24 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
-  avatarWrap: { width: AVATAR_SIZE, height: AVATAR_SIZE, alignItems: "center", justifyContent: "center", marginBottom: 8 },
-  pulseRing: {
-    position: "absolute",
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: callTheme.colors.primaryStrong,
-  },
-  avatarImage: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: callTheme.colors.surfaceSoft,
-    borderWidth: 3,
-    borderColor: "rgba(61,219,196,0.55)",
-  },
-  name: { color: callTheme.colors.text, fontSize: 23, fontWeight: "900", textAlign: "center", paddingHorizontal: 20 },
-  jobPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    maxWidth: "82%",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "rgba(61,219,196,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(61,219,196,0.35)",
-  },
-  jobPillText: { color: callTheme.colors.primary, fontSize: 11.5, fontWeight: "800" },
-  status: { color: callTheme.colors.textSecondary, fontSize: 14.5, fontWeight: "700", marginTop: 4 },
-  error: { color: "#F87171", fontSize: 12, fontWeight: "700", textAlign: "center", marginTop: 8, paddingHorizontal: 20 },
-  actionsRow: { flexDirection: "row", justifyContent: "center", alignItems: "flex-start", gap: 30, paddingBottom: 20 },
-  buttonWrap: { alignItems: "center", gap: 8 },
-  button: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  buttonGlow: { shadowColor: callTheme.colors.success, shadowOpacity: 0.6, shadowRadius: 16 },
-  buttonSmall: { width: 48, height: 48, borderRadius: 24 },
-  buttonActiveRing: { borderWidth: 2, borderColor: "rgba(255,255,255,0.85)" },
-  buttonLabel: { color: callTheme.colors.textSecondary, fontSize: 11.5, fontWeight: "800" },
-});
+const createStyles = (theme) =>
+  StyleSheet.create({
+    safe: { flex: 1, justifyContent: "space-between", paddingHorizontal: 24 },
+    minimizeButton: {
+      position: "absolute",
+      left: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(120,120,120,0.18)",
+      zIndex: 2,
+    },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+    avatarWrap: { width: AVATAR_SIZE, height: AVATAR_SIZE, alignItems: "center", justifyContent: "center", marginBottom: 8 },
+    pulseRing: {
+      position: "absolute",
+      width: AVATAR_SIZE,
+      height: AVATAR_SIZE,
+      borderRadius: AVATAR_SIZE / 2,
+      backgroundColor: theme.colors.primaryStrong,
+    },
+    avatarImage: {
+      width: AVATAR_SIZE,
+      height: AVATAR_SIZE,
+      borderRadius: AVATAR_SIZE / 2,
+      backgroundColor: theme.colors.surfaceSoft,
+      borderWidth: 3,
+      borderColor: "rgba(22,131,199,0.55)",
+    },
+    name: { color: theme.colors.text, fontSize: 23, fontWeight: "900", textAlign: "center", paddingHorizontal: 20 },
+    jobPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      maxWidth: "82%",
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: "rgba(22,131,199,0.12)",
+      borderWidth: 1,
+      borderColor: "rgba(22,131,199,0.35)",
+    },
+    jobPillText: { color: theme.colors.primaryStrong, fontSize: 11.5, fontWeight: "800" },
+    status: { color: theme.colors.textSecondary, fontSize: 14.5, fontWeight: "700", marginTop: 4 },
+    statusWarning: { color: theme.colors.warning },
+    error: { color: theme.colors.danger, fontSize: 12, fontWeight: "700", textAlign: "center", marginTop: 8, paddingHorizontal: 20 },
+    actionsRow: { flexDirection: "row", justifyContent: "center", alignItems: "flex-start", gap: 24, paddingBottom: 20, flexWrap: "wrap" },
+    buttonWrap: { alignItems: "center", gap: 8 },
+    button: {
+      width: 66,
+      height: 66,
+      borderRadius: 33,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: "#000",
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    buttonGlow: { shadowColor: theme.colors.success, shadowOpacity: 0.6, shadowRadius: 16 },
+    buttonSmall: { width: 48, height: 48, borderRadius: 24 },
+    buttonActiveRing: { borderWidth: 2, borderColor: theme.colors.text },
+    buttonLabel: { color: theme.colors.textSecondary, fontSize: 11.5, fontWeight: "800" },
+  });

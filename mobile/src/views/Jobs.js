@@ -5,6 +5,7 @@ import { useRoute } from "@react-navigation/native";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
+import EkaziLogo from "../../assets/e-kazi-logo.svg";
 import MyJobs from "./Jobs/MyJobs/MyJobs";
 import Browse from "./Jobs/Browse";
 import MyRequests from "./Jobs/MyRequests/MyRequests";
@@ -49,6 +50,9 @@ export default function Jobs() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
+          <View style={styles.logoBadge}>
+            <EkaziLogo width={22} height={22} />
+          </View>
           <View style={styles.titleCopy}>
             <Text style={styles.title}>{t.title}</Text>
             <Text style={styles.subtitle}>{t.subtitle}</Text>
@@ -59,7 +63,7 @@ export default function Jobs() {
               onPress={() => setCreateJobSignal((value) => value + 1)}
               activeOpacity={0.85}
             >
-              <AppIcon name="plus" size={18} color={theme.colors.onPrimary} />
+              <AppIcon name="plus" size={18} color={theme.colors.onAccent} />
               <Text style={styles.postBtnText}>{t.myJobs === "My Jobs" ? "Post Job" : "Chapisha"}</Text>
             </TouchableOpacity>
           ) : null}
@@ -108,19 +112,20 @@ const createStyles = (theme) =>
     },
     title: { color: theme.colors.text, fontSize: 21, fontWeight: "900" },
     titleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+    logoBadge: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
     titleCopy: { flex: 1, minWidth: 0 },
     subtitle: { color: theme.colors.textMuted, fontSize: 11.5, lineHeight: 15, fontWeight: "700" },
     postBtn: {
       minHeight: 34,
       borderRadius: 8,
       paddingHorizontal: 10,
-      backgroundColor: theme.colors.primary,
+      backgroundColor: theme.colors.accent,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 6,
     },
-    postBtnText: { color: theme.colors.onPrimary, fontSize: 12, fontWeight: "900" },
+    postBtnText: { color: theme.colors.onAccent, fontSize: 12, fontWeight: "900" },
     segmented: {
       flexDirection: "row",
       gap: 4,

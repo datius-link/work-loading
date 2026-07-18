@@ -57,7 +57,7 @@ function avatarFor(user) {
   if (user?.profile_pic || user?.profilePic) return user.profile_pic || user.profilePic;
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
     user?.full_name || user?.username || user?.email || "User"
-  )}&background=0B6B63&color=fff`;
+  )}&background=1683C7&color=fff`;
 }
 
 function connectionSearchText(user) {

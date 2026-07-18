@@ -306,7 +306,7 @@ export default function JobWorkspace() {
           />
         )}
         {tab === "details" && (
-          <WorkspaceDetails job={job} />
+          <WorkspaceDetails job={job} role={role} onOpenChat={() => setTab("chat")} />
         )}
       </View>
 

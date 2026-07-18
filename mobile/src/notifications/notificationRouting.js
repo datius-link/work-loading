@@ -6,7 +6,7 @@
 
 export const TYPE_STYLES = {
   message: { icon: "message", color: "#1683C7", label: "Message" },
-  follow: { icon: "plusUser", color: "#0B6B63", label: "Follow" },
+  follow: { icon: "plusUser", color: "#10689F", label: "Follow" },
   like: { icon: "heart", color: "#E63946", label: "Like" },
   comment: { icon: "comment", color: "#7C3AED", label: "Comment" },
   mention: { icon: "tag", color: "#D97706", label: "Mention" },

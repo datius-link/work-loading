@@ -29,7 +29,7 @@ function avatarFor(username, profilePic) {
   if (profilePic) return profilePic;
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
     username || "U"
-  )}&background=0B6B63&color=fff`;
+  )}&background=1683C7&color=fff`;
 }
 
 function flattenReplies(comment) {

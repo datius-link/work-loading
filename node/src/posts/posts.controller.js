@@ -1,7 +1,7 @@
 import db from "../db/index.js";
 import { insertNotification } from "../notifications/notificationSettings.js";
 import { extractMentions } from "./posts.utils.js";
-import { findUsersByUsername, findServices } from "./posts.service.js";
+import { findUsersByUsername, findServices, findHashtags } from "./posts.service.js";
 import { buildCommentTree, enrichCommentRow, fetchCommentById } from "./posts.comments.js";
 import { enrichPostsWithViewerState, countCommentTree } from "./posts.feed.js";
 
@@ -9,11 +9,24 @@ function actorUuid(req) {
   return req.viewer?.uuid || req.user?.uuid;
 }
 
+// Validates the {scale, offsetXRatio, offsetYRatio} crop metadata coming
+// from the mobile editor before it's persisted — malformed/missing data
+// just means "no custom framing", never a hard error.
+function normalizeMediaTransform(value) {
+  if (!value || typeof value !== "object") return null;
+  const scale = Number(value.scale);
+  const offsetXRatio = Number(value.offsetXRatio);
+  const offsetYRatio = Number(value.offsetYRatio);
+  if (![scale, offsetXRatio, offsetYRatio].every((n) => Number.isFinite(n))) return null;
+  if (scale === 1 && offsetXRatio === 0 && offsetYRatio === 0) return null;
+  return db.raw("?::jsonb", [JSON.stringify({ scale, offsetXRatio, offsetYRatio })]);
+}
+
 function mediaSelectSql() {
   return `
     COALESCE(
       (
-        SELECT json_agg(json_build_object('url', pm.url, 'type', pm.media_type, 'fit', pm.fit_mode) ORDER BY pm."order")
+        SELECT json_agg(json_build_object('url', pm.url, 'type', pm.media_type, 'fit', pm.fit_mode, 'transform', pm.transform) ORDER BY pm."order")
         FROM post_media pm
         WHERE pm.post_id = p.id
       ),
@@ -116,6 +129,9 @@ export async function createPost(req, res) {
           url: item.url,
           media_type: item.type,
           fit_mode: item.fit || item.fit_mode || "cover",
+          // Pan/zoom crop chosen in the mobile editor (see EditMedia.js) —
+          // display metadata only, never applied to the original file.
+          transform: normalizeMediaTransform(item.transform),
           order: index,
         }))
       );
@@ -200,6 +216,22 @@ export async function searchServices(req, res) {
   } catch (err) {
     console.error("searchServices error:", err);
     return res.status(500).json({ message: "Failed to search services" });
+  }
+}
+
+// Real hashtag suggestions for the "#" trigger in the caption composer —
+// previously this was wired to searchServices by mistake, so hashtags never
+// actually dropdowned like @ mentions do.
+export async function searchHashtags(req, res) {
+  const q = String(req.query.q || "").trim().toLowerCase().replace(/^#+/, "");
+  if (!q) return res.json([]);
+
+  try {
+    const hashtags = await findHashtags(q);
+    return res.json(hashtags);
+  } catch (err) {
+    console.error("searchHashtags error:", err);
+    return res.status(500).json({ message: "Failed to search hashtags" });
   }
 }
 
