@@ -1,7 +1,7 @@
 // Bridges react-native-callkeep (Android ConnectionService / iOS CallKit) to
 // CallProvider so an incoming call can show a real native ringing UI — the
 // same telecom-framework hook WhatsApp/Bolt use — instead of only an in-app
-// modal that's invisible while e-kazi is backgrounded.
+// modal that's invisible while Work Loading is backgrounded.
 //
 // Scoped to Android on purpose: the assignment rubric only requires Android,
 // and iOS CallKit needs VoIP PushKit + extra native Swift wiring that (per
@@ -43,17 +43,17 @@ export async function setupCallKeep() {
     await RNCallKeep.setup({
       android: {
         alertTitle: "Calling permission needed",
-        alertDescription: "e-kazi needs this to show incoming calls, even when the app is in the background.",
+        alertDescription: "Work Loading needs this to show incoming calls, even when the app is in the background.",
         cancelButton: "Cancel",
         okButton: "OK",
-        // Self-managed: e-kazi is a normal app making OTT calls, not a SIM
+        // Self-managed: Work Loading is a normal app making OTT calls, not a SIM
         // dialer replacement, so it provides its own call UI (CallProvider's
         // CallOverlay) rather than enrolling as a system phone account.
         selfManaged: true,
         foregroundService: {
           channelId: "com.dmcaltd.ekazi.calls",
-          channelName: "e-kazi calls",
-          notificationTitle: "e-kazi call in progress",
+          channelName: "Work Loading calls",
+          notificationTitle: "Work Loading call in progress",
         },
       },
     });

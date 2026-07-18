@@ -398,7 +398,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
   const finishLogin = async ({ token, viewer, session, skipBiometricOffer = false }) => {
     const profileUuid = session?.profile?.uuid || session?.user?.uuid || viewer?.uuid || null;
     // Biometric is per-device, not per-identity: it can only ever prove
-    // "someone who can unlock this phone", never which e-kazi account they
+    // "someone who can unlock this phone", never which Work Loading account they
     // meant. So if a DIFFERENT account was biometric-bound on this device,
     // that binding is now stale/wrong the moment a new account logs in —
     // clear it silently rather than letting the old owner's biometric still
@@ -429,7 +429,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
     setBiometricAttemptStatus("checking");
     setErrorMessage("");
     try {
-      const confirmed = await promptBiometricUnlock(`Login to e-kazi with ${biometricLabelText}`);
+      const confirmed = await promptBiometricUnlock(`Login to Work Loading with ${biometricLabelText}`);
       if (!confirmed) {
         // Spec: on failure/cancel, stay on the login screen and allow retry —
         // never silently drop them or auto-switch to password.
@@ -490,7 +490,7 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
     if (biometricOfferBusy) return;
     setBiometricOfferBusy(true);
     try {
-      const confirmed = await promptBiometricUnlock(`Enable ${biometricLabelText} for e-kazi`);
+      const confirmed = await promptBiometricUnlock(`Enable ${biometricLabelText} for Work Loading`);
       if (confirmed && pendingBiometricProfileUuid) {
         await setBiometricLoginEnabled(true, pendingBiometricProfileUuid);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -650,12 +650,12 @@ export default function LoginModal({ visible, onClose, onSuccess, initialMode = 
               en={
                 biometricEnabledOnDevice
                   ? `${biometricLabelText} is on, but there's no signed-in session to unlock right now. Login with your password to continue.`
-                  : `${biometricLabelText} is set up on your phone, but not turned on for e-kazi yet. Login with your password once, then turn it on in Settings.`
+                  : `${biometricLabelText} is set up on your phone, but not turned on for Work Loading yet. Login with your password once, then turn it on in Settings.`
               }
               sw={
                 biometricEnabledOnDevice
                   ? `${biometricLabelText} imewashwa, lakini hakuna kikao kilichoingia cha kufungua sasa hivi. Ingia kwa nywila yako kuendelea.`
-                  : `${biometricLabelText} imeshawekwa kwenye simu yako, ila haijawashwa kwa e-kazi bado. Ingia kwa nywila yako mara moja, kisha uiwashe kwenye Mipangilio.`
+                  : `${biometricLabelText} imeshawekwa kwenye simu yako, ila haijawashwa kwa Work Loading bado. Ingia kwa nywila yako mara moja, kisha uiwashe kwenye Mipangilio.`
               }
               style={styles.biometricHintText}
             />

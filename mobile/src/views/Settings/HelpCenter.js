@@ -51,8 +51,8 @@ const FAQS = [
   [
     "How do notifications work?",
     "Notifications zinafanyaje kazi?",
-    "e-kazi sends you push notifications for things that need your attention — new messages, job applications, status changes (like a start request or a completed job), and account activity. You can control which categories you receive, along with sound, vibration, and message previews, from Settings > Notification Settings. You'll also see an in-app banner for real-time events while the app is open.",
-    "e-kazi inakutumia notifications kwa mambo yanayohitaji uangalifu wako — ujumbe mpya, maombi ya kazi, mabadiliko ya hali (kama ombi la kuanza au kazi iliyokamilika), na shughuli za akaunti. Unaweza kudhibiti ni aina zipi unazopokea, pamoja na sauti, mtetemo, na muhtasari wa ujumbe, kutoka Mipangilio > Mipangilio ya Notifications. Utaona pia banner ndani ya app kwa matukio ya papo hapo wakati app iko wazi.",
+    "Work Loading sends you push notifications for things that need your attention — new messages, job applications, status changes (like a start request or a completed job), and account activity. You can control which categories you receive, along with sound, vibration, and message previews, from Settings > Notification Settings. You'll also see an in-app banner for real-time events while the app is open.",
+    "Work Loading inakutumia notifications kwa mambo yanayohitaji uangalifu wako — ujumbe mpya, maombi ya kazi, mabadiliko ya hali (kama ombi la kuanza au kazi iliyokamilika), na shughuli za akaunti. Unaweza kudhibiti ni aina zipi unazopokea, pamoja na sauti, mtetemo, na muhtasari wa ujumbe, kutoka Mipangilio > Mipangilio ya Notifications. Utaona pia banner ndani ya app kwa matukio ya papo hapo wakati app iko wazi.",
   ],
   [
     "How do I edit my account/profile settings?",

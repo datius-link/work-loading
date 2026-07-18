@@ -15,7 +15,7 @@ export const TYPE_STYLES = {
   jobStatus: { icon: "briefcase", color: "#16A34A", label: "Job update" },
   followedPost: { icon: "posts", color: "#0891B2", label: "Followed post" },
   warning: { icon: "warning", color: "#F59E0B", label: "Attention" },
-  general: { icon: "bell", color: "#64748B", label: "e-kazi" },
+  general: { icon: "bell", color: "#64748B", label: "Work Loading" },
 };
 
 export function typeTone(item) {

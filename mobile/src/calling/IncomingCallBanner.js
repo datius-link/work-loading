@@ -7,7 +7,7 @@ import { useCall } from "./CallProvider";
 
 function avatarSource(person) {
   if (person?.photo) return { uri: person.photo };
-  const name = encodeURIComponent(person?.name || "e-kazi user");
+  const name = encodeURIComponent(person?.name || "Work Loading user");
   return { uri: `https://ui-avatars.com/api/?name=${name}&background=1683C7&color=fff&bold=true&rounded=true&size=256` };
 }
 
@@ -54,7 +54,7 @@ export default function IncomingCallBanner({ onExpand, onAutoMinimize }) {
         <View style={styles.bodyRow}>
           <Image source={avatarSource(person)} style={styles.avatar} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.name} numberOfLines={1}>{person?.name || "e-kazi user"}</Text>
+            <Text style={styles.name} numberOfLines={1}>{person?.name || "Work Loading user"}</Text>
             {call.jobTitle ? (
               <Text style={styles.jobTitle} numberOfLines={1}>{call.jobTitle}</Text>
             ) : null}

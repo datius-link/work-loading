@@ -69,7 +69,7 @@ export async function searchPlaces(query, { signal } = {}) {
     const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
       signal,
       headers: {
-        "User-Agent": "ekazi-mobile-app/1.0",
+        "User-Agent": "work-loading-mobile-app/1.0",
         Accept: "application/json",
       },
     });

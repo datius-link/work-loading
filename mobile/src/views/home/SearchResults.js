@@ -146,7 +146,7 @@ export default function SearchResults({ navigation, route }) {
           <Image source={{ uri: avatarFor(user) }} style={styles.avatar} />
           <View style={styles.meta}>
             <Text style={styles.primaryText}>@{user.username || "user"}</Text>
-            <Text style={styles.secondaryText}>{user.full_name || "e-kazi user"}</Text>
+            <Text style={styles.secondaryText}>{user.full_name || "Work Loading user"}</Text>
           </View>
         </TouchableOpacity>
       );
@@ -198,7 +198,7 @@ export default function SearchResults({ navigation, route }) {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
-            placeholder="Search e-kazi"
+            placeholder="Search Work Loading"
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />

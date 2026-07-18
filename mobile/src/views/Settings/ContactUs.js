@@ -37,8 +37,8 @@ export default function ContactUs({ onBack }) {
   return (
     <SettingsScreen titleEn="Contact us" titleSw="Wasiliana nasi" onBack={onBack}>
       <Txt
-        en="Send a private message to the e-kazi support team."
-        sw="Tuma ujumbe wa faragha kwa timu ya msaada ya e-kazi."
+        en="Send a private message to the Work Loading support team."
+        sw="Tuma ujumbe wa faragha kwa timu ya msaada ya Work Loading."
         style={styles.intro}
       />
       <TextInput

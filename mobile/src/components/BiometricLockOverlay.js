@@ -65,7 +65,7 @@ export default function BiometricLockOverlay() {
     evaluate();
 
     // ...and every time the app returns to the foreground after a genuine
-    // absence. Without this, simply backgrounding e-kazi (not force-quitting
+    // absence. Without this, simply backgrounding Work Loading (not force-quitting
     // it) and reopening it later would skip the biometric check entirely,
     // since this component only mounts once per app process — defeating the
     // point of an app lock. Short round-trips (image/camera picker, share
@@ -103,7 +103,7 @@ export default function BiometricLockOverlay() {
 
   const attemptUnlock = async () => {
     setChecking(true);
-    const ok = await promptBiometricUnlock("Unlock e-kazi");
+    const ok = await promptBiometricUnlock("Unlock Work Loading");
     setChecking(false);
     if (ok) setLocked(false);
   };
@@ -116,7 +116,7 @@ export default function BiometricLockOverlay() {
         <View style={styles.iconWrap}>
           <AppIcon name="lock" size={30} color={theme.colors.primary} />
         </View>
-        <Txt en="e-kazi is locked" sw="e-kazi imefungwa" style={styles.title} />
+        <Txt en="Work Loading is locked" sw="Work Loading imefungwa" style={styles.title} />
         <Txt
           en={`Use ${label} to continue.`}
           sw={`Tumia ${label} kuendelea.`}

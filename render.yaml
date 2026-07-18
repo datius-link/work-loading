@@ -1,0 +1,32 @@
+# Render Blueprint — deploys the Node/Express API from the node/ folder.
+# Dashboard flow: New + > Blueprint > pick this repo, or create a Web Service
+# manually with the same settings (see DEPLOYMENT.md).
+services:
+  - type: web
+    name: work-loading-api
+    runtime: node
+    rootDir: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Neon connection string (postgresql://...@...neon.tech/...?sslmode=require)
+      # — set in the Render dashboard, never committed.
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_TOKEN_SECRET
+        generateValue: true
+      - key: VERIFY_TOKEN_SECRET
+        generateValue: true
+      - key: ADMIN_TOKEN_SECRET
+        generateValue: true
+      # Must match the web admin's VITE_ADMIN_API_PREFIX.
+      - key: ADMIN_API_PREFIX
+        value: /api/x7k-ops
+      - key: SWAGGER_USERNAME
+        sync: false
+      - key: SWAGGER_PASSWORD
+        sync: false

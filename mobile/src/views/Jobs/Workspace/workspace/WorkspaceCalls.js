@@ -27,7 +27,7 @@ function formatDuration(seconds) {
 // busy line instead, regardless of duration.
 function describeCall(item, tx) {
   const other = item.direction === "outgoing" ? item.callee : item.caller;
-  const name = other?.full_name || other?.username || "e-kazi user";
+  const name = other?.full_name || other?.username || "Work Loading user";
 
   if (item.direction === "incoming") {
     if (item.outcome === "completed") return { label: tx(`Incoming call from ${name}`, `Simu iliyopokewa kutoka ${name}`), tone: "incoming" };

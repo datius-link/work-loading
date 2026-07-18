@@ -120,7 +120,7 @@ export default function Settings() {
       if (biometricPasswordPending) {
         // Only when enabling: also confirm the device's own biometric sensor
         // actually works before flipping the flag on.
-        const confirmed = await promptBiometricUnlock(`Enable ${biometricLabelText} for e-kazi`);
+        const confirmed = await promptBiometricUnlock(`Enable ${biometricLabelText} for Work Loading`);
         if (!confirmed) {
           setBiometricPasswordBusy(false);
           return;
@@ -238,7 +238,7 @@ export default function Settings() {
     { icon: "message", en: "Send Feedback", sw: "Tuma Maoni", terms: "feedback suggestion bug maoni pendekezo", action: () => openProtected("feedback") },
     { icon: "more-horizontal", en: "Support Actions", sw: "Hatua za Msaada", terms: "feedback report problem support maoni ripoti", action: () => email ? setShowSupportActions(true) : setShowLogin(true) },
     { icon: "file-text", en: "Privacy Policy", sw: "Sera ya Faragha", terms: "legal privacy policy sheria sera faragha", action: () => setActiveScreen("privacyPolicy") },
-    { icon: "logo", en: "About e-kazi", sw: "Kuhusu e-kazi", terms: "about version kuhusu toleo", action: () => setActiveScreen("about") },
+    { icon: "logo", en: "About Work Loading", sw: "Kuhusu Work Loading", terms: "about version kuhusu toleo", action: () => setActiveScreen("about") },
     { icon: "bluetooth", en: "Bluetooth Share", sw: "Bluetooth Share", terms: "bluetooth share quick share nearby", action: () => setActiveScreen("bluetooth") },
   ];
   const normalizedQuery = query.trim().toLowerCase();
@@ -326,6 +326,15 @@ export default function Settings() {
           </View>
         ) : null}
 
+        {visible("bluetooth share offline nearby documents files tuma faili bila mtandao") ? (
+          <>
+            <Section en="Offline Share" sw="Kutuma Bila Mtandao" styles={styles} />
+            <View style={styles.panel}>
+              <SettingRow icon="bluetooth" en="Bluetooth Share" sw="Bluetooth Share" bodyEn="Send messages, photos and documents to a nearby phone — no internet needed at all." bodySw="Tuma ujumbe, picha na nyaraka kwa simu ya karibu — bila intaneti kabisa." onPress={() => setActiveScreen("bluetooth")} styles={styles} theme={theme} />
+            </View>
+          </>
+        ) : null}
+
         {visible("account login register privacy notifications language theme akaunti faragha lugha muonekano") ? (
           <>
             <Section en="Account" sw="Akaunti" styles={styles} />
@@ -348,7 +357,7 @@ export default function Settings() {
                     <IconBox name="fingerprint" styles={styles} theme={theme} />
                     <View style={styles.rowText}>
                       <Txt en={`Sign in with ${biometricLabelText}`} sw={`Ingia kwa ${biometricLabelText}`} style={styles.rowTitle} />
-                      <Txt en={`Skip typing your password — use ${biometricLabelText} to open e-kazi.`} sw={`Ruka kuandika password — tumia ${biometricLabelText} kufungua e-kazi.`} style={styles.rowBody} />
+                      <Txt en={`Skip typing your password — use ${biometricLabelText} to open Work Loading.`} sw={`Ruka kuandika password — tumia ${biometricLabelText} kufungua Work Loading.`} style={styles.rowBody} />
                     </View>
                     <Switch
                       value={biometricEnabled}
@@ -426,7 +435,7 @@ export default function Settings() {
           <>
             <Section en="Legal" sw="Sheria" styles={styles} />
             <View style={styles.panel}>
-              <SettingRow icon="file-text" en="Privacy Policy" sw="Sera ya Faragha" bodyEn="How e-kazi handles your information." bodySw="Jinsi e-kazi inavyotumia taarifa zako." onPress={() => setActiveScreen("privacyPolicy")} styles={styles} theme={theme} />
+              <SettingRow icon="file-text" en="Privacy Policy" sw="Sera ya Faragha" bodyEn="How Work Loading handles your information." bodySw="Jinsi Work Loading inavyotumia taarifa zako." onPress={() => setActiveScreen("privacyPolicy")} styles={styles} theme={theme} />
             </View>
           </>
         ) : null}
@@ -435,15 +444,13 @@ export default function Settings() {
           <>
             <Section en="About" sw="Kuhusu" styles={styles} />
             <View style={styles.panel}>
-              <SettingRow icon="logo" en="About e-kazi" sw="Kuhusu e-kazi" bodyEn="Jobs, services, hiring, and trust." bodySw="Kazi, huduma, kuajiri na uaminifu." onPress={() => setActiveScreen("about")} styles={styles} theme={theme} />
+              <SettingRow icon="logo" en="About Work Loading" sw="Kuhusu Work Loading" bodyEn="Jobs, services, hiring, and trust." bodySw="Kazi, huduma, kuajiri na uaminifu." onPress={() => setActiveScreen("about")} styles={styles} theme={theme} />
               <Divider styles={styles} />
               <View style={styles.row}>
                 <IconBox name="file-text" styles={styles} theme={theme} />
                 <View style={styles.rowText}><Txt en="App Version" sw="Toleo la App" style={styles.rowTitle} /></View>
                 <Txt en={APP_VERSION} sw={APP_VERSION} style={styles.version} />
               </View>
-              <Divider styles={styles} />
-              <SettingRow icon="bluetooth" en="Bluetooth Share" sw="Bluetooth Share" bodyEn="Send text or photos to a nearby device over real Bluetooth." bodySw="Tuma maandishi au picha kwa kifaa cha karibu kupitia Bluetooth halisi." onPress={() => setActiveScreen("bluetooth")} styles={styles} theme={theme} />
               {email ? (
                 <>
                   <Divider styles={styles} />
@@ -515,8 +522,8 @@ export default function Settings() {
             />
             {biometricPasswordPending ? (
               <Txt
-                en={`Anyone who can unlock this phone with ${biometricLabelText} will also be able to open this e-kazi account. Only one account can have ${biometricLabelText} enabled on this phone at a time.`}
-                sw={`Mtu yeyote anayeweza kufungua simu hii kwa ${biometricLabelText} ataweza pia kufungua akaunti hii ya e-kazi. Akaunti moja tu inaweza kuwa na ${biometricLabelText} imewashwa kwenye simu hii kwa wakati mmoja.`}
+                en={`Anyone who can unlock this phone with ${biometricLabelText} will also be able to open this Work Loading account. Only one account can have ${biometricLabelText} enabled on this phone at a time.`}
+                sw={`Mtu yeyote anayeweza kufungua simu hii kwa ${biometricLabelText} ataweza pia kufungua akaunti hii ya Work Loading. Akaunti moja tu inaweza kuwa na ${biometricLabelText} imewashwa kwenye simu hii kwa wakati mmoja.`}
                 style={styles.biometricWarningText}
               />
             ) : null}

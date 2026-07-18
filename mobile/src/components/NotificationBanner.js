@@ -74,7 +74,7 @@ export default function NotificationBanner() {
           <AppIcon name={tone.icon} size={18} color={tone.color} />
         </View>
         <View style={styles.textWrap}>
-          <Txt en={item.title || "e-kazi"} sw={item.title || "e-kazi"} style={styles.title} numberOfLines={1} />
+          <Txt en={item.title || "Work Loading"} sw={item.title || "Work Loading"} style={styles.title} numberOfLines={1} />
           {item.body ? (
             <Txt en={item.body} sw={item.body} style={styles.body} numberOfLines={2} />
           ) : null}

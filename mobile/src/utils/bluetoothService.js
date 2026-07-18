@@ -17,7 +17,9 @@
 // per chunk so a single write/read stays fast and reliable over RFCOMM.
 
 import { NativeModules, PermissionsAndroid, Platform } from "react-native";
-import * as FileSystem from "expo-file-system";
+// SDK 54: readAsStringAsync/writeAsStringAsync THROW when imported from
+// "expo-file-system" — the string-based API now lives under /legacy.
+import * as FileSystem from "expo-file-system/legacy";
 
 let RNBluetoothClassic = null;
 try {
@@ -30,6 +32,38 @@ try {
 }
 
 const CHUNK_SIZE = 12000; // base64 chars per chunk
+
+// Everything received over Bluetooth lands in this folder, so it survives app
+// restarts and is browsable from the "Received files" inbox — with or without
+// any network connection.
+export const INBOX_DIR = `${FileSystem.documentDirectory}bluetooth-inbox/`;
+
+async function ensureInboxDir() {
+  const info = await FileSystem.getInfoAsync(INBOX_DIR);
+  if (!info.exists) await FileSystem.makeDirectoryAsync(INBOX_DIR, { intermediates: true });
+}
+
+// Newest first. Returns [{ name, uri, size, modifiedAt }].
+export async function listInboxFiles() {
+  try {
+    await ensureInboxDir();
+    const names = await FileSystem.readDirectoryAsync(INBOX_DIR);
+    const files = await Promise.all(
+      names.map(async (name) => {
+        const uri = `${INBOX_DIR}${name}`;
+        const info = await FileSystem.getInfoAsync(uri);
+        return { name, uri, size: info.size || 0, modifiedAt: info.modificationTime || 0 };
+      })
+    );
+    return files.sort((a, b) => b.modifiedAt - a.modifiedAt);
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteInboxFile(uri) {
+  await FileSystem.deleteAsync(uri, { idempotent: true });
+}
 
 export function isSupported() {
   return Platform.OS === "android" && !!RNBluetoothClassic && !!NativeModules.RNBluetoothClassic;
@@ -145,7 +179,7 @@ export async function sendFile(device, { uri, name, mimeType }, onProgress) {
   if (!device) throw new Error("No connected device");
   const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
   const totalChunks = Math.max(1, Math.ceil(base64.length / CHUNK_SIZE));
-  const safeName = (name || `ekazi-share-${Date.now()}`).replace(/:/g, "_");
+  const safeName = (name || `work-loading-share-${Date.now()}`).replace(/:/g, "_");
   const safeMime = (mimeType || "application/octet-stream").replace(/:/g, "_");
 
   await device.write(`FILE_META:${safeName}:${safeMime}:${totalChunks}`, "utf-8");
@@ -196,8 +230,9 @@ export function listenForData(device, onEvent) {
     if (line.startsWith("FILE_END:")) {
       const name = line.slice("FILE_END:".length);
       const base64 = incoming.chunks.join("");
-      const destUri = `${FileSystem.documentDirectory}${name}`;
+      const destUri = `${INBOX_DIR}${name}`;
       try {
+        await ensureInboxDir();
         await FileSystem.writeAsStringAsync(destUri, base64, { encoding: FileSystem.EncodingType.Base64 });
         onEvent({ type: "file-complete", name, uri: destUri });
       } catch (err) {

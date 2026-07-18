@@ -228,7 +228,7 @@ function SplashScreen() {
       <View style={rootStyles.logoMark}>
         <EkaziLogo width={68} height={68} />
       </View>
-      <Text style={[rootStyles.splashTitle, { color: theme.colors.text }]}>e-kazi</Text>
+      <Text style={[rootStyles.splashTitle, { color: theme.colors.text }]}>Work Loading</Text>
       <Txt en="Work. Service. Trust." sw="Kazi. Huduma. Uaminifu." style={[rootStyles.splashSub, { color: theme.colors.textMuted }]} />
     </View>
   );

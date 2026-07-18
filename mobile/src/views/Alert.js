@@ -176,7 +176,7 @@ export default function Alerts() {
           <View style={styles.titleLine}>
             {isUnread ? <View style={[styles.unreadDot, { backgroundColor: tone.color }]} /> : null}
             <Text style={[styles.itemTitle, isUnread && styles.itemTitleUnread]} numberOfLines={1}>
-              {item.title || "e-kazi"}
+              {item.title || "Work Loading"}
             </Text>
           </View>
           <Text style={[styles.itemText, isUnread && styles.itemTextUnread]} numberOfLines={3}>{item.body}</Text>

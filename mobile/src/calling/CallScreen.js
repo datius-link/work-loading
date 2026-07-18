@@ -29,7 +29,7 @@ export function formatElapsed(totalSeconds) {
 // recognizable, branded avatar instead of a generic person-outline icon.
 function avatarSource(person) {
   if (person?.photo) return { uri: person.photo };
-  const name = encodeURIComponent(person?.name || "e-kazi user");
+  const name = encodeURIComponent(person?.name || "Work Loading user");
   return { uri: `https://ui-avatars.com/api/?name=${name}&background=1683C7&color=fff&bold=true&rounded=true&size=256` };
 }
 
@@ -194,7 +194,7 @@ export default function CallScreen({ isFullscreenRequested, onMinimize }) {
               <Image source={avatarSource({ ...person, photo: null })} style={styles.avatarImage} />
             )}
           </Animated.View>
-          <Text style={styles.name} numberOfLines={1}>{person?.name || "e-kazi user"}</Text>
+          <Text style={styles.name} numberOfLines={1}>{person?.name || "Work Loading user"}</Text>
           {call.jobTitle ? (
             <View style={styles.jobPill}>
               <AppIcon name="briefcase" size={11} color={theme.colors.primaryStrong} />

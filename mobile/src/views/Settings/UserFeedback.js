@@ -53,8 +53,8 @@ export default function UserFeedback({ onBack }) {
   return (
     <SettingsScreen titleEn="Send Feedback" titleSw="Tuma Maoni" onBack={onBack}>
       <Txt
-        en="Tell us what's working well and what could be better. Your feedback helps us improve e-kazi for everyone."
-        sw="Tuambie kinachofanya kazi vizuri na kinachohitaji kuboreshwa. Maoni yako yanatusaidia kuboresha e-kazi kwa kila mtu."
+        en="Tell us what's working well and what could be better. Your feedback helps us improve Work Loading for everyone."
+        sw="Tuambie kinachofanya kazi vizuri na kinachohitaji kuboreshwa. Maoni yako yanatusaidia kuboresha Work Loading kwa kila mtu."
         style={styles.intro}
       />
 

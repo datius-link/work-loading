@@ -14,7 +14,7 @@ try {
 
 const ENABLED_KEY = "@ekazi/biometric_login_enabled";
 // Structured binding, replacing the old flat boolean: biometric auth on a
-// phone only proves "someone who can unlock this phone" — not which e-kazi
+// phone only proves "someone who can unlock this phone" — not which Work Loading
 // account they meant. So biometric login is bound to exactly ONE profile per
 // device at a time, recorded here as { enabled, profileUuid, enabledAt }.
 const BINDING_KEY = "@ekazi/biometric_binding";
@@ -137,7 +137,7 @@ export async function setBiometricLoginEnabled(enabled, profileUuid) {
  * genuine successful match — any hardware absence, cancellation, or error
  * resolves false so callers can fall back to password.
  */
-export async function promptBiometricUnlock(reasonEn = "Unlock e-kazi") {
+export async function promptBiometricUnlock(reasonEn = "Unlock Work Loading") {
   if (!LocalAuthentication) return false;
   try {
     const ready = await isBiometricHardwareReady();

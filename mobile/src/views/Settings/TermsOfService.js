@@ -18,8 +18,8 @@ export default function TermsOfService({ onBack }) {
   return (
     <SettingsScreen titleEn="Terms of Service" titleSw="Masharti ya Huduma" onBack={onBack}>
       <Txt
-        en="By creating an account, you agree to use e-kazi responsibly and follow these terms."
-        sw="Kwa kufungua akaunti, unakubali kutumia e-kazi kwa uwajibikaji na kufuata masharti haya."
+        en="By creating an account, you agree to use Work Loading responsibly and follow these terms."
+        sw="Kwa kufungua akaunti, unakubali kutumia Work Loading kwa uwajibikaji na kufuata masharti haya."
         style={styles.intro}
       />
       {TERMS.map(([en, sw, bodyEn, bodySw]) => (

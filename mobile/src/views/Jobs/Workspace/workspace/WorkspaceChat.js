@@ -302,7 +302,7 @@ export default function WorkspaceChat({ messages, myUuid, sending, onSend, onRet
     }
   };
 
-  // Camera and video recording happen inside e-kazi (CustomCamera), never by
+  // Camera and video recording happen inside Work Loading (CustomCamera), never by
   // handing off to the phone's default camera app.
   const openCamera = () => {
     setShowSheet(false);

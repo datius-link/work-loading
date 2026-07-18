@@ -15,10 +15,18 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://work-loading-api.onrender.com/api",
+        "EXPO_PUBLIC_CONVEX_URL": "https://utmost-gnu-126.convex.cloud"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://work-loading-api.onrender.com/api",
+        "EXPO_PUBLIC_CONVEX_URL": "https://utmost-gnu-126.convex.cloud"
+      }
     }
   },
   "submit": {

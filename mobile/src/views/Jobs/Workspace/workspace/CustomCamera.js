@@ -1,7 +1,7 @@
 /**
  * CustomCamera.js — in-app camera for the Job Workspace chat.
  *
- * Photos and videos are captured without ever leaving e-kazi (no OS camera
+ * Photos and videos are captured without ever leaving Work Loading (no OS camera
  * app hand-off). Captured media is handed back to the caller in the exact
  * same shape used everywhere else in the chat ({uri, type, width, height,
  * duration, fileName, mimeType}) so it plugs straight into MediaComposer.
@@ -114,7 +114,7 @@ export default function CustomCamera({ visible, initialMode = "photo", onClose, 
             </View>
             <Text style={s.permissionTitle}>Camera access needed</Text>
             <Text style={s.permissionBody}>
-              e-kazi needs camera{mode === "video" ? " and microphone" : ""} access to take photos and record videos for this job.
+              Work Loading needs camera{mode === "video" ? " and microphone" : ""} access to take photos and record videos for this job.
             </Text>
             <TouchableOpacity style={s.permissionBtn} onPress={requestAll} activeOpacity={0.85}>
               <Text style={s.permissionBtnTxt}>Allow Access</Text>

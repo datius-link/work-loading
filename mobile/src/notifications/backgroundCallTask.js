@@ -23,7 +23,7 @@ if (!isRunningInExpoGo()) {
         const meta = payload.meta || {};
         displayIncomingCallNative({
           callId: String(meta.call_id || ""),
-          callerName: meta.caller_name || "e-kazi user",
+          callerName: meta.caller_name || "Work Loading user",
         });
       }
     } catch (err) {

@@ -1,5 +1,5 @@
 // Real in-app audio calling — a genuine WebRTC peer connection between two
-// e-kazi users, signaled through Convex (the same realtime backbone already
+// Work Loading users, signaled through Convex (the same realtime backbone already
 // used for job workspace chat). This is the WhatsApp/Bolt-style "call inside
 // the app" experience, not the tel: native-dialer handoff used elsewhere.
 //
@@ -125,7 +125,7 @@ export function CallProvider({ children }) {
       const uuid = session.profile?.uuid || session.user?.uuid || null;
       setMyUuid(uuid);
       setMyToken(session.token || null);
-      setMyName(session.profile?.full_name || session.profile?.username || session.user?.full_name || "e-kazi user");
+      setMyName(session.profile?.full_name || session.profile?.username || session.user?.full_name || "Work Loading user");
       setMyPhoto(session.profile?.profile_pic || session.user?.profile_pic || null);
     });
     return subscribeUserSession((session) => {
@@ -256,7 +256,7 @@ export function CallProvider({ children }) {
       if (!myUuid || !myToken || callState !== CALL_STATE.IDLE) return;
       try {
         setError(null); // clear a leftover "not available"/error message from the previous call
-        setOtherParty({ uuid: calleeUuid, name: calleeName || "e-kazi user", photo: calleePhoto || null });
+        setOtherParty({ uuid: calleeUuid, name: calleeName || "Work Loading user", photo: calleePhoto || null });
         setCallState(CALL_STATE.OUTGOING);
         isCallerRef.current = true;
         jobRef.current = { jobId: String(jobId), jobTitle: jobTitle || null };
@@ -334,11 +334,11 @@ export function CallProvider({ children }) {
     initiatedAtRef.current = incomingCall.createdAt;
     setError(null); // clear a leftover message from whatever the previous call ended with
     setCallId(id);
-    setOtherParty({ uuid: incomingCall.callerUuid, name: incomingCall.callerName || "e-kazi user", photo: incomingCall.callerPhoto || null });
+    setOtherParty({ uuid: incomingCall.callerUuid, name: incomingCall.callerName || "Work Loading user", photo: incomingCall.callerPhoto || null });
     setCallState(CALL_STATE.INCOMING);
     InCallManager?.start({ media: "audio" });
     if (isCallKeepSupported()) {
-      displayIncomingCallNative({ callId: id, callerName: incomingCall.callerName || "e-kazi user" });
+      displayIncomingCallNative({ callId: id, callerName: incomingCall.callerName || "Work Loading user" });
     }
   }, [incomingCall, callState]);
 

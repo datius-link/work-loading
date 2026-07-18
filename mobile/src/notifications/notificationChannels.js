@@ -34,7 +34,7 @@ export async function ensureAndroidNotificationChannelsAsync() {
     PUSH_CATEGORIES.flatMap((category) =>
       SOUND_VIBRATION_COMBOS.map((combo) => {
         const channelId = buildChannelId(category, combo);
-        const label = CATEGORY_LABELS[category] || "e-kazi";
+        const label = CATEGORY_LABELS[category] || "Work Loading";
         const suffix = combo.sound && combo.vibration
           ? ""
           : combo.sound

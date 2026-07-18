@@ -7,7 +7,7 @@ import { formatElapsed, statusTextFor, useElapsedSeconds } from "./CallScreen";
 
 function avatarSource(person) {
   if (person?.photo) return { uri: person.photo };
-  const name = encodeURIComponent(person?.name || "e-kazi user");
+  const name = encodeURIComponent(person?.name || "Work Loading user");
   return { uri: `https://ui-avatars.com/api/?name=${name}&background=1683C7&color=fff&bold=true&rounded=true&size=256` };
 }
 

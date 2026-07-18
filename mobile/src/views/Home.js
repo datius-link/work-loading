@@ -21,8 +21,8 @@ import EkaziLogo from "../../assets/e-kazi-logo.svg";
 import { api } from "../api/api";
 
 const T = {
-  en: { tagline: "Find work nearby", searchPlaceholder: "Search e-kazi" },
-  sw: { tagline: "Pata kazi karibu nawe", searchPlaceholder: "Tafuta e-kazi" },
+  en: { tagline: "Find work nearby", searchPlaceholder: "Search Work Loading" },
+  sw: { tagline: "Pata kazi karibu nawe", searchPlaceholder: "Tafuta Work Loading" },
 };
 
 function colorParam(color) {
@@ -231,7 +231,7 @@ export default function Home() {
                   <Image source={{ uri: avatarFor(user, theme) }} style={styles.avatar} />
                   <View style={styles.resultText}>
                     <Text style={styles.username}>@{user.username || "user"}</Text>
-                    <Text style={styles.fullName} numberOfLines={1}>{user.full_name || "e-kazi user"}</Text>
+                    <Text style={styles.fullName} numberOfLines={1}>{user.full_name || "Work Loading user"}</Text>
                   </View>
                 </TouchableOpacity>
               ))}

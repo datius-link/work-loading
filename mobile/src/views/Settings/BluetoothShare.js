@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Platform, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as Sharing from "expo-sharing";
 import AppIcon from "../../icons/AppIcon";
 import Txt from "../../Txt";
 import { useAppTheme } from "../../theme";
@@ -29,12 +31,16 @@ export default function BluetoothShare({ onBack }) {
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState("");
   const [log, setLog] = useState([]); // { id, direction: 'in'|'out', kind: 'text'|'file', text?, name?, uri?, fraction? }
+  const [inbox, setInbox] = useState([]); // files previously received over Bluetooth
   const subscriptionRef = useRef(null);
 
   const pushLog = (entry) => setLog((prev) => [{ id: `${Date.now()}-${Math.random()}`, ...entry }, ...prev]);
 
+  const refreshInbox = () => BT.listInboxFiles().then(setInbox);
+
   useEffect(() => {
     if (!supported) return;
+    refreshInbox();
     (async () => {
       await BT.requestPermissions();
       setEnabled(await BT.isBluetoothEnabled());
@@ -107,6 +113,7 @@ export default function BluetoothShare({ onBack }) {
         setLog((prev) => prev.map((e) => (e.kind === "file" && e.direction === "in" && e.name === evt.name && !e.uri ? { ...e, fraction: evt.fraction } : e)));
       } else if (evt.type === "file-complete") {
         setLog((prev) => prev.map((e) => (e.kind === "file" && e.direction === "in" && e.name === evt.name ? { ...e, fraction: 1, uri: evt.uri } : e)));
+        refreshInbox();
       } else if (evt.type === "error") {
         pushLog({ direction: "system", kind: "text", text: evt.message });
       }
@@ -174,6 +181,18 @@ export default function BluetoothShare({ onBack }) {
     }
   };
 
+  const sendFileOverBluetooth = async ({ uri, name, mimeType }) => {
+    const entryId = `outgoing-${name}-${Date.now()}`;
+    setLog((prev) => [{ id: entryId, direction: "out", kind: "file", name, fraction: 0 }, ...prev]);
+    try {
+      await BT.sendFile(connectedDevice, { uri, name, mimeType }, (fraction) => {
+        setLog((prev) => prev.map((e) => (e.id === entryId ? { ...e, fraction } : e)));
+      });
+    } catch (err) {
+      pushLog({ direction: "system", kind: "text", text: tx(`File send failed: ${err?.message || err}`, `Kutuma faili kumeshindikana: ${err?.message || err}`) });
+    }
+  };
+
   const sendPhoto = async () => {
     if (!connectedDevice) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -182,15 +201,32 @@ export default function BluetoothShare({ onBack }) {
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     const name = asset.fileName || `photo-${Date.now()}.jpg`;
-    const entryId = `outgoing-${name}`;
-    setLog((prev) => [{ id: entryId, direction: "out", kind: "file", name, fraction: 0 }, ...prev]);
+    await sendFileOverBluetooth({ uri: asset.uri, name, mimeType: asset.mimeType || "image/jpeg" });
+  };
+
+  // Any document — PDF, Word, audio, apk, anything the system picker offers.
+  const sendDocument = async () => {
+    if (!connectedDevice) return;
+    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const name = asset.name || `document-${Date.now()}`;
+    await sendFileOverBluetooth({ uri: asset.uri, name, mimeType: asset.mimeType || "application/octet-stream" });
+  };
+
+  const openInboxFile = async (file) => {
     try {
-      await BT.sendFile(connectedDevice, { uri: asset.uri, name, mimeType: asset.mimeType || "image/jpeg" }, (fraction) => {
-        setLog((prev) => prev.map((e) => (e.id === entryId ? { ...e, fraction } : e)));
-      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri);
+      }
     } catch (err) {
-      pushLog({ direction: "system", kind: "text", text: tx(`File send failed: ${err?.message || err}`, `Kutuma faili kumeshindikana: ${err?.message || err}`) });
+      pushLog({ direction: "system", kind: "text", text: tx(`Could not open ${file.name}: ${err?.message || err}`, `Imeshindikana kufungua ${file.name}: ${err?.message || err}`) });
     }
+  };
+
+  const removeInboxFile = async (file) => {
+    await BT.deleteInboxFile(file.uri).catch(() => {});
+    refreshInbox();
   };
 
   if (!supported) {
@@ -275,7 +311,31 @@ export default function BluetoothShare({ onBack }) {
           <TouchableOpacity style={styles.photoBtn} onPress={sendPhoto}>
             <AppIcon name="camera" size={16} color={theme.colors.primary} />
           </TouchableOpacity>
+          <TouchableOpacity style={styles.photoBtn} onPress={sendDocument}>
+            <AppIcon name="file-text" size={16} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
+      ) : null}
+
+      {inbox.length ? (
+        <>
+          <Txt en="Received files (saved on this phone)" sw="Faili zilizopokelewa (zimehifadhiwa kwenye simu hii)" style={styles.sectionLabel} />
+          {inbox.map((file) => (
+            <View key={file.uri} style={styles.inboxRow}>
+              <AppIcon name="file-text" size={16} color={theme.colors.primary} />
+              <TouchableOpacity style={{ flex: 1 }} onPress={() => openInboxFile(file)}>
+                <Txt en={file.name} sw={file.name} style={styles.deviceName} numberOfLines={1} />
+                <Txt en={formatSize(file.size)} sw={formatSize(file.size)} style={styles.deviceAddress} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => openInboxFile(file)} style={styles.inboxAction}>
+                <AppIcon name="share2" size={15} color={theme.colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => removeInboxFile(file)} style={styles.inboxAction}>
+                <AppIcon name="trash" size={15} color={theme.colors.danger} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </>
       ) : null}
 
       <Txt en="Activity" sw="Shughuli" style={styles.sectionLabel} />
@@ -288,6 +348,13 @@ export default function BluetoothShare({ onBack }) {
       />
     </SettingsScreen>
   );
+}
+
+function formatSize(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function DeviceRow({ device, onPress, busy, styles, theme }) {
@@ -345,6 +412,8 @@ const createStyles = (theme) =>
     input: { flex: 1, minHeight: 42, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, paddingHorizontal: 12, color: theme.colors.text, backgroundColor: theme.colors.surface, fontSize: 13 },
     sendBtn: { width: 42, height: 42, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primary },
     photoBtn: { width: 42, height: 42, borderRadius: 10, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.colors.border },
+    inboxRow: { flexDirection: "row", gap: 10, alignItems: "center", minHeight: 50, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, backgroundColor: theme.colors.surface, marginBottom: 6 },
+    inboxAction: { width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center" },
     systemLog: { color: theme.colors.textMuted, fontSize: 11, fontStyle: "italic", marginBottom: 6, textAlign: "center" },
     bubble: { maxWidth: "82%", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, marginBottom: 6 },
     bubbleOut: { alignSelf: "flex-end", backgroundColor: theme.colors.primarySoft },

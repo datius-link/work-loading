@@ -9,11 +9,11 @@ export default function AboutEkazi({ onBack, version = "1.0.0" }) {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <SettingsScreen titleEn="About e-kazi" titleSw="Kuhusu e-kazi" onBack={onBack}>
+    <SettingsScreen titleEn="About Work Loading" titleSw="Kuhusu Work Loading" onBack={onBack}>
       <View style={styles.logo}><EkaziLogo width={48} height={48} /></View>
       <Txt
-        en="e-kazi is a community marketplace for finding work, offering services, hiring people, and building trust through ratings and recommendations."
-        sw="e-kazi ni soko la kijamii la kutafuta kazi, kutoa huduma, kuajiri watu na kujenga uaminifu kupitia ratings na mapendekezo."
+        en="Work Loading is a community marketplace for finding work, offering services, hiring people, and building trust through ratings and recommendations."
+        sw="Work Loading ni soko la kijamii la kutafuta kazi, kutoa huduma, kuajiri watu na kujenga uaminifu kupitia ratings na mapendekezo."
         style={styles.body}
       />
       <View style={styles.info}>

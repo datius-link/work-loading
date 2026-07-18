@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "e-kazi",
+    "name": "Work Loading",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -65,8 +65,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow e-kazi to use the camera for job workspace photos and videos.",
-          "microphonePermission": "Allow e-kazi to use the microphone when recording job workspace videos."
+          "cameraPermission": "Allow Work Loading to use the camera for job workspace photos and videos.",
+          "microphonePermission": "Allow Work Loading to use the microphone when recording job workspace videos."
         }
       ],
       "expo-video",
@@ -83,7 +83,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Allow e-kazi to use Face ID to unlock the app quickly."
+          "faceIDPermission": "Allow Work Loading to use Face ID to unlock the app quickly."
         }
       ]
     ],
