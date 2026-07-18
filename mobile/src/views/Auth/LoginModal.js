@@ -145,7 +145,14 @@ function BiometricCard({ theme, kinds, status, onPress }) {
     onPress?.();
   };
 
-  const showBoth = kinds.hasFingerprint && kinds.hasFaceId;
+  // Phones report which biometric TYPES the hardware supports, not which the
+  // owner actually enrolled — Androids commonly claim fingerprint AND face at
+  // once, which rendered a cluttered two-sided card promising "Face ID" the
+  // user may not even have set up. Show ONE side: fingerprint first (the
+  // reliably-enrolled type on Android); face only when it's the sole option
+  // (e.g. Face ID iPhones).
+  const showFingerprint = kinds.hasFingerprint;
+  const showFaceId = kinds.hasFaceId && !kinds.hasFingerprint;
   const busy = status === "checking";
   const isSuccess = status === "success";
   const isError = status === "error";
@@ -157,15 +164,14 @@ function BiometricCard({ theme, kinds, status, onPress }) {
         <View style={[cardStyles.card, { borderColor, backgroundColor: theme.colors.surfaceSoft }, theme.shadow.card]}>
           <BlurView intensity={35} tint={theme.mode === "dark" ? "dark" : "light"} style={StyleSheet.absoluteFill} />
           <View style={cardStyles.row}>
-            {kinds.hasFingerprint ? (
+            {showFingerprint ? (
               <Animated.View style={[cardStyles.side, { transform: [{ scale: pulse }] }]}>
                 <AppIcon name="fingerprint" size={26} color={theme.colors.primary} />
                 <Txt en="Use Fingerprint" sw="Tumia Fingerprint" style={[cardStyles.sideTitle, { color: theme.colors.text }]} />
                 <Txt en="Tap to sign in fast" sw="Gusa ili kuingia haraka" style={[cardStyles.sideSubtitle, { color: theme.colors.textMuted }]} />
               </Animated.View>
             ) : null}
-            {showBoth ? <View style={[cardStyles.sep, { backgroundColor: theme.colors.border }]} /> : null}
-            {kinds.hasFaceId ? (
+            {showFaceId ? (
               <View style={cardStyles.side}>
                 <Animated.View style={[cardStyles.glow, { opacity: glow, backgroundColor: theme.colors.primarySoft }]} />
                 <AppIcon name="faceId" size={26} color={theme.colors.primary} />

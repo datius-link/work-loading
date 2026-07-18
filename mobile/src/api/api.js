@@ -13,6 +13,14 @@ export const api = axios.create({
 
 export function getFriendlyApiError(error, language = "en") {
   if (isNetworkError(error)) return networkErrorMessage(language);
+  // Our API's 4xx messages are written for end users ("User is not verified
+  // yet. Please verify OTP.", "Invalid credentials") — surfacing them beats
+  // a generic "no permission" that hides the real reason from the user.
+  const status = error?.response?.status;
+  const serverMessage = error?.response?.data?.message;
+  if (typeof serverMessage === "string" && serverMessage.trim() && status >= 400 && status < 500) {
+    return serverMessage;
+  }
   if (error?.response?.status === 401) {
     return language === "sw" ? "Tafadhali ingia ili kuendelea." : "Please login to continue.";
   }

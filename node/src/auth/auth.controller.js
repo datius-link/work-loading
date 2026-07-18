@@ -371,9 +371,11 @@ export async function requestViewerCode(req, res) {
       if (password !== confirmPassword) return res.status(400).json({ message: "Passwords do not match" });
       await db("profiles").where({ uuid: profile.uuid }).update({ password: await hashPassword(password), updated_at: db.fn.now() });
     } else {
-      if (mode === "login") return res.status(403).json({ message: "User is not verified yet. Please verify OTP." });
       const ok = await comparePassword(password, profile.password);
       if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+      // Unverified account with the correct password (login OR register
+      // mode): don't dead-end with a 403 — fall through to issueOtp so the
+      // user finishes email verification right from the login tab.
     }
 
     await issueOtp(profile.uuid, "verify_email", "user email verification");
