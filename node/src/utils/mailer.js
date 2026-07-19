@@ -1,77 +1,48 @@
-// SMTP mailer for OTP delivery. Deliberately optional: when the SMTP_* env
-// vars are not set (local dev, fresh deploys), sendOtpEmail() returns false
-// and the caller falls back to logging the code — registration and password
-// reset keep working before any email provider is configured.
+// OTP delivery via Brevo's HTTP transactional email API. Deliberately
+// optional: when BREVO_API_KEY/EMAIL_FROM aren't set, sendOtpEmail() returns
+// false and the caller falls back to logging the code — registration and
+// password reset keep working before any email provider is configured.
 //
-// Works with any SMTP provider. Free options that deliver to arbitrary
-// recipients: Brevo (300/day free) — host smtp-relay.brevo.com, port 587 —
-// or Gmail with an app password — host smtp.gmail.com, port 587.
+// HTTP, not SMTP: Render's free tier blocks/restricts outbound SMTP ports
+// (confirmed — raw SMTP to smtp-relay.brevo.com:587 hangs until connection
+// timeout even with correct credentials), so a normal HTTPS POST is the only
+// thing that reliably works there.
 //
 // Required env vars (set them in the Render dashboard):
-//   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
-// EMAIL_FROM example: "Work Loading <you@gmail.com>" — Brevo requires the
-// address to be a verified sender on your Brevo account.
-import nodemailer from "nodemailer";
+//   BREVO_API_KEY — Brevo dashboard > SMTP & API > API Keys tab (starts with "xkeysib-")
+//   EMAIL_FROM    — a verified sender / authenticated-domain address, e.g. "Work Loading <workloading@yahzel.com>"
+const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
-// Read env lazily (not at module load): dotenv.config() in server.js runs
-// after ES module imports are evaluated, so top-level reads would see
-// nothing in local dev.
-function smtpConfig() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM } = process.env;
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !EMAIL_FROM) return null;
-  return {
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT) || 587,
-    secure: Number(SMTP_PORT) === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-    from: EMAIL_FROM,
-  };
+function parseFrom(emailFrom) {
+  const match = String(emailFrom || "").match(/^\s*(.*?)\s*<(.+)>\s*$/);
+  if (match) return { name: match[1] || "Work Loading", email: match[2] };
+  return { name: "Work Loading", email: String(emailFrom || "").trim() };
+}
+
+function brevoConfig() {
+  const { BREVO_API_KEY, EMAIL_FROM } = process.env;
+  if (!BREVO_API_KEY || !EMAIL_FROM) return null;
+  return { apiKey: BREVO_API_KEY, sender: parseFrom(EMAIL_FROM) };
 }
 
 export function isEmailConfigured() {
-  return smtpConfig() !== null;
-}
-
-let transporter = null;
-let transporterKey = null;
-
-function getTransporter(config) {
-  // Rebuild if config changed (only really matters for tests/hot reload).
-  const key = `${config.host}:${config.port}:${config.auth.user}`;
-  if (!transporter || transporterKey !== key) {
-    transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth: config.auth,
-      // A hung/misbehaving SMTP provider (e.g. Brevo unreachable or
-      // rejecting the connection silently) must fail fast — otherwise this
-      // blocks the whole request until the client's own timeout fires,
-      // which the app then reports as a generic "connection problem".
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 8000,
-    });
-    transporterKey = key;
-  }
-  return transporter;
+  return brevoConfig() !== null;
 }
 
 /**
- * Sends a one-time code. Returns true when the email was handed to the SMTP
- * server, false when email isn't configured or sending failed — the caller
- * decides the fallback (we never throw, so auth flows can't break on a mail
- * outage).
+ * Sends a one-time code. Returns true when Brevo accepted the send, false
+ * when email isn't configured or sending failed — the caller decides the
+ * fallback (we never throw, so auth flows can't break on a mail outage).
  */
 export async function sendOtpEmail(to, code, reason) {
-  const config = smtpConfig();
+  const config = brevoConfig();
   if (!config) return false;
 
   const subject = `${code} is your Work Loading code`;
-  const text =
+  const textContent =
     `Your ${reason} code is: ${code}\n\n` +
     `It expires in 10 minutes. If you didn't request this, ignore this email.`;
-  const html = `
+  const htmlContent = `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:420px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px">
     <p style="font-size:15px;font-weight:bold;color:#0b6b63;margin:0 0 16px">Work Loading</p>
     <p style="font-size:14px;color:#0f172a;margin:0 0 8px">Your ${reason} code:</p>
@@ -80,7 +51,30 @@ export async function sendOtpEmail(to, code, reason) {
   </div>`;
 
   try {
-    await getTransporter(config).sendMail({ from: config.from, to, subject, text, html });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(BREVO_API_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "api-key": config.apiKey,
+      },
+      body: JSON.stringify({
+        sender: config.sender,
+        to: [{ email: to }],
+        subject,
+        htmlContent,
+        textContent,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`✉️ Brevo rejected ${reason} email to ${to}: ${res.status} ${body}`);
+      return false;
+    }
     return true;
   } catch (err) {
     console.error(`✉️ Failed to send ${reason} email to ${to}:`, err?.message || err);
