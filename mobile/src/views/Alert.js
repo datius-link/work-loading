@@ -15,7 +15,6 @@ import { useLanguage } from "../LanguageContext";
 import { getFriendlyApiError, viewerRequest } from "../api/api";
 import AppIcon from "../icons/AppIcon";
 import EkaziLogo from "../../assets/e-kazi-logo.svg";
-import LoginModal from "./Auth/LoginModal";
 import { cachedGet } from "../utils/offlineCache";
 import CachedDataNotice from "../components/CachedDataNotice";
 import { typeTone, notificationDestination, notificationSection } from "../notifications/notificationRouting";
@@ -77,7 +76,6 @@ export default function Alerts() {
   const [refreshing, setRefreshing] = useState(false);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState("");
-  const [showLogin, setShowLogin] = useState(false);
   const [showingCached, setShowingCached] = useState(false);
   const unreadCount = useMemo(() => notifications.filter((item) => !item?.read).length, [notifications]);
 
@@ -201,7 +199,7 @@ export default function Alerts() {
           <View style={styles.emptyIcon}><AppIcon name="lock" size={30} color={theme.colors.primary} /></View>
           <Text style={styles.emptyTitle}>{t.loginTitle}</Text>
           <Text style={styles.emptyText}>{t.loginBody}</Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowLogin(true)}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate("Login", { onSuccess: () => loadAlerts() })}>
             <Text style={styles.primaryBtnText}>{t.login}</Text>
           </TouchableOpacity>
         </View>
@@ -268,14 +266,6 @@ export default function Alerts() {
         ListEmptyComponent={empty}
         contentContainerStyle={[styles.list, !notifications.length && styles.listEmpty]}
         showsVerticalScrollIndicator={false}
-      />
-      <LoginModal
-        visible={showLogin}
-        onClose={() => setShowLogin(false)}
-        onSuccess={() => {
-          setShowLogin(false);
-          loadAlerts();
-        }}
       />
     </SafeAreaView>
   );

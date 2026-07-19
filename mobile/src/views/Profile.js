@@ -8,7 +8,6 @@ import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
 import EkaziLogo from "../../assets/e-kazi-logo.svg";
-import LoginModal from "./Auth/LoginModal";
 import { useUserSession } from "../utils/userSession";
 import { api, getFriendlyApiError, viewerRequest } from "../api/api";
 import PostGridItem from "./postCard/PostGridItem";
@@ -100,7 +99,6 @@ export default function Profile() {
   const t = T[language] || T.en;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { loaded, profile, email, refresh } = useUserSession();
-  const [showLogin, setShowLogin] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [activeTab, setActiveTab] = useState("media");
   const [posts, setPosts] = useState([]);
@@ -148,7 +146,7 @@ export default function Profile() {
   if (!loaded) return <View style={[styles.center, { paddingTop: insets.top }]}><ActivityIndicator color={theme.colors.primary} /></View>;
 
   if (!email) {
-    return <View style={[styles.safe, { paddingTop: insets.top }]}><View style={styles.guest}><View style={styles.guestIcon}><AppIcon name="user" size={30} color={theme.colors.primary} /></View><Text style={styles.guestTitle}>{t.guestTitle}</Text><Text style={styles.guestBody}>{t.guestBody}</Text><TouchableOpacity style={styles.primaryBtn} onPress={() => setShowLogin(true)}><AppIcon name="login" size={17} color={theme.colors.onPrimary} /><Text style={styles.primaryText}>{t.login}</Text></TouchableOpacity></View><LoginModal visible={showLogin} onClose={() => setShowLogin(false)} onSuccess={async () => { setShowLogin(false); await refresh(); }} /></View>;
+    return <View style={[styles.safe, { paddingTop: insets.top }]}><View style={styles.guest}><View style={styles.guestIcon}><AppIcon name="user" size={30} color={theme.colors.primary} /></View><Text style={styles.guestTitle}>{t.guestTitle}</Text><Text style={styles.guestBody}>{t.guestBody}</Text><TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate("Login", { onSuccess: async () => { await refresh(); } })}><AppIcon name="login" size={17} color={theme.colors.onPrimary} /><Text style={styles.primaryText}>{t.login}</Text></TouchableOpacity></View></View>;
   }
 
   const menuItems = [

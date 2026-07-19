@@ -5,7 +5,10 @@ import { isNetworkError, networkErrorMessage } from "../utils/network";
 
 export const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL,
-  timeout: 15000,
+  // Render's free tier spins the API down after idling and can take 20-30s+
+  // to wake back up on the next request — 15s was cutting that off mid
+  // cold-start and surfacing as a false "Connection problem" on login.
+  timeout: 35000,
   headers: {
     "Content-Type": "application/json",
   },

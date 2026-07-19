@@ -6,7 +6,6 @@ import { useAppTheme } from "../../../theme";
 import { useLanguage } from "../../../LanguageContext";
 import AppIcon from "../../../icons/AppIcon";
 import { getFriendlyApiError, viewerRequest } from "../../../api/api";
-import LoginModal from "../../Auth/LoginModal";
 import { getUserSession, useUserSession } from "../../../utils/userSession";
 import CreateJobModal from "./CreateJobModal";
 import { UploadManager } from "../../../utils/UploadManager";
@@ -44,7 +43,6 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
   const [refreshing,setRefreshing]=useState(false);
   const [needsLogin,setNeedsLogin]=useState(false);
   const [error,setError]=useState("");
-  const [showLogin,setShowLogin]=useState(false);
   const [showCreate,setShowCreate]=useState(false);
   const [posting,setPosting]=useState(false);
   const [notice,setNotice]=useState(null);
@@ -76,7 +74,7 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
 
   const openPost=async()=>{
     const session=await getUserSession();
-    if(!session.isLoggedIn){setShowLogin(true);return;}
+    if(!session.isLoggedIn){nav.navigate("Login",{onSuccess:async()=>{await refreshSession();load();}});return;}
     setShowCreate(true);
   };
 
@@ -185,7 +183,6 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
         refreshControl={<RefreshControl refreshing={refreshing} tintColor={theme.colors.primary} onRefresh={()=>load({refresh:true})}/>}
         ListEmptyComponent={listEmpty}
       />
-      <LoginModal visible={showLogin} onClose={()=>setShowLogin(false)} onSuccess={async()=>{setShowLogin(false);await refreshSession();load();}}/>
       <CreateJobModal visible={showCreate} onClose={()=>setShowCreate(false)} mode="indirect" onSubmit={submitJob} submitting={posting}/>
       <HiringNoticeModal
         visible={!!notice}

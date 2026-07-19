@@ -30,7 +30,6 @@ import {
 import { registerBackgroundCallTask } from "./src/notifications/backgroundCallTask";
 import { CallProvider } from "./src/calling/CallProvider";
 import CallStack from "./src/calling/CallStack";
-import BiometricLockOverlay from "./src/components/BiometricLockOverlay";
 
 /* ---------------------------
    MAIN USER SCREENS
@@ -56,6 +55,8 @@ import Register from "./src/views/Auth/Register";
 import ForgotPassword from "./src/views/Auth/ForgotPassword";
 import ResetPassword from "./src/views/Auth/ResetPassword";
 import VerifyEmail from "./src/views/Auth/VerifyEmail";
+import TermsScreen from "./src/views/Auth/TermsScreen";
+import PrivacyScreen from "./src/views/Auth/PrivacyScreen";
 
 /* ---------------------------
    USER WORKFLOW SCREENS
@@ -162,8 +163,8 @@ function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    // Must resolve before anything else reads the session (BiometricLockOverlay,
-    // MainTabs guards, etc.) — otherwise a "Nikumbuke" = off login from last
+    // Must resolve before anything else reads the session (MainTabs guards,
+    // etc.) — otherwise a "Nikumbuke" = off login from last
     // time would flash in as still signed-in before being wiped.
     (async () => {
       await consumeEphemeralSessionIfAny();
@@ -215,7 +216,6 @@ function AppShell() {
       <NetworkBanner />
       <NotificationBanner />
       <CallStack />
-      <BiometricLockOverlay />
     </View>
   );
 }
@@ -255,6 +255,8 @@ function RootNavigator() {
         <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
         <Stack.Screen name="ResetPassword" component={ResetPassword} />
         <Stack.Screen name="VerifyEmail" component={VerifyEmail} />
+        <Stack.Screen name="Terms" component={TermsScreen} />
+        <Stack.Screen name="Privacy" component={PrivacyScreen} />
 
         {/* -------- USER WORKFLOWS -------- */}
         <Stack.Screen name="UserProfile" component={UserProfile} />

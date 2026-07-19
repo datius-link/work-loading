@@ -42,6 +42,16 @@ export default {
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
     },
+    // Neon (serverless Postgres) can suspend its compute when idle; without
+    // bounded timeouts here, a request that needs a new connection during
+    // that wake-up can hang indefinitely instead of failing fast.
+    pool: {
+      min: 0,
+      max: 5,
+      acquireTimeoutMillis: 15000,
+      createTimeoutMillis: 15000,
+      idleTimeoutMillis: 30000,
+    },
     migrations: {
       directory: "./src/migrations",
       tableName: "knex_migrations",

@@ -335,55 +335,57 @@ export async function requestViewerCode(req, res) {
     } else {
       profile = await db("profiles").where({ email }).first();
     }
-    if (!profile) {
-      if (mode !== "register") return res.status(404).json({ message: "User not found. Please register first." });
+
+    // No email OTP anywhere in this flow: register creates a ready-to-use
+    // account in one step (assignment flow: register -> login -> dashboard),
+    // login checks the password and signs straight in.
+    if (mode === "register") {
+      if (profile && profile.password) return res.status(409).json({ message: "User already exists. Please login." });
       if (password !== confirmPassword) return res.status(400).json({ message: "Passwords do not match" });
-      const uuid = crypto.randomUUID();
-      await db("profiles").insert({
-        uuid,
-        email,
-        password: await hashPassword(password),
-        is_verified: false,
-        username: await uniqueUsername(fallbackUsername(email, "user")),
-        full_name: fallbackUsername(email, "user"),
-      });
-      profile = await db("profiles").where({ uuid }).first();
-    } else if (profile.is_verified) {
-      if (!profile.password) {
-        if (mode !== "register") return res.status(403).json({ message: "Password setup required. Please register this user again." });
-        if (password !== confirmPassword) return res.status(400).json({ message: "Passwords do not match" });
-        await db("profiles").where({ uuid: profile.uuid }).update({ password: await hashPassword(password), updated_at: db.fn.now() });
+
+      const hashedPassword = await hashPassword(password);
+      if (profile) {
+        await db("profiles")
+          .where({ uuid: profile.uuid })
+          .update({ password: hashedPassword, is_verified: true, updated_at: db.fn.now() });
       } else {
-        if (mode === "register") return res.status(409).json({ message: "User already exists. Please login." });
-        const ok = await comparePassword(password, profile.password);
-        if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+        await db("profiles").insert({
+          uuid: crypto.randomUUID(),
+          email,
+          password: hashedPassword,
+          is_verified: true,
+          username: await uniqueUsername(fallbackUsername(email, "user")),
+          full_name: fallbackUsername(email, "user"),
+        });
       }
 
-      console.log(`[USER LOGIN] success uuid=${profile.uuid} email=${profile.email}`);
-      return res.json({
-        success: true,
-        verified: true,
-        token: generateViewerToken(profile.uuid, profile.email, true),
-        viewer: viewerPayload(profile),
-      });
-    } else if (!profile.password) {
-      if (mode !== "register") return res.status(403).json({ message: "User is not verified yet. Please register and verify OTP." });
-      if (password !== confirmPassword) return res.status(400).json({ message: "Passwords do not match" });
-      await db("profiles").where({ uuid: profile.uuid }).update({ password: await hashPassword(password), updated_at: db.fn.now() });
-    } else {
-      const ok = await comparePassword(password, profile.password);
-      if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-      // Unverified account with the correct password (login OR register
-      // mode): don't dead-end with a 403 — fall through to issueOtp so the
-      // user finishes email verification right from the login tab.
+      console.log(`[USER REGISTER] success email=${email}`);
+      return res.json({ success: true, registered: true, message: "Account created. Please login." });
     }
 
-    await issueOtp(profile.uuid, "verify_email", "user email verification");
-    return res.json({ success: true, verified: false, requiresOtp: true, message: "OTP sent" });
+    // login mode
+    if (!profile || !profile.password) {
+      return res.status(404).json({ message: "User not found. Please register first." });
+    }
+    const ok = await comparePassword(password, profile.password);
+    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+
+    if (!profile.is_verified) {
+      await db("profiles").where({ uuid: profile.uuid }).update({ is_verified: true, updated_at: db.fn.now() });
+      profile.is_verified = true;
+    }
+
+    console.log(`[USER LOGIN] success uuid=${profile.uuid} email=${profile.email}`);
+    return res.json({
+      success: true,
+      verified: true,
+      token: generateViewerToken(profile.uuid, profile.email, true),
+      viewer: viewerPayload(profile),
+    });
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ message: "Email or username already exists" });
     console.error("requestViewerCode error:", err);
-    return res.status(500).json({ message: "Failed to send OTP" });
+    return res.status(500).json({ message: "Failed to process request" });
   }
 }
 

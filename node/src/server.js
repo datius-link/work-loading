@@ -60,12 +60,31 @@ const ADMIN_API_PREFIX = process.env.ADMIN_API_PREFIX || "/api/admin";
 
 app.use(ADMIN_API_PREFIX, adminRoutes);
 
-app.get("/health", (_req, res) => {
-  return res.status(200).json({
-    status: "ok",
-    service: "e-kazi-api",
-    timestamp: new Date().toISOString(),
-  });
+app.get("/health", async (_req, res) => {
+  // Actually exercises the DB connection (assignment: "checks for database
+  // and internet connections before login") instead of a static 200 — a
+  // stuck/exhausted Neon pool now shows up here instead of only surfacing
+  // as a mysteriously hung login request.
+  try {
+    await Promise.race([
+      db.raw("SELECT 1"),
+      new Promise((_resolve, reject) => setTimeout(() => reject(new Error("DB_TIMEOUT")), 5000)),
+    ]);
+    return res.status(200).json({
+      status: "ok",
+      service: "e-kazi-api",
+      db: "ok",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("health check DB error:", err.message);
+    return res.status(503).json({
+      status: "error",
+      service: "e-kazi-api",
+      db: "unreachable",
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 app.use((_req, res) => {

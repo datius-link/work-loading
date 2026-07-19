@@ -30,7 +30,6 @@ import { MentionText } from "./commentUtils";
 import AppIcon from "../../icons/AppIcon";
 
 import CommentsSheet from "./CommentsSheet";
-import LoginModal from "../Auth/LoginModal";
 import CreateJobModal from "../Jobs/MyJobs/CreateJobModal";
 import HiringNoticeModal from "../Jobs/HiringNoticeModal";
 import { UploadManager } from "../../utils/UploadManager";
@@ -202,7 +201,6 @@ function PostCard({
   const flatListRef = useRef(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [showComments, setShowComments] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
   const [showHireModal, setShowHireModal] = useState(false);
   const [hireNotice, setHireNotice] = useState(null);
   const [hireSubmitting, setHireSubmitting] = useState(false);
@@ -309,7 +307,7 @@ function PostCard({
       setLikesCount(previousCount);
       onPostStateChange?.(post.id, { is_liked: previousLiked, likes_count: previousCount });
       if (err.response?.status === 401 && err.config?.authActor !== "provider") {
-        setShowLogin(true);
+        navigation?.navigate("Login");
       }
     } finally {
       setLikeSubmitting(false);
@@ -337,7 +335,7 @@ function PostCard({
       }
     } catch (err) {
       if (err.response?.status === 401 && err.config?.authActor !== "provider") {
-        setShowLogin(true);
+        navigation?.navigate("Login");
       }
     } finally {
       setFollowSubmitting(false);
@@ -554,21 +552,8 @@ function PostCard({
         onCommentDeleted={(count) =>
           setCommentsCount((prev) => Math.max(0, (Number(prev) || 0) - count))
         }
-        onRequireLogin={() => setShowLogin(true)}
+        onRequireLogin={() => navigation?.navigate("Login")}
         preferredAuthActor={socialAuthActor}
-      />
-
-      <LoginModal
-        visible={showLogin}
-        onClose={() => setShowLogin(false)}
-        onSuccess={async ({ session }) => {
-          console.log("[POST CARD] user session after login", {
-            uuid: session?.profile?.uuid || session?.user?.uuid || null,
-            email: session?.email || null,
-            hasToken: !!session?.token,
-          });
-          setShowLogin(false);
-        }}
       />
 
       <CreateJobModal

@@ -1,7 +1,6 @@
 import React, { useCallback, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
-import { setBiometricLoginEnabled } from "./biometricAuth";
 
 export const USER_SESSION_KEYS = {
   token: "user_token",
@@ -130,11 +129,6 @@ export async function consumeEphemeralSessionIfAny() {
 
 export async function clearUserSession() {
   await AsyncStorage.multiRemove([...Object.values(USER_SESSION_KEYS), EPHEMERAL_FLAG_KEY]);
-  // A full logout also turns off biometric quick-login: the flag lives in
-  // device storage, not per-account, so leaving it on would let a different
-  // person who later logs into this same device inherit an app-lock they
-  // never opted into.
-  await setBiometricLoginEnabled(false);
   cachedUserSession = null;
   notifyUserSession({
     token: null,
