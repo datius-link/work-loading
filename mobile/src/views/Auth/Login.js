@@ -9,7 +9,7 @@ export default function Login({ route, navigation }) {
   return (
     <AuthScreen
       initialMode="login"
-      onClose={() => navigation.goBack()}
+      onClose={() => navigation.canGoBack() && navigation.goBack()}
       onSwitchScreen={() => navigation.replace("Register", { onSuccess: route.params?.onSuccess })}
       onSuccess={route.params?.onSuccess}
     />

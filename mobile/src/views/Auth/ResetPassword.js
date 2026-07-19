@@ -38,7 +38,11 @@ export default function ResetPassword({ navigation, route }) {
         resetToken: verify?.data?.resetToken,
         password,
       });
-      navigation.navigate("Login");
+      // React Navigation v7: navigate() always pushes, so going "back" to
+      // Login that way stacks a second Login and the hardware back button
+      // then loops through the whole Forgot/Reset history. Resetting leaves
+      // Login as the only route — back from there exits the app.
+      navigation.reset({ index: 0, routes: [{ name: "Login" }] });
     } catch (err) {
       setMessage(getFriendlyApiError(err, language));
     } finally {

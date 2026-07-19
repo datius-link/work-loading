@@ -63,6 +63,8 @@ import PrivacyScreen from "./src/views/Auth/PrivacyScreen";
    USER WORKFLOW SCREENS
 --------------------------- */
 import ConnectionsScreen from "./src/views/Profile/connections/ConnectionsScreen";
+import BluetoothShareScreen from "./src/views/Bluetooth/BluetoothShareScreen";
+import BluetoothGallery from "./src/views/Bluetooth/BluetoothGallery";
 import Insights from "./src/views/Profile/editProfile/Insights";
 import CreatePost from "./src/views/Profile/posting/CreatePost";
 import EditMedia from "./src/views/Profile/posting/EditMedia";
@@ -271,6 +273,10 @@ function RootNavigator() {
         <Stack.Screen name="RequestDetails" component={RequestDetails} />
         <Stack.Screen name="JobApplication" component={JobApplication} />
         <Stack.Screen name="JobWorkspace" component={JobWorkspace} />
+
+        {/* -------- BLUETOOTH SHARE -------- */}
+        <Stack.Screen name="BluetoothShareSession" component={BluetoothShareScreen} />
+        <Stack.Screen name="BluetoothGallery" component={BluetoothGallery} />
 
         {/* -------- POSTS -------- */}
         <Stack.Screen name="PicksScreen" component={ConnectionsScreen} />

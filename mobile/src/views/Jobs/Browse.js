@@ -213,19 +213,25 @@ export default function BrowseJobs() {
       const me = session.profile?.uuid || session.user?.uuid || null;
       setError("");
       const cacheKey = `hiring:requests:browse:${search.trim().toLowerCase() || "all"}`;
+      const applyJobs = (result) => {
+        setJobs(
+          (result?.data?.jobs || [])
+            .filter((j) => {
+              const o = j.created_by || j.client_user_uuid || j.poster_uuid || j.poster?.uuid;
+              const isDirect = j.hire_type === "direct" || !!j.target_provider_uuid || !!j.direct_status;
+              return !isDirect && !j.has_applied && ["open", "applied"].includes(j.status) && !(o && me && o === me);
+            })
+            .map(toJobRow)
+        );
+      };
+      // Stale-while-revalidate: cached jobs paint immediately, live data
+      // swaps in via onFresh when the network answers.
       const result = await cachedGet(cacheKey, () =>
-        api.get("/hiring/requests", { params: { q: search.trim() || undefined, scope: "browse" } }).then((res) => res.data)
+        api.get("/hiring/requests", { params: { q: search.trim() || undefined, scope: "browse" } }).then((res) => res.data),
+        { onFresh: (fresh) => { applyJobs(fresh); setShowingCached(false); } }
       );
-      setShowingCached(result.fromCache);
-      setJobs(
-        (result?.data?.jobs || [])
-          .filter((j) => {
-            const o = j.created_by || j.client_user_uuid || j.poster_uuid || j.poster?.uuid;
-            const isDirect = j.hire_type === "direct" || !!j.target_provider_uuid || !!j.direct_status;
-            return !isDirect && !j.has_applied && ["open", "applied"].includes(j.status) && !(o && me && o === me);
-          })
-          .map(toJobRow)
-      );
+      setShowingCached(!!result.fromCache && !result.revalidating);
+      applyJobs(result);
     } catch (e) {
       setError(getFriendlyApiError(e, language));
       setShowingCached(false);
@@ -235,9 +241,10 @@ export default function BrowseJobs() {
     }
   }, [language, search]);
 
+  // Refocusing refreshes silently in the background — the skeleton only
+  // shows while there is truly nothing to display yet (first ever load).
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       load();
     }, [load])
   );

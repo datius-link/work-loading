@@ -64,11 +64,30 @@ export async function getCachedResponse(key) {
 }
 
 export async function cachedGet(key, fetcher, options = {}) {
-  const { allowCacheOnAnyError = false } = options;
-  try {
+  const { allowCacheOnAnyError = false, onFresh = null } = options;
+
+  const fetchAndStore = async () => {
     const data = await fetcher();
     await setCachedResponse(key, data);
     return { data, fromCache: false, cachedAt: Date.now() };
+  };
+
+  // Stale-while-revalidate: when the caller passes onFresh and we already
+  // have a cached copy, return it immediately (no network wait — the API's
+  // cold starts were making every screen sit on a spinner) and refresh in
+  // the background. onFresh only fires if the network actually answers.
+  if (onFresh) {
+    const cached = await getCachedResponse(key);
+    if (cached) {
+      fetchAndStore()
+        .then((fresh) => onFresh(fresh))
+        .catch(() => {});
+      return { ...cached, fromCache: true, revalidating: true };
+    }
+  }
+
+  try {
+    return await fetchAndStore();
   } catch (error) {
     if (!allowCacheOnAnyError && !isNetworkError(error)) throw error;
     const cached = await getCachedResponse(key);

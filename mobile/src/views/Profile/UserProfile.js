@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -202,9 +202,13 @@ export default function UserProfile() {
 
   // ── Data Fetching ──────────────────────────────────────────────────────────
 
+  // True once anything has rendered — re-focusing the screen then refreshes
+  // silently in the background instead of blanking it behind a spinner.
+  const hasLoadedRef = useRef(false);
+
   const loadProfile = useCallback(async ({ refresh = false } = {}) => {
     if (refresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!hasLoadedRef.current) setLoading(true);
     try {
       setError("");
       const session = await getUserSession();
@@ -219,17 +223,32 @@ export default function UserProfile() {
       const myUuid = session.profile?.uuid || session.user?.uuid;
       setIsMine(uuid === myUuid);
 
+      const applyProfile = (result) => {
+        const nextProfile = result?.data?.profile || null;
+        if (!nextProfile) return;
+        setProfile(nextProfile);
+        setFollowing(!!nextProfile?.is_following || !!nextProfile?.is_followed_by_me);
+        setJobsDone(Array.isArray(nextProfile?.completed_jobs) ? nextProfile.completed_jobs : []);
+        setJobsPosted(Array.isArray(nextProfile?.posted_jobs) ? nextProfile.posted_jobs : []);
+      };
+      const applyPosts = (result) => {
+        if (Array.isArray(result?.data?.posts)) setPosts(result.data.posts);
+      };
+
+      // Stale-while-revalidate: cached copy paints immediately, live data
+      // swaps in via onFresh whenever the network answers.
       const [profileResult, postsResult] = await Promise.all([
-        cachedGet(`profile:${uuid}`, () => api.get(`/profiles/${uuid}`).then((res) => res.data)),
-        cachedGet(`posts:provider:${uuid}`, () => api.get(`/posts/provider/${uuid}`).then((res) => res.data)),
+        cachedGet(`profile:${uuid}`, () => api.get(`/profiles/${uuid}`).then((res) => res.data), {
+          onFresh: (fresh) => { applyProfile(fresh); setShowingCached(false); },
+        }),
+        cachedGet(`posts:provider:${uuid}`, () => api.get(`/posts/provider/${uuid}`).then((res) => res.data), {
+          onFresh: (fresh) => { applyPosts(fresh); setShowingCached(false); },
+        }),
       ]);
-      const nextProfile = profileResult?.data?.profile || null;
-      setProfile(nextProfile);
-      setFollowing(!!nextProfile?.is_following || !!nextProfile?.is_followed_by_me);
-      setPosts(Array.isArray(postsResult?.data?.posts) ? postsResult.data.posts : []);
-      setShowingCached(profileResult.fromCache || postsResult.fromCache);
-      setJobsDone(Array.isArray(nextProfile?.completed_jobs) ? nextProfile.completed_jobs : []);
-      setJobsPosted(Array.isArray(nextProfile?.posted_jobs) ? nextProfile.posted_jobs : []);
+      applyProfile(profileResult);
+      applyPosts(postsResult);
+      setShowingCached(!!(profileResult.fromCache && !profileResult.revalidating) || !!(postsResult.fromCache && !postsResult.revalidating));
+      hasLoadedRef.current = true;
     } catch (err) {
       setError(getFriendlyApiError(err, language));
     } finally {

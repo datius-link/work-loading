@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, BackHandler, Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
 import AppIcon from "../icons/AppIcon";
@@ -67,6 +67,23 @@ export default function Settings() {
   useEffect(() => {
     if (route.params?.openScreen) setActiveScreen(route.params.openScreen);
   }, [route.params?.openScreen]);
+
+  // Sub-screens here are plain component state, not navigator routes, so the
+  // hardware back button would otherwise leave the whole Settings tab (or the
+  // app) instead of stepping back to the Settings root. Only intercept while
+  // this tab is focused and a sub-screen is open.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (activeScreen) {
+          setActiveScreen(null);
+          return true;
+        }
+        return false;
+      });
+      return () => sub.remove();
+    }, [activeScreen])
+  );
 
   useEffect(() => {
     const uuid = profile?.uuid || user?.uuid;
@@ -313,7 +330,7 @@ export default function Settings() {
               <Divider styles={styles} />
               <SettingRow icon="message" en="Send Feedback" sw="Tuma Maoni" bodyEn="Share suggestions or bugs about the app." bodySw="Toa mapendekezo au hitilafu za app." onPress={() => openProtected("feedback")} styles={styles} theme={theme} />
               <Divider styles={styles} />
-              <SettingRow icon="more-horizontal" en="Support Actions" sw="Hatua za Msaada" bodyEn="Send feedback or report a problem." bodySw="Tuma maoni au ripoti tatizo." onPress={() => email ? setShowSupportActions(true) : setShowLogin(true)} styles={styles} theme={theme} />
+              <SettingRow icon="more-horizontal" en="Support Actions" sw="Hatua za Msaada" bodyEn="Send feedback or report a problem." bodySw="Tuma maoni au ripoti tatizo." onPress={() => email ? setShowSupportActions(true) : navigation.navigate("Login", { onSuccess: async () => { await refresh(); } })} styles={styles} theme={theme} />
             </View>
           </>
         ) : null}

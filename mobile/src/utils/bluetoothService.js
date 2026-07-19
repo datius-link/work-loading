@@ -31,6 +31,14 @@ try {
   RNBluetoothClassic = null;
 }
 
+let MediaLibrary = null;
+try {
+  // Same guarded pattern: expo-media-library is native too.
+  MediaLibrary = require("expo-media-library");
+} catch {
+  MediaLibrary = null;
+}
+
 const CHUNK_SIZE = 12000; // base64 chars per chunk
 
 // Everything received over Bluetooth lands in this folder, so it survives app
@@ -63,6 +71,41 @@ export async function listInboxFiles() {
 
 export async function deleteInboxFile(uri) {
   await FileSystem.deleteAsync(uri, { idempotent: true });
+}
+
+const MEDIA_EXT = /\.(jpe?g|png|gif|webp|heic|mp4|mov|m4v|3gp|webm|mkv|avi)$/i;
+
+export function isMediaFile(nameOrMime = "") {
+  const value = String(nameOrMime);
+  return /^image\//.test(value) || /^video\//.test(value) || MEDIA_EXT.test(value);
+}
+
+export function isVideoFile(nameOrMime = "") {
+  const value = String(nameOrMime);
+  return /^video\//.test(value) || /\.(mp4|mov|m4v|3gp|webm|mkv|avi)$/i.test(value);
+}
+
+// Copies a received photo/video into the phone's real gallery under a
+// "workloading" album, so it is visible outside the app (Photos/Files apps)
+// exactly like a normal Bluetooth transfer would be. Best-effort: the in-app
+// inbox copy is the source of truth, this is the user-visible mirror.
+export async function saveToWorkloadingAlbum(uri) {
+  if (!MediaLibrary?.requestPermissionsAsync) return false;
+  try {
+    const permission = await MediaLibrary.requestPermissionsAsync();
+    if (!permission.granted) return false;
+    const asset = await MediaLibrary.createAssetAsync(uri);
+    const album = await MediaLibrary.getAlbumAsync("workloading");
+    if (album) {
+      await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+    } else {
+      await MediaLibrary.createAlbumAsync("workloading", asset, false);
+    }
+    return true;
+  } catch (error) {
+    console.log("workloading album save error:", error?.message);
+    return false;
+  }
 }
 
 export function isSupported() {
@@ -175,8 +218,17 @@ export async function sendText(device, text) {
 // Reads a local file (uri from expo-image-picker or similar), base64-encodes
 // it, and streams it to the connected device using the chunk protocol above.
 // onProgress(fraction) is called after each chunk so the UI can show a bar.
+// RFCOMM + the JS bridge tops out around tens of KB/s, and the whole file is
+// base64-buffered in memory before sending — huge videos would both crawl and
+// risk OOM. 40MB keeps camera clips workable while staying safe.
+export const MAX_SEND_BYTES = 40 * 1024 * 1024;
+
 export async function sendFile(device, { uri, name, mimeType }, onProgress) {
   if (!device) throw new Error("No connected device");
+  const info = await FileSystem.getInfoAsync(uri);
+  if (info?.size && info.size > MAX_SEND_BYTES) {
+    throw new Error(`File is too large for Bluetooth (${Math.round(info.size / (1024 * 1024))}MB > 40MB). Record a shorter video or pick a smaller file.`);
+  }
   const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
   const totalChunks = Math.max(1, Math.ceil(base64.length / CHUNK_SIZE));
   const safeName = (name || `work-loading-share-${Date.now()}`).replace(/:/g, "_");
@@ -234,7 +286,13 @@ export function listenForData(device, onEvent) {
       try {
         await ensureInboxDir();
         await FileSystem.writeAsStringAsync(destUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-        onEvent({ type: "file-complete", name, uri: destUri });
+        // Photos/videos also land in the phone's visible "workloading"
+        // gallery album; other file types stay in the in-app inbox only.
+        let savedToAlbum = false;
+        if (isMediaFile(incoming.mime || name)) {
+          savedToAlbum = await saveToWorkloadingAlbum(destUri);
+        }
+        onEvent({ type: "file-complete", name, uri: destUri, savedToAlbum });
       } catch (err) {
         onEvent({ type: "error", message: err?.message || "Could not save received file" });
       }

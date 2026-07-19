@@ -120,14 +120,20 @@ export default function MyRequests() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const result = await cachedGet("hiring:requests",()=>api.get("/hiring/requests").then(res=>res.data));
-      const res={data:result.data};
-      setShowingCached(result.fromCache);
-      setRequests(
-        (res?.data?.jobs || [])
-          .filter((j) => j.has_applied || j.target_provider_uuid || j.you_got_this_job)
-          .map((job) => toReq(job, language))
-      );
+      const applyRequests = (result) => {
+        setRequests(
+          (result?.data?.jobs || [])
+            .filter((j) => j.has_applied || j.target_provider_uuid || j.you_got_this_job)
+            .map((job) => toReq(job, language))
+        );
+      };
+      // Stale-while-revalidate: cached requests paint immediately, live data
+      // swaps in via onFresh when the network answers.
+      const result = await cachedGet("hiring:requests",()=>api.get("/hiring/requests").then(res=>res.data),{
+        onFresh:(fresh)=>{applyRequests(fresh);setShowingCached(false);},
+      });
+      setShowingCached(!!result.fromCache&&!result.revalidating);
+      applyRequests(result);
     } catch (e) {
       setError(getFriendlyApiError(e,language));
       setShowingCached(false);
@@ -137,9 +143,10 @@ export default function MyRequests() {
     }
   }, [language]);
 
+  // Refocusing refreshes silently — the full-screen spinner only shows
+  // before the very first data arrives.
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       load();
     }, [load])
   );

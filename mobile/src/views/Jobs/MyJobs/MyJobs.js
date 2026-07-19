@@ -50,16 +50,22 @@ export default function MyJobs({embedded=false,createJobSignal=0}){
   const [retryPayload,setRetryPayload]=useState(null);
   const lastSignal=useRef(createJobSignal);
 
+  const hasLoadedRef=useRef(false);
   const load=useCallback(async({refresh=false}={})=>{
-    if(refresh)setRefreshing(true);else setLoading(true);
+    if(refresh)setRefreshing(true);else if(!hasLoadedRef.current)setLoading(true);
     try{
       setError("");
       const session=await getUserSession();
       if(!session.isLoggedIn){setNeedsLogin(true);setJobs([]);return;}
       setNeedsLogin(false);
-      const result=await cachedGet("hiring:my-jobs",()=>viewerRequest("get","/hiring/my-jobs").then(res=>res.data));
+      // Stale-while-revalidate: cached jobs paint immediately, live data
+      // swaps in via onFresh when the network answers.
+      const result=await cachedGet("hiring:my-jobs",()=>viewerRequest("get","/hiring/my-jobs").then(res=>res.data),{
+        onFresh:(fresh)=>{if(Array.isArray(fresh?.data?.jobs)){setJobs(fresh.data.jobs);setShowingCached(false);}},
+      });
       setJobs(Array.isArray(result?.data?.jobs)?result.data.jobs:[]);
-      setShowingCached(result.fromCache);
+      setShowingCached(!!result.fromCache&&!result.revalidating);
+      hasLoadedRef.current=true;
     }catch(err){
       if([401,403].includes(err?.response?.status)){setNeedsLogin(true);setJobs([]);}
       else {setError(getFriendlyApiError(err,language));setShowingCached(false);}

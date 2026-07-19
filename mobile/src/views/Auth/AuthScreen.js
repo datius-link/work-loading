@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -18,6 +18,7 @@ import { api, getFriendlyApiError } from "../../api/api";
 import { saveUserSession } from "../../utils/userSession";
 import { useNavigation } from "@react-navigation/native";
 import { useLanguage } from "../../LanguageContext";
+import { useNetworkStatus } from "../../utils/network";
 
 // Full-screen auth (assignment: LoginActivity / Sign_up_Activity). No modal,
 // no biometrics — just the form, a server+database connectivity check before
@@ -69,32 +70,15 @@ export default function AuthScreen({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [toastMessage, setToastMessage] = useState(null); // { type, text }
-  // Assignment requirement: the Login screen checks internet + database
-  // connectivity before login. GET /health only reports "ok" once its
-  // Postgres connection is alive, so one ping covers both. Surfaced as a
-  // brief top toast (green "Connected" for 2s) rather than a permanent
-  // badge — device-offline already gets its own app-wide banner.
-  const [connStatus, setConnStatus] = useState("checking"); // checking | online | offline
+  // The login gate is DEVICE connectivity (WiFi/mobile data via NetInfo),
+  // NOT backend health: when the free-tier server is asleep or down, telling
+  // the user "no internet connection" is a lie — their phone is online. If
+  // the device is connected we let the attempt through and the API's own
+  // errors (timeout, 5xx) surface with honest messages instead.
+  const { isOffline, isConnected } = useNetworkStatus();
+  const connStatus = isConnected === null ? "checking" : isOffline ? "offline" : "online";
   const [connAnnounce, setConnAnnounce] = useState(null); // { id, type, text, persistent }
   const prevConnStatus = useRef(connStatus);
-
-  const checkConnection = useCallback(async () => {
-    setConnStatus("checking");
-    try {
-      const base = String(api?.defaults?.baseURL || "").replace(/\/api\/?$/, "");
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
-      const res = await fetch(`${base}/health`, { signal: controller.signal });
-      clearTimeout(timer);
-      setConnStatus(res.ok ? "online" : "offline");
-    } catch (_err) {
-      setConnStatus("offline");
-    }
-  }, []);
-
-  useEffect(() => {
-    checkConnection();
-  }, [checkConnection]);
 
   useEffect(() => {
     if (connStatus === "checking") return;
@@ -131,9 +115,17 @@ export default function AuthScreen({
     navigation.reset({ index: 0, routes: [{ name: "MainTabs" }] });
   };
 
+  // React Navigation v7 navigate() always pushes a new screen; this guard
+  // keeps a double-tap (or re-entry) from stacking the same screen twice.
+  const pushOnce = (name, params) => {
+    const routes = navigation.getState()?.routes || [];
+    if (routes[routes.length - 1]?.name === name) return;
+    navigation.navigate(name, params);
+  };
+
   const openForgotPassword = () => {
     const initialEmail = emailValue.includes("@") ? emailValue.toLowerCase() : "";
-    navigation.navigate("ForgotPassword", { email: initialEmail });
+    pushOnce("ForgotPassword", { email: initialEmail });
   };
 
   const requestCodePayload = () => ({
@@ -146,15 +138,14 @@ export default function AuthScreen({
 
   const handleRequestCode = async () => {
     if (!authValid || loading) return;
-    // Block the attempt while the server/database is unreachable — the
-    // assignment's "check database and internet connections before login".
+    // Only a device with no WiFi/mobile data is blocked — "you are offline"
+    // is shown exclusively when the user is actually offline.
     if (connStatus === "offline") {
       setErrorMessage(
         language === "sw"
-          ? "Hakuna muunganisho na server/database. Angalia intaneti yako kisha ujaribu tena."
-          : "No server/database connection. Check your internet and try again."
+          ? "Uko offline. Washa WiFi au data kisha ujaribu tena."
+          : "You are offline. Turn on WiFi or mobile data and try again."
       );
-      checkConnection();
       return;
     }
     try {
@@ -278,11 +269,11 @@ export default function AuthScreen({
           required to create an account. */}
       <View style={styles.consentTextWrap}>
         <Txt en="By continuing you agree to our " sw="Kwa kuendelea unakubali " style={styles.consentText} />
-        <TouchableOpacity onPress={() => navigation.navigate("Terms")}>
+        <TouchableOpacity onPress={() => pushOnce("Terms")}>
           <Txt en="Terms of Service" sw="Masharti ya Huduma" style={styles.legalLink} />
         </TouchableOpacity>
         <Txt en=" and " sw=" na " style={styles.consentText} />
-        <TouchableOpacity onPress={() => navigation.navigate("Privacy")}>
+        <TouchableOpacity onPress={() => pushOnce("Privacy")}>
           <Txt en="Privacy Policy" sw="Sera ya Faragha" style={styles.legalLink} />
         </TouchableOpacity>
         <Txt en="." sw="." style={styles.consentText} />

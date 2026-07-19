@@ -72,6 +72,13 @@
       "expo-video",
       "expo-sqlite",
       [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Work Loading to show media you received over Bluetooth.",
+          "savePhotosPermission": "Allow Work Loading to save received photos and videos into the workloading album."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",

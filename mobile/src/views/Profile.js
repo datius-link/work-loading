@@ -123,10 +123,18 @@ export default function Profile() {
       setProfileError("");
       const session = await refresh();
       const profileUuid = session?.profile?.uuid || session?.user?.uuid || profile?.uuid;
+      // Stale-while-revalidate: each cached payload paints immediately and
+      // the live response replaces it via onFresh when the network answers.
       const [postsRes, jobsRes, profileRes] = await Promise.allSettled([
-        cachedGet("posts:me", () => viewerRequest("get", "/posts/me").then((res) => res.data)),
-        cachedGet("hiring:my-jobs", () => viewerRequest("get", "/hiring/my-jobs").then((res) => res.data)),
-        profileUuid ? cachedGet(`profile:${profileUuid}`, () => api.get(`/profiles/${profileUuid}`).then((res) => res.data)) : Promise.resolve(null),
+        cachedGet("posts:me", () => viewerRequest("get", "/posts/me").then((res) => res.data), {
+          onFresh: (fresh) => { if (Array.isArray(fresh?.data?.posts)) { setPosts(fresh.data.posts); setShowingCached(false); } },
+        }),
+        cachedGet("hiring:my-jobs", () => viewerRequest("get", "/hiring/my-jobs").then((res) => res.data), {
+          onFresh: (fresh) => { if (Array.isArray(fresh?.data?.jobs)) { setJobs(fresh.data.jobs); setShowingCached(false); } },
+        }),
+        profileUuid ? cachedGet(`profile:${profileUuid}`, () => api.get(`/profiles/${profileUuid}`).then((res) => res.data), {
+          onFresh: (fresh) => { if (fresh?.data?.profile) { setProfileSummary(fresh.data.profile); setShowingCached(false); } },
+        }) : Promise.resolve(null),
       ]);
       setPosts(postsRes.status === "fulfilled" && Array.isArray(postsRes.value?.data?.posts) ? postsRes.value.data.posts : []);
       setJobs(jobsRes.status === "fulfilled" && Array.isArray(jobsRes.value?.data?.jobs) ? jobsRes.value.data.jobs : []);

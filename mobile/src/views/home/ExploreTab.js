@@ -53,6 +53,12 @@ const ExploreTab = forwardRef(function ExploreTab({ navigation, searchQuery = ""
 
   const flatListRef = useRef(null);
   const didRunInitialSearch = useRef(false);
+  // Mirrors activePostId so the background revalidate callback can tell
+  // whether the user has scrolled without being recreated on every render.
+  const activePostIdRef = useRef(null);
+  useEffect(() => {
+    activePostIdRef.current = activePostId;
+  }, [activePostId]);
 
   const POST_HEIGHT = useMemo(() => {
     if (layoutHeight > 0) return layoutHeight;
@@ -79,8 +85,26 @@ const ExploreTab = forwardRef(function ExploreTab({ navigation, searchQuery = ""
         params: { page: pageNumber, q: search?.trim() || undefined },
         headers: viewerHeaders || undefined,
       }).then((response) => response.data);
+      // Page 1 renders straight from cache (stale-while-revalidate): the
+      // cached feed shows instantly and the live response quietly swaps in —
+      // but only while the user is still at the top, so the list never
+      // reshuffles under their thumb mid-scroll.
+      const applyFresh = (fresh) => {
+        const freshPosts = search?.trim()
+          ? fresh?.data?.posts || []
+          : shufflePosts(fresh?.data?.posts || []);
+        if (!freshPosts.length) return;
+        setPosts((prev) => {
+          const stillAtTop = !activePostIdRef.current || activePostIdRef.current === prev[0]?.id;
+          if (!stillAtTop) return prev;
+          setShowingCached(false);
+          setHasMore(fresh?.data?.pagination?.hasMore !== false);
+          setActivePostId(freshPosts[0].id);
+          return freshPosts;
+        });
+      };
       const result = !append && pageNumber === 1
-        ? await cachedGet(`posts:explore:${search?.trim().toLowerCase() || "all"}`, fetcher)
+        ? await cachedGet(`posts:explore:${search?.trim().toLowerCase() || "all"}`, fetcher, { onFresh: applyFresh })
         : { data: await fetcher(), fromCache: false };
       const res = { data: result.data };
       if (!append) setShowingCached(result.fromCache);

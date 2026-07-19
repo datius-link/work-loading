@@ -31,11 +31,28 @@ export async function getCachedResponse(key) {
 }
 
 export async function cachedGet(key, fetcher, options = {}) {
-  const { allowCacheOnAnyError = false } = options;
-  try {
+  const { allowCacheOnAnyError = false, onFresh = null } = options;
+
+  const fetchAndStore = async () => {
     const data = await fetcher();
     await setCachedResponse(key, data);
     return { data, fromCache: false, cachedAt: Date.now() };
+  };
+
+  // Stale-while-revalidate: see offlineCache.native.js — cached copy is
+  // returned immediately and onFresh fires later with live data.
+  if (onFresh) {
+    const cached = await getCachedResponse(key);
+    if (cached) {
+      fetchAndStore()
+        .then((fresh) => onFresh(fresh))
+        .catch(() => {});
+      return { ...cached, fromCache: true, revalidating: true };
+    }
+  }
+
+  try {
+    return await fetchAndStore();
   } catch (error) {
     if (!allowCacheOnAnyError && !isNetworkError(error)) throw error;
     const cached = await getCachedResponse(key);

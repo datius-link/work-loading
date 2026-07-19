@@ -9,6 +9,14 @@ import { useAppTheme } from "../../theme";
 import { useLanguage } from "../../LanguageContext";
 import SettingsScreen from "./SettingsScreen";
 import * as BT from "../../utils/bluetoothService";
+import { useNavigation } from "@react-navigation/native";
+import {
+  clearActiveDevice,
+  getActiveDevice,
+  setActiveDevice,
+  subscribeActiveDevice,
+  subscribeSessionEvents,
+} from "../../utils/bluetoothSession";
 
 // Real Bluetooth Classic quick-share: discover/pair nearby devices, connect
 // over RFCOMM, and send a text message or a photo — no simulation anywhere.
@@ -21,12 +29,15 @@ export default function BluetoothShare({ onBack }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const tx = (en, sw) => (language === "sw" ? sw : en);
 
+  const navigation = useNavigation();
   const supported = BT.isSupported();
   const [enabled, setEnabled] = useState(null);
   const [paired, setPaired] = useState([]);
   const [discovered, setDiscovered] = useState([]);
   const [scanning, setScanning] = useState(false);
-  const [connectedDevice, setConnectedDevice] = useState(null);
+  // The session module owns the live connection (it survives navigating into
+  // the full share screen); this state just mirrors it for rendering.
+  const [connectedDevice, setConnectedDevice] = useState(() => getActiveDevice());
   const [connecting, setConnecting] = useState(null); // address currently connecting
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState("");
@@ -50,7 +61,36 @@ export default function BluetoothShare({ onBack }) {
       subscriptionRef.current?.remove?.();
       BT.cancelDiscovery().catch(() => {});
       BT.cancelAccept().catch(() => {});
+      // Deliberately NOT clearing the active device here — the connection
+      // must survive navigating into the full share screen.
     };
+  }, [supported]);
+
+  // Mirror the shared session: connection changes (made here or on the share
+  // screen) and incoming data both flow through bluetoothSession's single
+  // listener, so files are only written once no matter how many screens live.
+  useEffect(() => {
+    if (!supported) return undefined;
+    const unsubDevice = subscribeActiveDevice((device) => setConnectedDevice(device));
+    const unsubEvents = subscribeSessionEvents((evt) => {
+      if (evt.type === "text") {
+        pushLog({ direction: "in", kind: "text", text: evt.text });
+      } else if (evt.type === "file-start") {
+        pushLog({ direction: "in", kind: "file", name: evt.name, fraction: 0, id: `incoming-${evt.name}` });
+      } else if (evt.type === "file-progress") {
+        setLog((prev) => prev.map((e) => (e.kind === "file" && e.direction === "in" && e.name === evt.name && !e.uri ? { ...e, fraction: evt.fraction } : e)));
+      } else if (evt.type === "file-complete") {
+        setLog((prev) => prev.map((e) => (e.kind === "file" && e.direction === "in" && e.name === evt.name ? { ...e, fraction: 1, uri: evt.uri } : e)));
+        refreshInbox();
+      } else if (evt.type === "error") {
+        pushLog({ direction: "system", kind: "text", text: evt.message });
+      }
+    });
+    return () => {
+      unsubDevice();
+      unsubEvents();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supported]);
 
   // The other phone can walk out of range or turn Bluetooth off at any time —
@@ -58,12 +98,9 @@ export default function BluetoothShare({ onBack }) {
   useEffect(() => {
     if (!supported) return undefined;
     const sub = BT.onDeviceDisconnected((device) => {
-      setConnectedDevice((current) => {
-        if (!current || current.address !== device.address) return current;
-        subscriptionRef.current?.remove?.();
-        pushLog({ direction: "system", kind: "text", text: tx(`${device.name || device.address} disconnected`, `${device.name || device.address} ametengana`) });
-        return null;
-      });
+      if (getActiveDevice()?.address !== device.address) return;
+      clearActiveDevice();
+      pushLog({ direction: "system", kind: "text", text: tx(`${device.name || device.address} disconnected`, `${device.name || device.address} ametengana`) });
     });
     return () => sub.remove?.();
   }, [supported]);
@@ -102,21 +139,10 @@ export default function BluetoothShare({ onBack }) {
     setScanning(false);
   };
 
-  const attachListener = (device) => {
-    subscriptionRef.current?.remove?.();
-    subscriptionRef.current = BT.listenForData(device, (evt) => {
-      if (evt.type === "text") {
-        pushLog({ direction: "in", kind: "text", text: evt.text });
-      } else if (evt.type === "file-start") {
-        pushLog({ direction: "in", kind: "file", name: evt.name, fraction: 0, id: `incoming-${evt.name}` });
-      } else if (evt.type === "file-progress") {
-        setLog((prev) => prev.map((e) => (e.kind === "file" && e.direction === "in" && e.name === evt.name && !e.uri ? { ...e, fraction: evt.fraction } : e)));
-      } else if (evt.type === "file-complete") {
-        setLog((prev) => prev.map((e) => (e.kind === "file" && e.direction === "in" && e.name === evt.name ? { ...e, fraction: 1, uri: evt.uri } : e)));
-        refreshInbox();
-      } else if (evt.type === "error") {
-        pushLog({ direction: "system", kind: "text", text: evt.message });
-      }
+  const openShareScreen = (device) => {
+    navigation.navigate("BluetoothShareSession", {
+      name: device?.name || null,
+      address: device?.address || null,
     });
   };
 
@@ -124,9 +150,9 @@ export default function BluetoothShare({ onBack }) {
     setConnecting(device.address);
     try {
       const connected = await BT.connectToDevice(device.address);
-      setConnectedDevice(connected);
-      attachListener(connected);
+      setActiveDevice(connected);
       pushLog({ direction: "system", kind: "text", text: tx(`Connected to ${device.name || device.address}`, `Umeunganishwa na ${device.name || device.address}`) });
+      openShareScreen(connected);
     } catch (err) {
       pushLog({ direction: "system", kind: "text", text: tx(`Connection failed: ${err?.message || err}`, `Muunganisho umeshindikana: ${err?.message || err}`) });
     } finally {
@@ -147,9 +173,9 @@ export default function BluetoothShare({ onBack }) {
     setListening(true);
     try {
       const device = await BT.acceptIncomingConnection();
-      setConnectedDevice(device);
-      attachListener(device);
+      setActiveDevice(device);
       pushLog({ direction: "system", kind: "text", text: tx(`${device.name || device.address} connected to you`, `${device.name || device.address} amekuunganisha`) });
+      openShareScreen(device);
     } catch (err) {
       pushLog({ direction: "system", kind: "text", text: tx(`Listening stopped: ${err?.message || err}`, `Kusubiri kumesimama: ${err?.message || err}`) });
     } finally {
@@ -164,9 +190,8 @@ export default function BluetoothShare({ onBack }) {
 
   const disconnect = async () => {
     if (!connectedDevice) return;
-    subscriptionRef.current?.remove?.();
     await BT.disconnectDevice(connectedDevice.address).catch(() => {});
-    setConnectedDevice(null);
+    clearActiveDevice();
   };
 
   const sendMessage = async () => {
@@ -254,15 +279,18 @@ export default function BluetoothShare({ onBack }) {
       ) : null}
 
       {connectedDevice ? (
-        <View style={styles.connectedCard}>
+        <TouchableOpacity style={styles.connectedCard} onPress={() => openShareScreen(connectedDevice)} activeOpacity={0.8}>
           <View style={styles.connectedRow}>
             <AppIcon name="bluetooth" size={16} color={theme.colors.success} />
-            <Txt en={`Connected: ${connectedDevice.name || connectedDevice.address}`} sw={`Umeunganishwa: ${connectedDevice.name || connectedDevice.address}`} style={styles.connectedText} />
+            <View style={{ flex: 1 }}>
+              <Txt en={`Connected: ${connectedDevice.name || connectedDevice.address}`} sw={`Umeunganishwa: ${connectedDevice.name || connectedDevice.address}`} style={styles.connectedText} />
+              <Txt en="Tap to open the share screen" sw="Gusa kufungua skrini ya kutuma" style={styles.connectedHint} />
+            </View>
           </View>
-          <TouchableOpacity onPress={disconnect}>
+          <TouchableOpacity onPress={disconnect} hitSlop={8}>
             <Txt en="Disconnect" sw="Tenganisha" style={styles.disconnectText} />
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       ) : (
         <>
           <View style={styles.rowButtons}>
@@ -316,6 +344,12 @@ export default function BluetoothShare({ onBack }) {
           </TouchableOpacity>
         </View>
       ) : null}
+
+      <TouchableOpacity style={styles.galleryRow} onPress={() => navigation.navigate("BluetoothGallery")}>
+        <AppIcon name="image" size={16} color={theme.colors.primary} />
+        <Txt en="Bluetooth Gallery (received photos & videos)" sw="Bluetooth Gallery (picha na video zilizopokelewa)" style={styles.galleryRowText} />
+        <AppIcon name="chevron-right" size={15} color={theme.colors.textMuted} />
+      </TouchableOpacity>
 
       {inbox.length ? (
         <>
@@ -404,7 +438,10 @@ const createStyles = (theme) =>
     deviceRow: { flexDirection: "row", gap: 10, alignItems: "center", minHeight: 50, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, backgroundColor: theme.colors.surface, marginBottom: 6 },
     deviceName: { color: theme.colors.text, fontWeight: "800", fontSize: 13 },
     deviceAddress: { color: theme.colors.textMuted, fontSize: 10.5 },
-    connectedCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 46, paddingHorizontal: 12, borderRadius: 10, backgroundColor: theme.colors.successSoft, marginBottom: 12 },
+    connectedCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 54, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: theme.colors.successSoft, marginBottom: 12, gap: 10 },
+    connectedHint: { color: theme.colors.textMuted, fontSize: 10.5, marginTop: 1 },
+    galleryRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 46, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, backgroundColor: theme.colors.surface, marginTop: 12 },
+    galleryRowText: { flex: 1, color: theme.colors.text, fontWeight: "800", fontSize: 12.5 },
     connectedRow: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
     connectedText: { color: theme.colors.success, fontWeight: "800", fontSize: 12.5, flexShrink: 1 },
     disconnectText: { color: theme.colors.danger, fontWeight: "800", fontSize: 12 },

@@ -73,8 +73,11 @@ function VideoCover({ uri, styles }) {
     }
   }, [player]);
 
+  // pointerEvents must live on the wrapper View: the native VideoView eats
+  // taps itself (its own pointerEvents prop isn't forwarded on Android), which
+  // made video tiles impossible to open from profile grids.
   return (
-    <View style={styles.videoCover}>
+    <View style={styles.videoCover} pointerEvents="none">
       <VideoView
         player={player}
         style={styles.image}

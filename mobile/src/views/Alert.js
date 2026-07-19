@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   SectionList,
@@ -105,17 +105,28 @@ export default function Alerts() {
     Notifications?.setBadgeCountAsync(unreadCount).catch(() => {});
   }, [unreadCount]);
 
+  const hasLoadedRef = useRef(false);
   const loadAlerts = useCallback(async ({ refresh = false } = {}) => {
     if (refresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!hasLoadedRef.current) setLoading(true);
 
     try {
       setError("");
       setNeedsLogin(false);
-      const result = await cachedGet("notifications", () => viewerRequest("get", "/notifications").then((res) => res.data));
+      // Stale-while-revalidate: cached notifications paint immediately and
+      // the live list swaps in via onFresh when the network answers.
+      const result = await cachedGet("notifications", () => viewerRequest("get", "/notifications").then((res) => res.data), {
+        onFresh: (fresh) => {
+          if (Array.isArray(fresh?.data?.notifications)) {
+            setNotifications(fresh.data.notifications);
+            setShowingCached(false);
+          }
+        },
+      });
       const res = { data: result.data };
       setNotifications(Array.isArray(res?.data?.notifications) ? res.data.notifications : []);
-      setShowingCached(result.fromCache);
+      setShowingCached(!!result.fromCache && !result.revalidating);
+      hasLoadedRef.current = true;
     } catch (err) {
       if (err?.response?.status === 401 || err?.response?.status === 403) {
         setNeedsLogin(true);
