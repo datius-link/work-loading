@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ExploreTab from "./home/ExploreTab";
 import { useAppTheme } from "../theme";
 import { useLanguage } from "../LanguageContext";
-import { useUserSession } from "../utils/userSession";
 import AppIcon from "../icons/AppIcon";
 import EkaziLogo from "../../assets/e-kazi-logo.svg";
 
@@ -14,27 +13,14 @@ const T = {
   sw: { tagline: "Pata kazi karibu nawe", notifications: "Arifa", updates: "Taarifa Mpya" },
 };
 
-function colorParam(color) {
-  return String(color || "").replace("#", "");
-}
-
-function avatarFor(user, theme) {
-  if (user?.profile_pic) return user.profile_pic;
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    user?.full_name || user?.username || "U"
-  )}&background=${colorParam(theme.colors.primary)}&color=${colorParam(theme.colors.onPrimary)}`;
-}
-
 export default function Home() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
   const { language } = useLanguage();
-  const { profile, user, email } = useUserSession();
   const t = T[language] || T.en;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [showMenu, setShowMenu] = useState(false);
-  const displayUser = profile || user;
 
   const openMenuItem = (screen) => {
     setShowMenu(false);
@@ -73,19 +59,6 @@ export default function Home() {
             activeOpacity={0.8}
           >
             <AppIcon name="moreVertical" size={19} color={theme.colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            onPress={() => navigation.navigate("Profile")}
-            activeOpacity={0.8}
-          >
-            {email ? (
-              <Image source={{ uri: avatarFor(displayUser, theme) }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <AppIcon name="user" size={18} color={theme.colors.textMuted} />
-              </View>
-            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -168,9 +141,6 @@ const createStyles = (theme) =>
       borderWidth: 1,
       borderColor: theme.colors.border,
     },
-    avatarBtn: { marginLeft: 2 },
-    avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.primarySoft },
-    avatarPlaceholder: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.colors.border },
     menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.15)" },
     menuCard: {
       position: "absolute",

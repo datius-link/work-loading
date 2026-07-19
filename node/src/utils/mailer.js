@@ -44,6 +44,13 @@ function getTransporter(config) {
       port: config.port,
       secure: config.secure,
       auth: config.auth,
+      // A hung/misbehaving SMTP provider (e.g. Brevo unreachable or
+      // rejecting the connection silently) must fail fast — otherwise this
+      // blocks the whole request until the client's own timeout fires,
+      // which the app then reports as a generic "connection problem".
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000,
     });
     transporterKey = key;
   }
