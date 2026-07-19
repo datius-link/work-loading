@@ -7,6 +7,7 @@ import AppIcon from "../../icons/AppIcon";
 import EkaziLogo from "../../../assets/e-kazi-logo.svg";
 import { api, getFriendlyApiError } from "../../api/api";
 import { useLanguage } from "../../LanguageContext";
+import { Banner } from "../../components/Message";
 
 export default function ResetPassword({ navigation, route }) {
   const { theme } = useAppTheme();
@@ -14,7 +15,8 @@ export default function ResetPassword({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [email] = useState(route?.params?.email || "");
-  const [code, setCode] = useState("");
+  const devCode = route?.params?.devCode || "";
+  const [code, setCode] = useState(devCode);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,6 +59,16 @@ export default function ResetPassword({ navigation, route }) {
       </View>
       <View style={styles.bodyWrap}>
         <Txt en={`Code sent to ${email}`} sw={`Code imetumwa ${email}`} style={styles.body} />
+        {devCode ? (
+          <Banner
+            type="success"
+            text={
+              language === "sw"
+                ? `Email haijawekwa bado — code yako ni ${devCode} (imejazwa chini kiotomatiki).`
+                : `Email isn't set up yet — your code is ${devCode} (already filled in below).`
+            }
+          />
+        ) : null}
         <TextInput
           value={code}
           onChangeText={setCode}

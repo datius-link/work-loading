@@ -41,7 +41,7 @@ function normalizeDialCode(value) {
 }
 
 function normalizeLocalPhone(value) {
-  return String(value || "").replace(/\D/g, "").replace(/^0+/, "").slice(0, 15);
+  return String(value || "").replace(/\D/g, "").replace(/^0+/, "").slice(0, 9);
 }
 
 function toE164(dialCode, localPhone) {
@@ -122,8 +122,6 @@ export default function EditProfile() {
   const [dialCode, setDialCode] = useState("+255");
   const [localPhone, setLocalPhone] = useState("");
   const [originalPhone, setOriginalPhone] = useState("");
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
   const [skills, setSkills] = useState([]);
   const [skillDraft, setSkillDraft] = useState("");
   const [socials, setSocials] = useState(() => parseSocials([]));
@@ -154,7 +152,6 @@ export default function EditProfile() {
     setDialCode(split.dialCode);
     setLocalPhone(split.localPhone);
     setOriginalPhone(phone || "");
-    setPhoneVerified(!!phone);
     setSkills(normalizeList(profile?.services).slice(0, 8));
     setSocials(parseSocials(profile?.socials));
   }, []);
@@ -205,38 +202,6 @@ export default function EditProfile() {
     setSkillDraft("");
   };
 
-  const requestPhoneOtp = async () => {
-    if (!localPhone) {
-      setNotice({ type: "error", en: "Enter a phone number first.", sw: "Weka namba ya simu kwanza." });
-      return;
-    }
-    if (!e164Phone) {
-      setNotice({ type: "error", en: "Use a valid country code and phone number.", sw: "Tumia code ya nchi na namba sahihi." });
-      return;
-    }
-    try {
-      await viewerRequest("post", "/profiles/me/phone/request-otp", { phone_number: e164Phone });
-      setOtpCode("");
-      setNotice({ type: "otp", en: `Enter the OTP sent to ${e164Phone}.`, sw: `Weka OTP iliyotumwa ${e164Phone}.` });
-    } catch (err) {
-      setNotice({ type: "error", en: getFriendlyApiError(err, "en"), sw: getFriendlyApiError(err, "sw") });
-    }
-  };
-
-  const verifyPhoneOtp = async () => {
-    try {
-      await viewerRequest("post", "/profiles/me/phone/verify-otp", {
-        phone_number: e164Phone,
-        code: otpCode.trim(),
-      });
-      setPhoneVerified(true);
-      setOriginalPhone(e164Phone);
-      setNotice({ type: "success", en: "Phone number verified.", sw: "Namba ya simu imethibitishwa." });
-    } catch (err) {
-      setNotice({ type: "error", en: getFriendlyApiError(err, "en"), sw: getFriendlyApiError(err, "sw") });
-    }
-  };
-
   const saveProfile = async () => {
     if (saving) return;
     if (!username.trim()) {
@@ -249,10 +214,6 @@ export default function EditProfile() {
     }
     if (localPhone && !e164Phone) {
       setNotice({ type: "error", en: "Phone must be saved in valid international format.", sw: "Namba ihifadhiwe kwa mfumo sahihi wa kimataifa." });
-      return;
-    }
-    if (e164Phone && phoneChanged && !phoneVerified) {
-      setNotice({ type: "error", en: "Verify the new phone number before saving.", sw: "Thibitisha namba mpya kabla ya kuhifadhi." });
       return;
     }
 
@@ -309,6 +270,7 @@ export default function EditProfile() {
       await saveUserSession({ token: session?.token, viewer: updated, email: updated.email });
       setOriginalUsername(cleanUsername);
       setOriginalEmail(cleanEmail);
+      setOriginalPhone(e164Phone);
       setCurrentPassword("");
       setNotice({
         type: "success",
@@ -385,22 +347,12 @@ export default function EditProfile() {
 
           <SectionTitle icon="phone" en="Phone" sw="Simu" styles={styles} theme={theme} />
           <View style={styles.phoneRow}>
-            <TextInput value={dialCode} onChangeText={(text) => { setDialCode(normalizeDialCode(text)); setPhoneVerified(false); }} placeholder="+255" placeholderTextColor={theme.colors.textMuted} keyboardType="phone-pad" style={[styles.input, styles.codeInput]} />
-            <TextInput value={localPhone} onChangeText={(text) => { setLocalPhone(normalizeLocalPhone(text)); setPhoneVerified(false); }} placeholder="Phone number" placeholderTextColor={theme.colors.textMuted} keyboardType="phone-pad" style={[styles.input, styles.phoneInput]} />
+            <TextInput value={dialCode} onChangeText={(text) => setDialCode(normalizeDialCode(text))} placeholder="+255" placeholderTextColor={theme.colors.textMuted} keyboardType="phone-pad" style={[styles.input, styles.codeInput]} />
+            <TextInput value={localPhone} onChangeText={(text) => setLocalPhone(normalizeLocalPhone(text))} placeholder="Phone number" placeholderTextColor={theme.colors.textMuted} keyboardType="phone-pad" maxLength={9} style={[styles.input, styles.phoneInput]} />
           </View>
           <View style={styles.phoneMetaRow}>
             <Text style={styles.e164Text}>{e164Phone || "E.164 preview appears here"}</Text>
-            {phoneVerified && e164Phone ? (
-              <View style={styles.verifiedPill}>
-                <AppIcon name="check-circle" size={13} color={theme.colors.success || "#15803d"} />
-                <Txt en="Verified" sw="Imethibitishwa" style={styles.verifiedText} />
-              </View>
-            ) : null}
           </View>
-          <TouchableOpacity style={styles.outlineBtn} onPress={requestPhoneOtp}>
-            <AppIcon name="message" size={16} color={theme.colors.primary} />
-            <Txt en="Verify phone" sw="Thibitisha simu" style={styles.outlineBtnText} />
-          </TouchableOpacity>
 
           <SectionTitle icon="mail" en="Email" sw="Email" styles={styles} theme={theme} />
           <TextInput
@@ -457,9 +409,6 @@ export default function EditProfile() {
       <NoticeModal
         notice={notice}
         setNotice={setNotice}
-        otpCode={otpCode}
-        setOtpCode={setOtpCode}
-        verifyPhoneOtp={verifyPhoneOtp}
         currentPassword={currentPassword}
         setCurrentPassword={setCurrentPassword}
         onConfirmPassword={saveProfile}
@@ -487,7 +436,7 @@ function SectionTitle({ icon, en, sw, styles, theme }) {
   );
 }
 
-function NoticeModal({ notice, setNotice, otpCode, setOtpCode, verifyPhoneOtp, currentPassword, setCurrentPassword, onConfirmPassword, styles, theme }) {
+function NoticeModal({ notice, setNotice, currentPassword, setCurrentPassword, onConfirmPassword, styles, theme }) {
   if (!notice) return null;
   const isConfirmPassword = notice.type === "confirm-password";
   const close = () => {
@@ -497,7 +446,6 @@ function NoticeModal({ notice, setNotice, otpCode, setOtpCode, verifyPhoneOtp, c
     onClose?.();
   };
   const handlePrimaryPress = () => {
-    if (notice.type === "otp") return verifyPhoneOtp();
     if (isConfirmPassword) {
       if (!currentPassword) return;
       setNotice(null);
@@ -511,25 +459,14 @@ function NoticeModal({ notice, setNotice, otpCode, setOtpCode, verifyPhoneOtp, c
       <Pressable style={styles.modalOverlay} onPress={close}>
         <Pressable style={styles.noticeSheet}>
           <View style={styles.noticeIcon}>
-            <AppIcon name={notice.type === "error" ? "warning" : (notice.type === "otp" || isConfirmPassword) ? "shield" : "check-circle"} size={24} color={theme.colors.primary} />
+            <AppIcon name={notice.type === "error" ? "warning" : isConfirmPassword ? "shield" : "check-circle"} size={24} color={theme.colors.primary} />
           </View>
           <Txt
-            en={notice.type === "otp" ? "Phone Verification" : isConfirmPassword ? "Confirm your password" : notice.type === "error" ? "Check details" : "Saved"}
-            sw={notice.type === "otp" ? "Uthibitisho wa Simu" : isConfirmPassword ? "Thibitisha nywila yako" : notice.type === "error" ? "Kagua taarifa" : "Imehifadhiwa"}
+            en={isConfirmPassword ? "Confirm your password" : notice.type === "error" ? "Check details" : "Saved"}
+            sw={isConfirmPassword ? "Thibitisha nywila yako" : notice.type === "error" ? "Kagua taarifa" : "Imehifadhiwa"}
             style={styles.noticeTitle}
           />
           <Txt en={notice.en} sw={notice.sw} style={styles.noticeBody} />
-          {notice.type === "otp" ? (
-            <TextInput
-              value={otpCode}
-              onChangeText={(text) => setOtpCode(text.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
-              placeholderTextColor={theme.colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={6}
-              style={styles.otpInput}
-            />
-          ) : null}
           {isConfirmPassword ? (
             <TextInput
               value={currentPassword}
@@ -547,8 +484,8 @@ function NoticeModal({ notice, setNotice, otpCode, setOtpCode, verifyPhoneOtp, c
             disabled={isConfirmPassword && !currentPassword}
           >
             <Txt
-              en={notice.type === "otp" ? "Verify" : isConfirmPassword ? "Confirm" : "OK"}
-              sw={notice.type === "otp" ? "Thibitisha" : isConfirmPassword ? "Thibitisha" : "Sawa"}
+              en={isConfirmPassword ? "Confirm" : "OK"}
+              sw={isConfirmPassword ? "Thibitisha" : "Sawa"}
               style={styles.noticeBtnText}
             />
           </TouchableOpacity>
@@ -611,10 +548,6 @@ const createStyles = (theme) => StyleSheet.create({
   phoneInput: { flex: 1 },
   phoneMetaRow: { minHeight: 32, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8 },
   e164Text: { color: theme.colors.textMuted, fontSize: 12, fontWeight: "800" },
-  verifiedPill: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8, backgroundColor: theme.colors.successSoft || "#dcfce7" },
-  verifiedText: { color: theme.colors.success || "#15803d", fontSize: 12, fontWeight: "900" },
-  outlineBtn: { minHeight: 44, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8, backgroundColor: theme.colors.surface },
-  outlineBtnText: { color: theme.colors.primary, fontSize: 14, fontWeight: "900" },
   securityHint: { color: theme.colors.textMuted, fontSize: 12, marginTop: 6, lineHeight: 17 },
   skillInputRow: { flexDirection: "row", gap: 8 },
   skillInput: { flex: 1 },
@@ -630,7 +563,6 @@ const createStyles = (theme) => StyleSheet.create({
   noticeIcon: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primarySoft, marginBottom: 12 },
   noticeTitle: { color: theme.colors.text, fontSize: 18, fontWeight: "900", textAlign: "center" },
   noticeBody: { color: theme.colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: "center", marginTop: 8 },
-  otpInput: { width: "100%", minHeight: 52, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.text, textAlign: "center", fontSize: 20, fontWeight: "900", marginTop: 14, letterSpacing: 3 },
   passwordConfirmInput: { width: "100%", minHeight: 50, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.text, textAlign: "left", fontSize: 15, fontWeight: "600", paddingHorizontal: 14, marginTop: 14 },
   noticeBtn: { minWidth: 128, minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primary, marginTop: 16 },
   noticeBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: "900" },

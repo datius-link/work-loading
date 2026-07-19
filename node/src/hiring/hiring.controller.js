@@ -503,6 +503,10 @@ export async function createDirectHire(req, res) {
       return res.status(400).json({ message: "Provider, title and description are required" });
     }
 
+    if (targetProviderUuid === me.uuid) {
+      return res.status(400).json({ message: "You cannot hire yourself" });
+    }
+
     const provider = await db("profiles")
       .where({ uuid: targetProviderUuid })
       .first();

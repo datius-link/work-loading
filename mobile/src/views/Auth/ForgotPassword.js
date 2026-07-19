@@ -25,8 +25,12 @@ export default function ForgotPassword({ navigation, route }) {
     try {
       setLoading(true);
       setMessage("");
-      await api.post("/auth/password/forgot", { email: normalizedEmail });
-      navigation.navigate("ResetPassword", { email: normalizedEmail });
+      const res = await api.post("/auth/password/forgot", { email: normalizedEmail });
+      // No SMTP configured yet (see node/src/utils/mailer.js) — the server
+      // hands the code back directly in that case so the flow still works
+      // end to end. Once SMTP_* env vars are set on Render, devCode stops
+      // being sent and this branch never fires.
+      navigation.navigate("ResetPassword", { email: normalizedEmail, devCode: res?.data?.devCode || null });
     } catch (err) {
       setMessage(getFriendlyApiError(err, language));
     } finally {

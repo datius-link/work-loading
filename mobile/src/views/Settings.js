@@ -365,6 +365,7 @@ export default function Settings() {
                 onPress={async () => {
                   setShowLogout(false);
                   await clearSession();
+                  navigation.reset({ index: 0, routes: [{ name: "Login" }] });
                 }}
               >
                 <Txt en="Logout" sw="Toka" style={styles.confirmText} />

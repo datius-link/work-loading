@@ -67,7 +67,7 @@ async function issueOtp(profileUuid, purpose, reason) {
     // for "code for".
     console.log(`[DEV MOCK] ${reason} code for ${profile.email}: ${otp}`);
   }
-  return otp;
+  return { otp, delivered };
 }
 
 async function consumeOtp({ email, code, purpose, profileUuid = null }) {
@@ -258,10 +258,19 @@ export async function forgotPassword(req, res) {
 
   try {
     const profile = await db("profiles").where({ email }).first();
-    if (profile) await issueOtp(profile.uuid, "reset_password", "password reset verification");
-    else console.log(`[DEV MOCK] Password reset requested for unknown email: ${email}`);
+    // No SMTP is configured yet (see mailer.js) — rather than leave the
+    // reset flow silently unusable, hand the code back in the response so
+    // the app can show it directly. Drop this once SMTP_* env vars are set;
+    // issueOtp's "delivered" flag makes that a one-line change.
+    let devCode = null;
+    if (profile) {
+      const { otp, delivered } = await issueOtp(profile.uuid, "reset_password", "password reset verification");
+      if (!delivered) devCode = otp;
+    } else {
+      console.log(`[DEV MOCK] Password reset requested for unknown email: ${email}`);
+    }
 
-    return res.json({ success: true, message: "If this account exists, a reset code was sent" });
+    return res.json({ success: true, message: "If this account exists, a reset code was sent", devCode });
   } catch (err) {
     console.error("forgotPassword error:", err);
     return res.status(500).json({ message: "Failed to request reset code" });

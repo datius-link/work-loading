@@ -39,6 +39,7 @@ import Alerts from "./src/views/Alert";
 import Jobs from "./src/views/Jobs";
 import Profile from "./src/views/Profile";
 import Settings from "./src/views/Settings";
+import Updates from "./src/views/Updates";
 import JobDetails from "./src/views/Jobs/MyRequests/JobDetails";
 import JobApplicantDetails from "./src/views/Jobs/MyRequests/JobApplicantDetails";
 import UserProfile from "./src/views/Profile/UserProfile";
@@ -248,6 +249,7 @@ function RootNavigator() {
         {/* -------- MAIN USER -------- */}
         <Stack.Screen name="MainTabs" component={MainTabs} />
         <Stack.Screen name="Alerts" component={Alerts} />
+        <Stack.Screen name="Updates" component={Updates} />
 
         {/* -------- AUTH -------- */}
         <Stack.Screen name="Login" component={Login} />

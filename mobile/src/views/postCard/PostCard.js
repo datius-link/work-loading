@@ -33,7 +33,7 @@ import CommentsSheet from "./CommentsSheet";
 import CreateJobModal from "../Jobs/MyJobs/CreateJobModal";
 import HiringNoticeModal from "../Jobs/HiringNoticeModal";
 import { UploadManager } from "../../utils/UploadManager";
-import { getUserSession } from "../../utils/userSession";
+import { getUserSession, useUserSession } from "../../utils/userSession";
 import { useLanguage } from "../../LanguageContext";
 import { isNetworkError } from "../../utils/network";
 
@@ -144,7 +144,7 @@ function MediaItem({ item, active: isActive, muted: isMuted, onToggleMute, onLik
   );
 }
 
-function PostCaption({ caption, username, mentions, onMentionPress, onUsernamePress, styles, theme }) {
+function PostCaption({ caption, username, mentions, onMentionPress, onHashtagPress, onUsernamePress, styles, theme }) {
   const [expanded, setExpanded] = useState(false);
   const lineBreaks = (caption?.match(/\n/g) || []).length;
   const isLong = (caption?.length || 0) > CAPTION_PREVIEW || lineBreaks > 1;
@@ -162,6 +162,7 @@ function PostCaption({ caption, username, mentions, onMentionPress, onUsernamePr
         text={caption}
         mentions={mentions}
         onMentionPress={onMentionPress}
+        onHashtagPress={onHashtagPress}
         style={styles.captionInline}
         mentionStyle={styles.captionMention}
         numberOfLines={expanded ? undefined : 3}
@@ -195,6 +196,8 @@ function PostCard({
   const { theme: liveTheme } = useAppTheme();
   const { language } = useLanguage();
   const styles = useMemo(() => createStyles(liveTheme), [liveTheme]);
+  const { profile: viewerProfile, user: viewerUser } = useUserSession();
+  const viewerProfileUuid = viewerProfile?.uuid || viewerUser?.uuid || null;
 
   const media = useMemo(() => normalizePostMedia(post), [post]);
 
@@ -226,6 +229,7 @@ function PostCard({
   const displayUsername = post?.username || post?.full_name || "user";
   const providerUuid = post?.profile_uuid || post?.uuid || post?.provider_uuid || post?.provider_id;
   const socialAuthActor = preferredAuthActor || (showHireButton ? "viewer" : "provider");
+  const isOwnPost = !!viewerProfileUuid && !!providerUuid && viewerProfileUuid === providerUuid;
 
   // ------------------------------------------------------------
   // Effects and handlers
@@ -315,7 +319,7 @@ function PostCard({
   };
 
   const handleFollow = async () => {
-    if (followSubmitting || !providerUuid) return;
+    if (followSubmitting || !providerUuid || isOwnPost) return;
     setFollowSubmitting(true);
     try {
       const res = await socialRequest("post", `/posts/follow/${providerUuid}`, undefined, {
@@ -353,6 +357,10 @@ function PostCard({
   const openHireModal = async () => {
     if (!providerUuid) {
       setHireNotice({ type: "error", title: "Provider missing", body: "This post is missing provider information." });
+      return;
+    }
+    if (isOwnPost) {
+      setHireNotice({ type: "error", title: "That's your post", body: "You can't hire yourself." });
       return;
     }
 
@@ -413,6 +421,10 @@ function PostCard({
     } catch {
       // ignore
     }
+  };
+
+  const handleHashtagPress = (value) => {
+    navigation?.navigate("SearchResults", { query: `#${value}` });
   };
 
   const renderMediaItem = ({ item, index }) => (
@@ -508,7 +520,7 @@ function PostCard({
             <Text style={styles.actionCount}>{commentsCount}</Text>
           </View>
 
-          {showFollowButton ? (
+          {showFollowButton && !isOwnPost ? (
             <TouchableOpacity
               style={[styles.followBtn, following && styles.followingBtn]}
               onPress={handleFollow}
@@ -522,7 +534,7 @@ function PostCard({
             <View style={styles.actionSpacer} />
           )}
 
-            {showHireButton ? (
+            {showHireButton && !isOwnPost ? (
               <TouchableOpacity style={styles.hireBtn} onPress={openHireModal}>
                 <Text style={styles.hireBtnText}>Hire Me</Text>
               </TouchableOpacity>
@@ -534,6 +546,7 @@ function PostCard({
           username={displayUsername}
           mentions={captionMentions}
           onMentionPress={handleMentionPress}
+          onHashtagPress={handleHashtagPress}
           onUsernamePress={() => openUserProfile(providerUuid)}
           styles={styles}
           theme={liveTheme}
