@@ -104,10 +104,17 @@ const ExploreTab = forwardRef(function ExploreTab({ navigation, searchQuery = ""
         });
       };
       const result = !append && pageNumber === 1
-        ? await cachedGet(`posts:explore:${search?.trim().toLowerCase() || "all"}`, fetcher, { onFresh: applyFresh })
+        ? await cachedGet(`posts:explore:${search?.trim().toLowerCase() || "all"}`, fetcher, {
+            onFresh: applyFresh,
+            // Only when the background refresh actually fails is the feed
+            // genuinely stale — that's the moment to say so.
+            onFreshError: () => setShowingCached(true),
+          })
         : { data: await fetcher(), fromCache: false };
       const res = { data: result.data };
-      if (!append) setShowingCached(result.fromCache);
+      // While revalidating, live data is seconds away — flashing the
+      // "showing saved data" notice on every open just cried wolf.
+      if (!append) setShowingCached(!!result.fromCache && !result.revalidating);
 
       const fetchedPosts = search?.trim()
         ? res?.data?.posts || []

@@ -31,7 +31,7 @@ export async function getCachedResponse(key) {
 }
 
 export async function cachedGet(key, fetcher, options = {}) {
-  const { allowCacheOnAnyError = false, onFresh = null } = options;
+  const { allowCacheOnAnyError = false, onFresh = null, onFreshError = null } = options;
 
   const fetchAndStore = async () => {
     const data = await fetcher();
@@ -40,13 +40,18 @@ export async function cachedGet(key, fetcher, options = {}) {
   };
 
   // Stale-while-revalidate: see offlineCache.native.js — cached copy is
-  // returned immediately and onFresh fires later with live data.
+  // returned immediately, onFresh fires later with live data, and
+  // onFreshError fires if the background refresh fails.
   if (onFresh) {
     const cached = await getCachedResponse(key);
     if (cached) {
       fetchAndStore()
         .then((fresh) => onFresh(fresh))
-        .catch(() => {});
+        .catch((error) => {
+          try {
+            onFreshError?.(error);
+          } catch {}
+        });
       return { ...cached, fromCache: true, revalidating: true };
     }
   }

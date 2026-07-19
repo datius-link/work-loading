@@ -258,19 +258,21 @@ export async function forgotPassword(req, res) {
 
   try {
     const profile = await db("profiles").where({ email }).first();
-    // No SMTP is configured yet (see mailer.js) — rather than leave the
-    // reset flow silently unusable, hand the code back in the response so
-    // the app can show it directly. Drop this once SMTP_* env vars are set;
-    // issueOtp's "delivered" flag makes that a one-line change.
-    let devCode = null;
-    if (profile) {
-      const { otp, delivered } = await issueOtp(profile.uuid, "reset_password", "password reset verification");
-      if (!delivered) devCode = otp;
-    } else {
-      console.log(`[DEV MOCK] Password reset requested for unknown email: ${email}`);
+    // Unregistered emails get a clear 404 instead of a pretend "code sent" —
+    // the app was navigating everyone to the reset screen and users assumed
+    // an email went out. (Trade-off: this lets a caller probe which emails
+    // have accounts; product chose honesty over enumeration resistance here.)
+    if (!profile) {
+      return res.status(404).json({ message: "No account is registered with this email" });
     }
 
-    return res.json({ success: true, message: "If this account exists, a reset code was sent", devCode });
+    // When email delivery is not configured the code is handed back in the
+    // response so the flow still works end to end; once delivery works,
+    // devCode stays null and is never exposed.
+    const { otp, delivered } = await issueOtp(profile.uuid, "reset_password", "password reset verification");
+    const devCode = delivered ? null : otp;
+
+    return res.json({ success: true, message: "A reset code was sent to your email", devCode });
   } catch (err) {
     console.error("forgotPassword error:", err);
     return res.status(500).json({ message: "Failed to request reset code" });

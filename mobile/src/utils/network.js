@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import NetInfo from "@react-native-community/netinfo";
 
 export const NETWORK_MESSAGES = {
@@ -18,34 +18,53 @@ export function isNetworkError(error) {
   return ["ECONNABORTED", "ERR_NETWORK", "ETIMEDOUT", "ENETUNREACH"].includes(code);
 }
 
+// How long isInternetReachable must stay `false` (while the radio says we
+// ARE connected) before we believe it. NetInfo's reachability probe reports
+// `false` while it is still in flight and on slow links routinely flips
+// false→true a moment later — announcing "offline" during that window is
+// what showed "No internet connection" to users sitting on working WiFi.
+const REACHABILITY_GRACE_MS = 4000;
+
 export function useNetworkStatus() {
   const [state, setState] = useState({
     isConnected: null,
     isInternetReachable: null,
   });
+  const [isOffline, setIsOffline] = useState(false);
+  const graceTimer = useRef(null);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((next) => {
+    const apply = (next) =>
       setState({
         isConnected: next.isConnected,
         isInternetReachable: next.isInternetReachable,
       });
-    });
-    NetInfo.fetch().then((next) => {
-      setState({
-        isConnected: next.isConnected,
-        isInternetReachable: next.isInternetReachable,
-      });
-    }).catch(() => {});
+    const unsubscribe = NetInfo.addEventListener(apply);
+    NetInfo.fetch().then(apply).catch(() => {});
     return unsubscribe;
   }, []);
 
-  return useMemo(() => {
-    const isOffline = state.isConnected === false || state.isInternetReachable === false;
-    return {
-      ...state,
-      isOffline,
-      networkErrorMessage,
-    };
-  }, [state]);
+  useEffect(() => {
+    clearTimeout(graceTimer.current);
+    // No radio at all (airplane mode, WiFi off) — offline immediately.
+    if (state.isConnected === false) {
+      setIsOffline(true);
+      return undefined;
+    }
+    // Connected but the reachability probe says no internet: wait out the
+    // grace period before trusting it (captive portals stay flagged, probe
+    // false-negatives don't).
+    if (state.isConnected === true && state.isInternetReachable === false) {
+      graceTimer.current = setTimeout(() => setIsOffline(true), REACHABILITY_GRACE_MS);
+      return () => clearTimeout(graceTimer.current);
+    }
+    setIsOffline(false);
+    return undefined;
+  }, [state.isConnected, state.isInternetReachable]);
+
+  return useMemo(() => ({
+    ...state,
+    isOffline,
+    networkErrorMessage,
+  }), [state, isOffline]);
 }

@@ -240,12 +240,29 @@ function PostCard({
     setCommentsCount(Number(post?.comments_count) || 0);
     setFollowing(!!post?.is_following);
   }, [post?.id, post?.is_liked, post?.likes_count, post?.comments_count, post?.is_following]);
+  // Convex's `latest` returns the most recent event EVER published on the
+  // channel — events are never deleted, so the first snapshot after
+  // subscribing is history, not news. Applying it overwrote the accurate
+  // server-side count with a stale one (worst case: a brand-new post whose
+  // id was reused after a DB reset inherited the old post's like count).
+  // Remember the first snapshot per post and only react to events that
+  // arrive after it.
+  const initialSignalId = useRef(undefined);
   useEffect(() => {
+    initialSignalId.current = undefined;
+  }, [post?.id]);
+  useEffect(() => {
+    if (postSignal === undefined) return; // query still loading
+    if (initialSignalId.current === undefined) {
+      initialSignalId.current = postSignal?._id || null;
+      return; // historical snapshot — server count already reflects it
+    }
+    if (postSignal?._id === initialSignalId.current) return;
     if (postSignal?.event === "likes_changed" && Number.isFinite(postSignal?.count)) {
       setLikesCount(postSignal.count);
       onPostStateChange?.(post.id, { likes_count: postSignal.count });
     }
-  }, [postSignal?._id, postSignal?.count, postSignal?.event, post?.id, onPostStateChange]);
+  }, [postSignal, post?.id, onPostStateChange]);
 
   useEffect(() => {
     if (active) {

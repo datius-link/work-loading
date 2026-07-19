@@ -228,7 +228,11 @@ export default function BrowseJobs() {
       // swaps in via onFresh when the network answers.
       const result = await cachedGet(cacheKey, () =>
         api.get("/hiring/requests", { params: { q: search.trim() || undefined, scope: "browse" } }).then((res) => res.data),
-        { onFresh: (fresh) => { applyJobs(fresh); setShowingCached(false); } }
+        {
+          onFresh: (fresh) => { applyJobs(fresh); setShowingCached(false); },
+          // Background refresh failed — the cached jobs really are stale now.
+          onFreshError: () => setShowingCached(true),
+        }
       );
       setShowingCached(!!result.fromCache && !result.revalidating);
       applyJobs(result);
@@ -277,6 +281,9 @@ export default function BrowseJobs() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        // Without flexGrow: 0 this horizontal ScrollView stretches to fill
+        // the column, shoving the job list halfway down the screen.
+        style={s.filterScroll}
         contentContainerStyle={s.filterRow}
       >
         {FILTERS.map((key) => {
@@ -377,6 +384,7 @@ const createStyles = (theme) =>
 
     // Quick filter chips — compact, horizontal scroll, not the wide pills
     // used elsewhere.
+    filterScroll: { flexGrow: 0 },
     filterRow: {
       flexDirection: "row",
       gap: 8,

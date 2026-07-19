@@ -290,8 +290,13 @@ export default function AuthScreen({
     </>
   );
 
+  // Android already resizes the window for the keyboard (app.json sets
+  // softwareKeyboardLayoutMode: "resize"); stacking KeyboardAvoidingView's
+  // "height" behavior on top of that double-shrinks the view and exposes a
+  // white strip of bare window under the themed background. Only iOS needs
+  // the manual "padding" adjustment.
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.screenRoot}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screenRoot}>
       <ScrollView contentContainerStyle={styles.screenScroll} keyboardShouldPersistTaps="handled">
         <View style={styles.screenHeader}>
           <EkaziLogo width={36} height={36} />

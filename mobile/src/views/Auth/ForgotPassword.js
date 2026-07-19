@@ -26,13 +26,21 @@ export default function ForgotPassword({ navigation, route }) {
       setLoading(true);
       setMessage("");
       const res = await api.post("/auth/password/forgot", { email: normalizedEmail });
-      // No SMTP configured yet (see node/src/utils/mailer.js) — the server
-      // hands the code back directly in that case so the flow still works
-      // end to end. Once SMTP_* env vars are set on Render, devCode stops
-      // being sent and this branch never fires.
+      // devCode is only present while email delivery is unconfigured on the
+      // server — it lets the reset flow work end to end without an inbox.
       navigation.navigate("ResetPassword", { email: normalizedEmail, devCode: res?.data?.devCode || null });
     } catch (err) {
-      setMessage(getFriendlyApiError(err, language));
+      // The server answers 404 for emails with no account (instead of the
+      // old pretend-success) — show that in the user's language.
+      if (err?.response?.status === 404) {
+        setMessage(
+          language === "sw"
+            ? "Hakuna akaunti iliyosajiliwa na email hii."
+            : "No account is registered with this email."
+        );
+      } else {
+        setMessage(getFriendlyApiError(err, language));
+      }
     } finally {
       setLoading(false);
     }

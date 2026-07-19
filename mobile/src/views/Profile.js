@@ -125,21 +125,32 @@ export default function Profile() {
       const profileUuid = session?.profile?.uuid || session?.user?.uuid || profile?.uuid;
       // Stale-while-revalidate: each cached payload paints immediately and
       // the live response replaces it via onFresh when the network answers.
+      // The notice only appears once a background refresh actually fails —
+      // during normal revalidation the live data is seconds away and the
+      // "saved data" warning was flashing on every single open.
+      const staleNotice = () => setShowingCached(true);
       const [postsRes, jobsRes, profileRes] = await Promise.allSettled([
         cachedGet("posts:me", () => viewerRequest("get", "/posts/me").then((res) => res.data), {
-          onFresh: (fresh) => { if (Array.isArray(fresh?.data?.posts)) { setPosts(fresh.data.posts); setShowingCached(false); } },
+          onFresh: (fresh) => { if (Array.isArray(fresh?.data?.posts)) { setPosts(fresh.data.posts); } },
+          onFreshError: staleNotice,
         }),
         cachedGet("hiring:my-jobs", () => viewerRequest("get", "/hiring/my-jobs").then((res) => res.data), {
-          onFresh: (fresh) => { if (Array.isArray(fresh?.data?.jobs)) { setJobs(fresh.data.jobs); setShowingCached(false); } },
+          onFresh: (fresh) => { if (Array.isArray(fresh?.data?.jobs)) { setJobs(fresh.data.jobs); } },
+          onFreshError: staleNotice,
         }),
         profileUuid ? cachedGet(`profile:${profileUuid}`, () => api.get(`/profiles/${profileUuid}`).then((res) => res.data), {
-          onFresh: (fresh) => { if (fresh?.data?.profile) { setProfileSummary(fresh.data.profile); setShowingCached(false); } },
+          onFresh: (fresh) => { if (fresh?.data?.profile) { setProfileSummary(fresh.data.profile); } },
+          onFreshError: staleNotice,
         }) : Promise.resolve(null),
       ]);
       setPosts(postsRes.status === "fulfilled" && Array.isArray(postsRes.value?.data?.posts) ? postsRes.value.data.posts : []);
       setJobs(jobsRes.status === "fulfilled" && Array.isArray(jobsRes.value?.data?.jobs) ? jobsRes.value.data.jobs : []);
       setProfileSummary(profileRes.status === "fulfilled" ? profileRes.value?.data?.profile || null : null);
-      setShowingCached((postsRes.status === "fulfilled" && postsRes.value.fromCache) || (jobsRes.status === "fulfilled" && jobsRes.value.fromCache) || (profileRes.status === "fulfilled" && profileRes.value?.fromCache));
+      setShowingCached(
+        (postsRes.status === "fulfilled" && postsRes.value.fromCache && !postsRes.value.revalidating) ||
+        (jobsRes.status === "fulfilled" && jobsRes.value.fromCache && !jobsRes.value.revalidating) ||
+        (profileRes.status === "fulfilled" && !!profileRes.value?.fromCache && !profileRes.value?.revalidating)
+      );
       if (postsRes.status === "rejected" && jobsRes.status === "rejected") setProfileError(getFriendlyApiError(postsRes.reason || jobsRes.reason, language));
     } catch (err) {
       setProfileError(getFriendlyApiError(err, language));
