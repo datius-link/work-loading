@@ -104,28 +104,40 @@ app.use((err, _req, res, _next) => {
 
 const PORT = process.env.PORT || 5000;
 
-async function startServer() {
-  try {
-    await db.raw("SELECT 1");
-
-    console.log("✅ PostgreSQL Connected");
-
-    await db.migrate.latest();
-
-    console.log("✅ Migrations up to date");
-
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-
-      console.log(`📚 Swagger Docs: http://localhost:${PORT}/api-docs`);
-
-      console.log(`❤️ Health Check: http://localhost:${PORT}/health`);
-    });
-  } catch (err) {
-    console.error("❌ Failed to start server");
-
-    console.error(err);
+// Render's "Application exited early" failures came from here: on a cold
+// boot both free tiers wake together, and when Neon wasn't up yet the old
+// flow logged "Failed to start server", returned, the event loop drained,
+// and the process exited. Listen FIRST (so /health answers 503 while the DB
+// wakes) and keep retrying the DB connection + migrations in the background.
+async function connectDatabaseWithRetry() {
+  const RETRY_MS = 5000;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await db.raw("SELECT 1");
+      console.log("✅ PostgreSQL Connected");
+      await db.migrate.latest();
+      console.log("✅ Migrations up to date");
+      return;
+    } catch (err) {
+      console.error(`❌ Database not ready (attempt ${attempt}): ${err.message} — retrying in ${RETRY_MS / 1000}s`);
+      await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
+    }
   }
 }
 
-startServer();
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📚 Swagger Docs: http://localhost:${PORT}/api-docs`);
+  console.log(`❤️ Health Check: http://localhost:${PORT}/health`);
+});
+
+connectDatabaseWithRetry();
+
+// A stray rejected promise (e.g. a mail/push call failing outside its
+// try/catch) must not take the whole API down — log it and stay up.
+process.on("unhandledRejection", (err) => {
+  console.error("🔥 Unhandled rejection:", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("🔥 Uncaught exception:", err);
+});
