@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import AppIcon from "../../icons/AppIcon";
 import Txt from "../../Txt";
 import { useAppTheme } from "../../theme";
 import { viewerRequest } from "../../api/api";
+import { UploadManager } from "../../utils/UploadManager";
 import { useLanguage } from "../../LanguageContext";
 
 const FEEDBACK_CATEGORIES = [
@@ -25,24 +27,55 @@ const PROBLEM_TYPES = [
   ["Other", "Nyingine"],
 ];
 
-export default function SupportActionSheet({ visible, onClose }) {
+export default function SupportActionSheet({ visible, onClose, initialAction = null }) {
   const { theme } = useAppTheme();
   const { language } = useLanguage();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const [action, setAction] = useState(null);
+  const [action, setAction] = useState(initialAction);
   const [selectionOpen, setSelectionOpen] = useState(false);
   const [category, setCategory] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [attachment, setAttachment] = useState(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
   const reset = () => {
-    setAction(null);
+    setAction(initialAction);
     setSelectionOpen(false);
     setCategory("");
     setMessage("");
     setSending(false);
     setNotice(null);
+    setAttachment(null);
+    setUploadingAttachment(false);
+  };
+
+  const pickAttachment = async () => {
+    if (uploadingAttachment) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setNotice("attachment-permission");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    setUploadingAttachment(true);
+    try {
+      const [uploaded] = await UploadManager.startUpload(
+        [{ uri: asset.uri, type: "image", mimeType: asset.mimeType, fileName: asset.fileName }],
+        "support"
+      );
+      setAttachment(uploaded);
+    } catch (err) {
+      setNotice("attachment-error");
+    } finally {
+      setUploadingAttachment(false);
+    }
   };
 
   const close = () => {
@@ -57,16 +90,18 @@ export default function SupportActionSheet({ visible, onClose }) {
     try {
       setSending(true);
       const endpoint = action === "feedback" ? "/support/feedback" : "/support/reports";
+      const attachments = attachment ? [{ url: attachment.url, type: attachment.type || "image" }] : [];
       await viewerRequest("post", endpoint, action === "feedback"
         ? { category, message: message.trim(), type: "feedback" }
-        : { problem_type: category, description: message.trim(), type: "report_problem" });
+        : { problem_type: category, description: message.trim(), type: "report_problem", attachments });
       // Close the sheet itself once it's sent instead of leaving the form
       // sitting open behind the success notice — the notice is a separate
       // Modal, so it still shows on top even though the sheet below it closes.
       setNotice("success");
-      setAction(null);
+      setAction(initialAction);
       setCategory("");
       setMessage("");
+      setAttachment(null);
       onClose?.();
     } catch (err) {
       setNotice(err?.response?.status === 401 ? "login" : "error");
@@ -83,8 +118,8 @@ export default function SupportActionSheet({ visible, onClose }) {
           <View style={styles.handle} />
           <View style={styles.header}>
             <Txt
-              en={action === "feedback" ? "Send Feedback" : action === "report" ? "Tell us what happened" : "Support Actions"}
-              sw={action === "feedback" ? "Tuma Maoni" : action === "report" ? "Tuambie kilichotokea" : "Hatua za Msaada"}
+              en={action === "feedback" ? "Send Feedback" : action === "report" ? "Complaints" : "Support Actions"}
+              sw={action === "feedback" ? "Tuma Maoni" : action === "report" ? "Malalamiko" : "Hatua za Msaada"}
               style={styles.title}
             />
             <TouchableOpacity onPress={close} hitSlop={8}>
@@ -139,10 +174,28 @@ export default function SupportActionSheet({ visible, onClose }) {
                 style={styles.input}
               />
               {action === "report" ? (
-                <TouchableOpacity style={styles.attachment} onPress={() => setNotice("attachment")}>
-                  <AppIcon name="upload" size={16} color={theme.colors.textMuted} />
-                  <Txt en="Add attachment (coming later)" sw="Ongeza attachment (itakuja baadaye)" style={styles.attachmentText} />
-                </TouchableOpacity>
+                attachment ? (
+                  <View style={styles.attachmentPreview}>
+                    <Image source={{ uri: attachment.url }} style={styles.attachmentThumb} />
+                    <Txt en="Attachment added" sw="Attachment imeongezwa" style={[styles.attachmentText, { flex: 1 }]} />
+                    <TouchableOpacity onPress={() => setAttachment(null)} hitSlop={8}>
+                      <AppIcon name="close" size={14} color={theme.colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.attachment} onPress={pickAttachment} disabled={uploadingAttachment}>
+                    {uploadingAttachment ? (
+                      <ActivityIndicator size="small" color={theme.colors.textMuted} />
+                    ) : (
+                      <AppIcon name="upload" size={16} color={theme.colors.textMuted} />
+                    )}
+                    <Txt
+                      en={uploadingAttachment ? "Uploading…" : "Add attachment"}
+                      sw={uploadingAttachment ? "Inapakia…" : "Ongeza attachment"}
+                      style={styles.attachmentText}
+                    />
+                  </TouchableOpacity>
+                )
               ) : null}
               <TouchableOpacity
                 onPress={submit}
@@ -151,9 +204,11 @@ export default function SupportActionSheet({ visible, onClose }) {
               >
                 {sending ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Txt en="Send" sw="Tuma" style={styles.sendText} />}
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setAction(null)} style={styles.back}>
-                <Txt en="Back to support actions" sw="Rudi kwenye hatua za msaada" style={styles.backText} />
-              </TouchableOpacity>
+              {!initialAction ? (
+                <TouchableOpacity onPress={() => setAction(null)} style={styles.back}>
+                  <Txt en="Back to support actions" sw="Rudi kwenye hatua za msaada" style={styles.backText} />
+                </TouchableOpacity>
+              ) : null}
             </ScrollView>
           )}
         </View>
@@ -163,8 +218,20 @@ export default function SupportActionSheet({ visible, onClose }) {
         <View style={styles.noticeOverlay}>
           <View style={styles.notice}>
             <Txt
-              en={notice === "success" ? "Sent successfully" : notice === "login" ? "Please login first" : notice === "attachment" ? "Attachments are not enabled yet" : "Could not send"}
-              sw={notice === "success" ? "Imetumwa vizuri" : notice === "login" ? "Tafadhali ingia kwanza" : notice === "attachment" ? "Attachments bado hazijawashwa" : "Haikuweza kutumwa"}
+              en={
+                notice === "success" ? "Sent successfully"
+                : notice === "login" ? "Please login first"
+                : notice === "attachment-permission" ? "Photo library access is needed to add an attachment"
+                : notice === "attachment-error" ? "Could not upload the attachment"
+                : "Could not send"
+              }
+              sw={
+                notice === "success" ? "Imetumwa vizuri"
+                : notice === "login" ? "Tafadhali ingia kwanza"
+                : notice === "attachment-permission" ? "Ruhusa ya picha inahitajika kuongeza attachment"
+                : notice === "attachment-error" ? "Imeshindikana kupakia attachment"
+                : "Haikuweza kutumwa"
+              }
               style={styles.noticeTitle}
             />
             <TouchableOpacity style={styles.noticeButton} onPress={() => setNotice(null)}>
@@ -210,6 +277,8 @@ const createStyles = (theme) =>
     input: { minHeight: 112, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, padding: 12, color: theme.colors.text, backgroundColor: theme.colors.surfaceSoft, fontSize: 13 },
     attachment: { minHeight: 42, marginTop: 8, borderWidth: 1, borderStyle: "dashed", borderColor: theme.colors.border, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
     attachmentText: { color: theme.colors.textMuted, fontSize: 11.5, fontWeight: "700" },
+    attachmentPreview: { minHeight: 42, marginTop: 8, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8 },
+    attachmentThumb: { width: 30, height: 30, borderRadius: 6, backgroundColor: theme.colors.surfaceSoft },
     send: { minHeight: 46, marginTop: 12, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.primary },
     disabled: { opacity: 0.45 },
     sendText: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: "900" },

@@ -157,7 +157,7 @@ export default function Settings() {
     { icon: "help", en: "Help", sw: "Msaada", terms: "help faq support msaada", action: () => setActiveScreen("help") },
     { icon: "mail", en: "Contact us", sw: "Wasiliana nasi", terms: "contact us support wasiliana msaada", action: () => openProtected("contact") },
     { icon: "message", en: "Send Feedback", sw: "Tuma Maoni", terms: "feedback suggestion bug maoni pendekezo", action: () => openProtected("feedback") },
-    { icon: "more-horizontal", en: "Support Actions", sw: "Hatua za Msaada", terms: "feedback report problem support maoni ripoti", action: () => email ? setShowSupportActions(true) : navigation.navigate("Login", { onSuccess: async () => { await refresh(); } }) },
+    { icon: "warning", en: "Complaints", sw: "Malalamiko", terms: "complaint problem scam fraud harassment fake malalamiko tatizo utapeli unyanyasaji", action: () => email ? setShowSupportActions(true) : navigation.navigate("Login", { onSuccess: async () => { await refresh(); } }) },
     { icon: "file-text", en: "Privacy Policy", sw: "Sera ya Faragha", terms: "legal privacy policy sheria sera faragha", action: () => setActiveScreen("privacyPolicy") },
     { icon: "logo", en: "About Work Loading", sw: "Kuhusu Work Loading", terms: "about version kuhusu toleo", action: () => setActiveScreen("about") },
     { icon: "bluetooth", en: "Bluetooth Share", sw: "Bluetooth Share", terms: "bluetooth share quick share nearby", action: () => setActiveScreen("bluetooth") },
@@ -320,7 +320,7 @@ export default function Settings() {
           </>
         ) : null}
 
-        {visible("support help contact us feedback report problem msaada maoni ripoti") ? (
+        {visible("support help contact us feedback complaint problem msaada maoni malalamiko") ? (
           <>
             <Section en="Support" sw="Msaada" styles={styles} />
             <View style={styles.panel}>
@@ -330,7 +330,7 @@ export default function Settings() {
               <Divider styles={styles} />
               <SettingRow icon="message" en="Send Feedback" sw="Tuma Maoni" bodyEn="Share suggestions or bugs about the app." bodySw="Toa mapendekezo au hitilafu za app." onPress={() => openProtected("feedback")} styles={styles} theme={theme} />
               <Divider styles={styles} />
-              <SettingRow icon="more-horizontal" en="Support Actions" sw="Hatua za Msaada" bodyEn="Send feedback or report a problem." bodySw="Tuma maoni au ripoti tatizo." onPress={() => email ? setShowSupportActions(true) : navigation.navigate("Login", { onSuccess: async () => { await refresh(); } })} styles={styles} theme={theme} />
+              <SettingRow icon="warning" en="Complaints" sw="Malalamiko" bodyEn="Report a scam, fake job, harassment, or other problem." bodySw="Ripoti utapeli, kazi bandia, unyanyasaji au tatizo lingine." onPress={() => email ? setShowSupportActions(true) : navigation.navigate("Login", { onSuccess: async () => { await refresh(); } })} styles={styles} theme={theme} />
             </View>
           </>
         ) : null}
@@ -366,7 +366,7 @@ export default function Settings() {
         ) : null}
       </ScrollView>
 
-      <SupportActionSheet visible={showSupportActions} onClose={() => setShowSupportActions(false)} />
+      <SupportActionSheet visible={showSupportActions} onClose={() => setShowSupportActions(false)} initialAction="report" />
       <Modal visible={showLogout} transparent animationType="fade" onRequestClose={() => setShowLogout(false)}>
         <View style={styles.overlay}>
           <View style={styles.sheet}>

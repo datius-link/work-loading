@@ -51,7 +51,7 @@ export async function setupCallKeep() {
         // CallOverlay) rather than enrolling as a system phone account.
         selfManaged: true,
         foregroundService: {
-          channelId: "com.dmcaltd.ekazi.calls",
+          channelId: "com.dmcaltd.workloading.calls",
           channelName: "Work Loading calls",
           notificationTitle: "Work Loading call in progress",
         },

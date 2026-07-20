@@ -8,6 +8,12 @@ async function createSupportRequest(req, res, type) {
     const subject = cleanText(req.body?.subject, 160);
     const category = cleanText(req.body?.category || req.body?.problem_type, 80);
     const message = cleanText(req.body?.message || req.body?.description, 5000);
+    const attachments = Array.isArray(req.body?.attachments)
+      ? req.body.attachments
+          .filter((a) => a && typeof a.url === "string" && a.url.trim())
+          .slice(0, 5)
+          .map((a) => ({ url: a.url.trim(), type: cleanText(a.type, 20) || "image" }))
+      : [];
 
     if (!profileUuid) return res.status(401).json({ message: "Authorization required" });
     if (!message) return res.status(400).json({ message: "Message or description is required" });
@@ -25,7 +31,7 @@ async function createSupportRequest(req, res, type) {
         category: category || null,
         subject: subject || null,
         message,
-        metadata: db.raw("?::jsonb", [JSON.stringify({ source: "mobile_settings" })]),
+        metadata: db.raw("?::jsonb", [JSON.stringify({ source: "mobile_settings", attachments })]),
       })
       .returning(["id", "type", "status", "created_at"]);
 

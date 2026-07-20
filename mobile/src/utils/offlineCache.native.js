@@ -20,6 +20,20 @@ async function database() {
   return databasePromise;
 }
 
+// Wipes every cached response. Cache keys like "posts:me" and
+// "hiring:my-jobs" aren't scoped per-account, so without this a second
+// account signing in on the same device would paint the first account's
+// cached feed/jobs instantly on open, before the real fetch corrects it —
+// called from clearUserSession() on every logout for exactly that reason.
+export async function clearOfflineCache() {
+  try {
+    const db = await database();
+    await db.execAsync("DELETE FROM cached_responses");
+  } catch (error) {
+    console.log("offline cache clear error:", error?.message);
+  }
+}
+
 export async function initOfflineCache() {
   try {
     await database();

@@ -32,7 +32,13 @@ function mediaUrls(media) {
 function applicationToRequest(application, job) {
   return {
     id: application.id,
-    status: job.status === "filled" || job.status === "closed" ? "closed" : "open",
+    // Same "open"/"applied" allowlist the server uses to gate assigning a
+    // provider (hiring.controller.js ACTIVE_STATUSES). Job status becomes
+    // "active" the moment ANY applicant is hired — checking for a literal
+    // "filled" (never actually set) left this "open" for every OTHER
+    // applicant, so the client's "Hire This Provider" button stayed live
+    // for them even after the job was already filled by someone else.
+    status: ["open", "applied"].includes(String(job.status || "").toLowerCase()) ? "open" : "closed",
     provider: {
       uuid: application.uuid,
       username: application.username,
@@ -56,6 +62,7 @@ function applicationToRequest(application, job) {
       category: job.service_type,
       postedAt: job.created_at,
       deadline: job.tender_closes_at,
+      assigned_provider_uuid: job.assigned_provider_uuid,
     },
   };
 }

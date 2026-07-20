@@ -6,7 +6,7 @@
 // reapplied consistently wherever the image is rendered later (e.g. the
 // feed), without ever touching/cropping the original file — see
 // PostCard.js's `mediaTransformStyle` for where this gets replayed.
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEventListener } from "expo";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -202,6 +203,21 @@ function EditMediaContent({ route, navigation }) {
       player.play();
     }
   });
+
+  // Navigating forward to PostDetails keeps this screen mounted on the
+  // stack, so without pausing on blur its video kept playing underneath
+  // PostDetails' own preview — two players audible at once. Pause whenever
+  // focus is lost; on return, resume only if the user had left it playing.
+  useFocusEffect(
+    useCallback(() => {
+      if (isVideo && isPlaying) {
+        try { player.play(); } catch {}
+      }
+      return () => {
+        try { player.pause(); } catch {}
+      };
+    }, [player, isVideo, isPlaying])
+  );
 
   const setFit = (nextFit) => {
     setTransformById((prev) => ({

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import { clearOfflineCache } from "./offlineCache";
 
 export const USER_SESSION_KEYS = {
   token: "user_token",
@@ -129,6 +130,11 @@ export async function consumeEphemeralSessionIfAny() {
 
 export async function clearUserSession() {
   await AsyncStorage.multiRemove([...Object.values(USER_SESSION_KEYS), EPHEMERAL_FLAG_KEY]);
+  // Cache keys like "posts:me"/"hiring:my-jobs" aren't scoped per-account —
+  // without this, a different account logging in on the same device would
+  // briefly see the previous account's cached feed/jobs/profile before the
+  // real fetch corrects it.
+  await clearOfflineCache();
   cachedUserSession = null;
   notifyUserSession({
     token: null,

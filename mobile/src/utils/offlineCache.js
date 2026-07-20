@@ -7,6 +7,19 @@ export async function initOfflineCache() {
   return true;
 }
 
+// Web/fallback counterpart to offlineCache.native.js's clearOfflineCache —
+// see that file for why this needs to exist (unscoped cache keys leaking
+// between accounts on logout).
+export async function clearOfflineCache() {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const cacheKeys = keys.filter((k) => k.startsWith(STORAGE_PREFIX));
+    if (cacheKeys.length) await AsyncStorage.multiRemove(cacheKeys);
+  } catch (error) {
+    console.log("offline cache clear error:", error?.message);
+  }
+}
+
 export async function setCachedResponse(key, data) {
   if (!key) return;
   try {

@@ -45,14 +45,25 @@ export default function JobApplicantDetails(){
   const insets=useSafeAreaInsets();
   const {width}=useWindowDimensions();
   const isWide=width>=900;
-  const [hiring,setHiring]=useState(false);
-  const [notice,setNotice]=useState(null);
-  const [detailJob,setDetailJob]=useState(null);
-  const [hired,setHired]=useState(false);
-
   const request=route.params?.request||null;
   const provider=request?.provider;
   const jobId=request?.job?.id;
+
+  const [hiring,setHiring]=useState(false);
+  const [notice,setNotice]=useState(null);
+  const [detailJob,setDetailJob]=useState(null);
+  // "Hired" means THIS provider is the one assigned to the job — not merely
+  // that the job has moved past "open". The old check only looked at
+  // job.status, so once ANY applicant got hired, every OTHER applicant's
+  // detail screen also flipped to "Open Workspace" (wrong), while a slow or
+  // failed background refetch (silently swallowed below) could leave the
+  // actually-hired applicant's screen stuck showing "Hire This Provider"
+  // (also wrong, and the one reported). Seeding from the job data already in
+  // route params makes the correct state available on first render, with no
+  // network round trip required.
+  const [hired,setHired]=useState(
+    ()=>!!(request?.job?.assigned_provider_uuid && request.job.assigned_provider_uuid===provider?.uuid)
+  );
 
   useEffect(()=>{
     if(!jobId)return;
@@ -61,11 +72,11 @@ export default function JobApplicantDetails(){
       if(!cancelled&&res?.data?.job){
         setDetailJob(res.data.job);
         const j=res.data.job;
-        if(["filled","active","start_pending","working","completion_pending","completed","closed"].includes(j.status))setHired(true);
+        if(j.assigned_provider_uuid&&provider?.uuid&&j.assigned_provider_uuid===provider.uuid)setHired(true);
       }
     }).catch(()=>{});
     return()=>{cancelled=true;};
-  },[jobId]);
+  },[jobId,provider?.uuid]);
 
   if(!request||!provider||!request.job){
     return(

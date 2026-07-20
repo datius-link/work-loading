@@ -409,8 +409,16 @@ export default function RequestDetails() {
   const isDirectHire   = job.hire_type === "direct" || !!job.target_provider_uuid;
   const alreadyApplied = !!job.has_applied || !!app;
   const gotJob         = !!job.you_got_this_job;
-  const closed         = ["closed", "filled", "cancelled", "completed"].includes(String(job.status || "").toLowerCase());
   const jobStatus      = String(job.status || "open");
+  // Must mirror the server's own gate exactly (hiring.controller.js:
+  // ACTIVE_STATUSES = ["open", "applied"] — applyToJob/assignProvider both
+  // 409 outside those two). The old check tested for a literal "filled"
+  // status the server never actually sets (hiring after assign becomes
+  // "active"), so once a job was assigned this button kept showing "Apply
+  // For Job" as tappable to every other provider — tapping it always failed
+  // server-side, but the UI never said so up front. Deriving from the same
+  // open-set the server uses means client and server can't drift apart again.
+  const closed         = !["open", "applied"].includes(jobStatus.toLowerCase());
 
   const ownerUuid      = job.client_user_uuid || job.created_by || job.poster_uuid || poster.uuid || poster.profile_uuid || job.profile_uuid;
   const ownerName      = poster.username || job.poster_username || job.username || "user";

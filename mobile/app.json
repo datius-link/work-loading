@@ -19,14 +19,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dmcaltd.ekazi",
+      "bundleIdentifier": "com.dmcaltd.workloading",
       "bitcode": false
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png"
       },
-      "package": "com.dmcaltd.ekazi",
+      "package": "com.dmcaltd.workloading",
       "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
