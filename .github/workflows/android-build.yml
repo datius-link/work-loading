@@ -1,0 +1,68 @@
+name: Android Preview APK
+
+# Manual only — this is a ~20-30 min native build (Reanimated/worklets
+# compile C++ via NDK/CMake), so it should not fire on every push and
+# quietly burn Actions minutes. Trigger it from the Actions tab when you
+# actually need a new APK.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      # Same values baked into the EAS "preview" profile (eas.json) — not
+      # secret, just the public API/Convex URLs the bundled JS talks to.
+      EXPO_PUBLIC_API_URL: https://work-loading-api.onrender.com/api
+      EXPO_PUBLIC_CONVEX_URL: https://utmost-gnu-126.convex.cloud
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept SDK licenses
+        # Lets the Gradle build auto-download whatever NDK/CMake/platform
+        # version the generated Android project asks for, instead of
+        # pinning versions here that can drift out of sync with Expo.
+        run: yes | sdkmanager --licenses > /dev/null || true
+
+      - name: Expo prebuild (generates the android/ project)
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Collect APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk workloading-new.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: workloading-apk
+          path: mobile/workloading-new.apk
+          retention-days: 14
